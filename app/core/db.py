@@ -2,15 +2,34 @@ from sqlmodel import SQLModel, create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 import os
+import asyncio
+import logging
+
+# Basic logging setup
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://nexus:nexus_password@localhost:5432/nexus_db")
 
 engine = create_async_engine(DATABASE_URL, echo=True, future=True)
 
 async def init_db():
-    async with engine.begin() as conn:
-        # await conn.run_sync(SQLModel.metadata.drop_all)
-        await conn.run_sync(SQLModel.metadata.create_all)
+    max_retries = 10
+    retry_interval = 2
+    
+    for attempt in range(max_retries):
+        try:
+            async with engine.begin() as conn:
+                # await conn.run_sync(SQLModel.metadata.drop_all)
+                await conn.run_sync(SQLModel.metadata.create_all)
+            logger.info("Database initialized successfully.")
+            return
+        except Exception as e:
+            logger.warning(f"Database connection failed (attempt {attempt + 1}/{max_retries}): {e}")
+            await asyncio.sleep(retry_interval)
+    
+    logger.error("Could not connect to database after maximum retries.")
+    raise Exception("Database connection failed")
 
 async def get_session() -> AsyncSession:
     async_session = sessionmaker(

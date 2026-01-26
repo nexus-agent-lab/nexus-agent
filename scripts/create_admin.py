@@ -14,7 +14,7 @@ async def create_admin():
     print("Initializing Database...")
     await init_db() # Ensure tables exist
     
-    async with AsyncSession(engine) as session:
+    async with AsyncSession(engine, expire_on_commit=False) as session:
         # Check if admin exists
         stmt = select(User).where(User.username == "admin")
         result = await session.execute(stmt)

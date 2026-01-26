@@ -41,8 +41,14 @@ def create_agent_graph():
 
     def call_model(state: AgentState):
         messages = state["messages"]
-        response = llm_with_tools.invoke(messages)
-        return {"messages": [response]}
+        try:
+            response = llm_with_tools.invoke(messages)
+            return {"messages": [response]}
+        except Exception as e:
+            # Handle API errors gracefully
+            error_msg = f"Error calling LLM provider: {str(e)}"
+            # Return a fast failure message to the user
+            return {"messages": [AIMessage(content=error_msg)]}
 
     async def tool_node_with_permissions(state: AgentState):
         messages = state["messages"]
