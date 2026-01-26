@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  nexus-app:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql+asyncpg://nexus:nexus_password@postgres:5432/nexus_db
+      
+      # LLM Configuration (Defaulting to GLM for now as requested or generic)
+      # User should set these in .env
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_BASE_URL=${LLM_BASE_URL}
+      - LLM_MODEL=${LLM_MODEL:-glm-4.7}
+    depends_on:
+      - redis
+      - postgres
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=nexus
+      - POSTGRES_PASSWORD=nexus_password
+      - POSTGRES_DB=nexus_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

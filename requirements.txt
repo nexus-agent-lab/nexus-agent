@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+langgraph
+langchain-openai
+langchain-core
+pydantic
+python-dotenv
+redis
+httpx
+sqlmodel
+psycopg2-binary
+alembic
+asyncpg
+greenlet
