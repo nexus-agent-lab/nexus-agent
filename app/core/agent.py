@@ -31,40 +31,84 @@ def get_llm():
         temperature=0
     )
 
+async def retrieve_memories(state: AgentState):
+    user = state.get("user")
+    if not user:
+        return {"memories": []}
+    
+    # We query for the last user message to find relevant memories
+    last_user_msg = ""
+    for msg in reversed(state["messages"]):
+        if msg.type == "human":
+            last_user_msg = msg.content
+            break
+    
+    if not last_user_msg:
+        return {"memories": []}
+
+    # Importing here to avoid potential circular deps
+    from app.core.memory import memory_manager
+    
+    memories = await memory_manager.search_memory(user_id=user.id, query=last_user_msg)
+    memory_strings = [f"[{m.memory_type}] {m.content}" for m in memories]
+    
+    logger.info(f"Retrieved {len(memory_strings)} memories for query '{last_user_msg}': {memory_strings}")
+    
+    return {"memories": memory_strings}
+
+async def reflexion_node(state: AgentState):
+    messages = state["messages"]
+    last_message = messages[-1]
+    
+    failures = []
+    if isinstance(last_message, ToolMessage):
+            if "Error" in last_message.content or "Permission denied" in last_message.content:
+                failures.append(last_message.content)
+    
+    retry_count = state.get("retry_count", 0) + 1
+    
+    critique = (
+        f"REFLECTION (Attempt {retry_count}/3): The previous tool execution failed with: {failures}. "
+        f"Please analyze why this happened (e.g., wrong arguments, missing permissions) "
+        f"and try a different approach or correct the arguments. "
+        f"Do not repeat the exact same invalid call."
+    )
+    
+    reflexion_msg = SystemMessage(content=critique)
+    
+    return {
+        "messages": [reflexion_msg], 
+        "retry_count": retry_count,
+        "reflexions": [critique]
+    }
+
+def should_reflect(state: AgentState) -> Literal["reflexion", "agent", "__end__"]:
+    messages = state["messages"]
+    last_message = messages[-1]
+    
+    # Check if the last tool output was an error
+    if isinstance(last_message, ToolMessage):
+        content = last_message.content
+        if "Error" in content or "Permission denied" in content:
+            # Check retry limit
+            if state.get("retry_count", 0) < 3:
+                    return "reflexion"
+            else:
+                    return "agent" 
+    
+    return "agent"
+
+def should_continue(state: AgentState) -> Literal["tools", "__end__"]:
+    messages = state["messages"]
+    last_message = messages[-1]
+    if last_message.tool_calls:
+        return "tools"
+    return "__end__"
+
 def create_agent_graph(tools: list):
     llm = get_llm()
-
-    # tools = get_tools() # Removed: Passed as arg
     tools_by_name = {t.name: t for t in tools}
-    # Bind tools to LLM
-    # Note: Ensure the provider supports OpenAI-format tool calling. 
-    # GLM-4 and DeepSeek usually do.
     llm_with_tools = llm.bind_tools(tools)
-
-    async def retrieve_memories(state: AgentState):
-        user = state.get("user")
-        if not user:
-            return {"memories": []}
-        
-        # We query for the last user message to find relevant memories
-        last_user_msg = ""
-        for msg in reversed(state["messages"]):
-            if msg.type == "human":
-                last_user_msg = msg.content
-                break
-        
-        if not last_user_msg:
-            return {"memories": []}
-
-        # Importing here to avoid potential circular deps
-        from app.core.memory import memory_manager
-        
-        memories = await memory_manager.search_memory(user_id=user.id, query=last_user_msg)
-        memory_strings = [f"[{m.memory_type}] {m.content}" for m in memories]
-        
-        logger.info(f"Retrieved {len(memory_strings)} memories for query '{last_user_msg}': {memory_strings}")
-        
-        return {"memories": memory_strings}
 
     def call_model(state: AgentState):
         messages = list(state["messages"])
@@ -99,8 +143,7 @@ def create_agent_graph(tools: list):
         outputs = []
         
         if not last_message.tool_calls:
-             # Should not happen based on edge logic, but safety check
-             return {"messages": []}
+                return {"messages": []}
 
         for tool_call in last_message.tool_calls:
             tool_name = tool_call["name"]
@@ -108,57 +151,37 @@ def create_agent_graph(tools: list):
             tool_args = tool_call["args"]
             
             # 1. Permission Check
-            # Check attribute on tool object, or on its coroutine (for Async StructuredTool)
             required_role = getattr(tool_to_call, "required_role", "user")
             
-            # Special handling for LangChain StructuredTool derived from coroutine
             if required_role == "user" and hasattr(tool_to_call, "coroutine"):
-                 # mcp.py attaches required_role to the coroutine function
-                 required_role = getattr(tool_to_call.coroutine, "required_role", "user")
+                    required_role = getattr(tool_to_call.coroutine, "required_role", "user")
 
             if required_role == "admin" and (not user or user.role != "admin"):
                 err_msg = f"Error: Permission denied. Tool '{tool_name}' requires '{required_role}' role."
-                
-                # Log Denied Access Attempt
                 async with AuditInterceptor(
                     trace_id=trace_id,
                     user_id=user.id if user else None,
                     tool_name=tool_name,
                     tool_args=tool_args
                 ) as audit_ctx:
-                     # Force failure
-                     raise PermissionError(err_msg)
+                        raise PermissionError(err_msg)
                 
                 outputs.append(
-                    ToolMessage(
-                        content=err_msg,
-                        name=tool_name,
-                        tool_call_id=tool_call["id"],
-                    )
+                    ToolMessage(content=err_msg, name=tool_name, tool_call_id=tool_call["id"])
                 )
                 continue 
 
             # 2. Execution with Audit Interceptor
             result_str = ""
             try:
-                # Inject user_id into tool arguments if the tool signature expects it
-                # For simplicity, we just inject it into the args dict. 
-                # LangChain's StructuredTool will only pass it if it's in the args_schema or function signature.
                 if user:
                     tool_args["user_id"] = user.id
 
-                # Identify Tool Tags
-                # LangChain tools usually don't have tags standard in the object, 
-                # but we can try to get them or default to ["tag:safe"]
                 tool_tags = getattr(tool_to_call, "tags", ["tag:safe"])
-                # If tags are empty list, fallback
-                if not tool_tags: 
-                    tool_tags = ["tag:safe"]
-
+                if not tool_tags: tool_tags = ["tag:safe"]
                 current_context = state.get("context", "home")
                 user_role = user.role if user else "user"
 
-                # The Interceptor handles Permission Check + Logging
                 async with AuditInterceptor(
                     trace_id=trace_id,
                     user_id=user.id if user else None,
@@ -172,15 +195,10 @@ def create_agent_graph(tools: list):
                     result_str = str(prediction)
             
             except Exception as e:
-                # Interceptor's __aexit__ will catch this and log FAILURE
                 result_str = f"Error executing tool: {e}"
             
             outputs.append(
-                ToolMessage(
-                    content=result_str,
-                    name=tool_name,
-                    tool_call_id=tool_call["id"],
-                )
+                ToolMessage(content=result_str, name=tool_name, tool_call_id=tool_call["id"])
             )
         
         return {"messages": outputs}
@@ -189,18 +207,13 @@ def create_agent_graph(tools: list):
     workflow.add_node("retrieve_memories", retrieve_memories)
     workflow.add_node("agent", call_model)
     workflow.add_node("tools", tool_node_with_permissions)
+    workflow.add_node("reflexion", reflexion_node)
     
     workflow.set_entry_point("retrieve_memories")
     workflow.add_edge("retrieve_memories", "agent")
-    
-    def should_continue(state: AgentState) -> Literal["tools", "__end__"]:
-        messages = state["messages"]
-        last_message = messages[-1]
-        if last_message.tool_calls:
-            return "tools"
-        return "__end__"
 
     workflow.add_conditional_edges("agent", should_continue)
-    workflow.add_edge("tools", "agent")
+    workflow.add_conditional_edges("tools", should_reflect)
+    workflow.add_edge("reflexion", "agent")
 
     return workflow.compile()

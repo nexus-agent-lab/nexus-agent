@@ -12,3 +12,5 @@ class AgentState(TypedDict):
     trace_id: uuid.UUID
     memories: Optional[List[str]] # Retrieved memories for context injection
     context: str = "home" # Default context (home/work)
+    reflexions: Optional[List[str]] = [] # Stored self-reflections
+    retry_count: int = 0 # Track retries for current step
