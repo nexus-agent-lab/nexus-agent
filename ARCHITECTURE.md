@@ -58,22 +58,22 @@ graph TD
     
     subgraph "Nexus Kernel (LangGraph)"
         API --> Listen
-        Listen --> Think[Think (LLM)]
+        Listen --> Think["Think (LLM)"]
         Think --> Route{Route}
         
-        Route -->|Need Tool| Auth[Context & Auth Manager]
+        Route -->|Need Tool| Auth["Context & Auth Manager"]
         Route -->|Direct Reply| Reply
         
-        Auth -- Allowed --> Act[Act (MCP Registry / Sandbox)]
+        Auth -- Allowed --> Act["Act (MCP Registry / Sandbox)"]
         Auth -- Denied --> Reply
         
-        Act --> Reflexion[Reflexion (Feedback)]
+        Act --> Reflexion["Reflexion (Feedback)"]
         Reflexion --> Think
     end
 
     subgraph "Infrastructure"
-        Think <-->|Retrieve| Memory[(pgvector)]
-        Act <-->|Execute| Sandbox[Docker Sandbox]
-        Act <-->|Connect| Tailscale[Tailscale Network]
+        Think <-->|Retrieve| Memory[("pgvector")]
+        Act <-->|Execute| Sandbox["Docker Sandbox"]
+        Act <-->|Connect| Tailscale["Tailscale Network"]
     end
 ```

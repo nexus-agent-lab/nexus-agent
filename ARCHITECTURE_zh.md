@@ -58,22 +58,22 @@ graph TD
     
     subgraph "Nexus Kernel (内核 / LangGraph)"
         API --> Listen
-        Listen --> Think[Think (LLM)]
+        Listen --> Think["Think (LLM)"]
         Think --> Route{Route 路由}
         
-        Route -->|需要工具| Auth[Context & Auth Manager 权限]
+        Route -->|需要工具| Auth["Context & Auth Manager 权限"]
         Route -->|直接回复| Reply
         
-        Auth -- 允许 --> Act[Act (MCP 注册表 / 沙箱)]
+        Auth -- 允许 --> Act["Act (MCP 注册表 / 沙箱)"]
         Auth -- 拒绝 --> Reply
         
-        Act --> Reflexion[Reflexion (反思/反馈)]
+        Act --> Reflexion["Reflexion (反思/反馈)"]
         Reflexion --> Think
     end
 
     subgraph "基础设施"
-        Think <-->|检索| Memory[(pgvector)]
-        Act <-->|执行| Sandbox[Docker 沙箱]
-        Act <-->|连接| Tailscale[Tailscale 网络]
+        Think <-->|检索| Memory[("pgvector")]
+        Act <-->|执行| Sandbox["Docker 沙箱"]
+        Act <-->|连接| Tailscale["Tailscale 网络"]
     end
 ```
