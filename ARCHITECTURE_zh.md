@@ -1,19 +1,24 @@
 # Nexus Agent 架构文档
 
-## 1. 系统概览
+## 1. 项目概览
 
-Nexus Agent 是一个专为 **Apple Silicon (M4)** 硬件设计的私有化高性能智能控制中心。它通过在本地运行核心推理和记忆操作，最大限度地保护数据隐私。
+### Nexus Agent 是什么？
+Nexus Agent 是一个**私有化、本地优先的智能控制中心**，专为您的数字生活打造。与基于云的助手（如 ChatGPT 或 Claude）不同，Nexus Agent 完全运行在您自己的硬件上（针对 **Apple Silicon M系列芯片** 进行了深度优化），确保您的个人数据、记忆和工具交互永远不会离开您的设备。
 
-**核心理念：**
-- **本地优先 (Local-First)**：LLM 和 Embedding 模型完全运行在设备端 (Ollama, Metal/MPS 加速)。
-- **主动记忆 (Active Memory)**：Agent 不仅仅是“记录”聊天，还会主动提炼并检索“洞察 (Insights)”和“偏好 (Preferences)”。
-- **安全 (Secure)**：对所有工具执行实施应用级权限控制 (RBAC) 和审计日志记录 (Audit Logging)。
+### 核心能力与场景
+
+| 能力 | 描述 | 使用场景 |
+| :--- | :--- | :--- |
+| **主动记忆 (Active Memory)** | 使用向量存储长期记住用户的偏好和事实。 | *反思机制*：“你之前告诉我你偏好 Python，所以我用 Python 写了这个脚本。” |
+| **本地推理 (Local Reasoning)** | 通过 Ollama 本地运行强大的 LLM (Qwen2.5-14B)。 | *隐私安全*：总结敏感文档或处理财务数据，无需经过云端 API。 |
+| **工具执行 (Tool Execution)** | 通过 MCP (模型上下文协议) 连接本地文件、脚本和 API。 | *自动化*：“读取我最新的日志文件并总结错误信息。” |
+| **语音交互 (Voice Interface)** | 支持语音转文字 (STT) 和文字转语音 (TTS)。 | *免提操作*：“嘿 Nexus，帮我记录一下这个会议要点。” |
 
 ---
 
 ## 2. 高层架构
 
-系统由四个主要的 Docker 化服务组成，通过私有网络进行通信：
+系统设计为一个模块化的 **Agentic Loop（智能体循环）**。它由四个主要的 Docker 化服务组成，通过私有网络进行通信。
 
 ```mermaid
 graph TD
@@ -32,77 +37,69 @@ graph TD
     end
 ```
 
----
-
-## 3. 核心组件
-
-### 3.1 Agent 核心 (LangGraph)
-Agent 的“大脑”是一个基于 **LangGraph** 构建的状态机，遵循 `思考 (Think) -> 行动 (Act) -> 观察 (Observe)` 循环。
-
-*   **状态 (State)**：`messages` (消息), `user_context` (用户上下文), `memories` (记忆), `trace_id` (追踪ID)。
-*   **节点 (Nodes)**：
-    1.  **检索记忆 (Retrieve Memories)**：根据用户最新的查询，从 `pgvector` 中获取相关上下文。
-    2.  **模型 (Model)**：调用本地 LLM (Qwen2.5)，传入注入了上下文的提示词和可用工具。
-    3.  **工具 (Tools)**：执行请求的工具（通过权限检查后）并返回结果。
-*   **边 (Edge)**：如果调用了工具，则循环回 **模型**；如果生成了最终答案，则结束。
-
-### 3.2 主动记忆系统 (Active Memory System)
-与标准的 RAG 不同，该系统对记忆类型进行了区分：
-*   **画像 (Profile)**：关于用户的静态事实（例如：“住在上海”，“使用 Python”）。
-*   **反思 (Reflexion)**：从过去交互中得出的洞察（例如：“用户更喜欢简洁的回答”）。
-*   **知识 (Knowledge)**：存储的一般性事实。
-
-**技术栈**：
-*   **存储**：PostgreSQL 配合 `pgvector` 扩展。
-*   **索引**：HNSW (Hierarchical Navigable Small World) 用于快速近似最近邻搜索。
-*   **Embedding**：`BAAI/bge-small-zh-v1.5` 托管在本地 FastAPI 服务器上，由 Mac Metal (MPS) 加速。
-*   **检索**：余弦相似度搜索（默认阈值：0.4）。
-
-### 3.3 模型上下文协议 (MCP)
-Agent 通过 MCP 连接外部能力。
-*   **注册表**：工具在 `mcp_server_config.json` 中定义。
-*   **安全**：每个工具的执行都由 **审计拦截器 (Audit Interceptor)** 把关，该拦截器记录尝试操作、检查 RBAC 权限（例如：特定工具需要 `admin` 角色），并记录结果。
+### 关键设计决策
+1.  **本地优先与隐私**：我们选择 **PostgreSQL + pgvector** 而不是云端向量库，以保持技术栈的简洁和统一。所有推理都在 `localhost` 发生。
+2.  **硬件加速**：Embedding Server 利用 **MPS (Metal Performance Shaders)** 在 Mac 芯片上进行高效的语义搜索。
+3.  **主动记忆**：这不仅仅是聊天记录。Agent 会主动决定*保存*或*检索*特定的洞察，构建一个不断增长的知识库。
 
 ---
 
-## 4. 数据流
+## 3. 核心组件详解
 
-### 聊天请求生命周期
-1.  **摄入**：用户通过 HTTP POST `/chat` 发送消息。
-2.  **认证**：验证 API Key；将用户身份附加到请求中。
-3.  **记忆检索**：
-    *   系统使用本地 Embedding Server 对用户消息进行向量化。
-    *   在 `pgvector` 中查询前 k 个相关记忆（相似度 > 0.4）。
-    *   将记忆注入系统提示词 (System Prompt)：*“你了解关于用户的以下信息...”*
-4.  **推理**：
-    *   LLM 接收消息 + 记忆上下文。
-    *   决定调用工具（例如 `save_insight`）或直接回答。
-5.  **执行（如果选择了工具）**：
-    *   Agent 检查用户是否有权使用该工具。
-    *   执行工具（例如：向 DB 保存新向量）。
-    *   结果反馈给 LLM。
-6.  **响应**：将最终答案返回给用户。
+### 3.1 Agent 核心 (大脑)
+Agent 的逻辑是一个基于 **LangGraph** 构建的状态机。它不只是简单回复，而是遵循循环：
+`思考 (Think) -> 检索上下文 (Retrieve) -> 规划 (Plan) -> 行动 (Act) -> 观察 (Observe) -> 回复 (Reply)`。
+
+*   **状态机**：跟踪对话历史、用户上下文和当前的工具输出。
+*   **安全**：每一个动作在执行前都会经过 **RBAC 策略** (基于角色的访问控制) 检查。
+
+### 3.2 主动记忆系统 (海马体)
+我们将长期记忆分为三种独特的类型，以提高检索质量：
+
+*   **👤 画像 (Profile)**：关于您的静态事实（例如：“住在上海”，“经理角色”）。
+*   **💡 反思 (Reflexion)**：行为洞察（例如：“用户更喜欢简洁的代码”）。
+*   **📚 知识 (Knowledge)**：一般性存储的事实或文件摘要。
+
+**技术流程**：
+1.  用户发送消息。
+2.  系统本地生成向量 Embedding (`bge-small-zh`)。
+3.  在 `pgvector` 中查询 **相似度 > 0.4** 的记忆。
+4.  在 LLM 看到消息之前，将相关记忆注入到提示词中。
+
+### 3.3 模型上下文协议 (双手)
+Nexus Agent 使用 **MCP 标准** 来使用工具。这使得它能够：
+*   连接标准的 MCP 服务器（如 Postgres 查看器或文件系统访问）。
+*   安全运行本地 Python 脚本。
+*   **审计拦截器**：一个中间件层，将每一次工具调用都记录到数据库 (`auditlog` 表) 中，确保透明度。
 
 ---
 
-## 5. 目录结构
+## 4. 数据流示例
 
-```text
-/app
-  /core
-    agent.py       # LangGraph 定义
-    memory.py      # MemoryManager (向量数据库逻辑)
-    mcp.py         # MCP 客户端与工具加载
-    audit.py       # 审计日志拦截器
-  /models
-    user.py        # 用户/认证相关的 SQLModel
-    memory.py      # 向量相关的 SQLModel
-  /tools
-    memory_tools.py # save_insight, store_preference
-    registry.py     # 静态工具注册
-/scripts
-    deploy_local.sh # 一键启动脚本 (Ollama + Embedding + App)
-    verify_memory_zh.py # 中文验证脚本
-/servers
-    demo_tool.py    # MCP 服务器示例
-```
+**场景**：用户说 *“记一下，我下个月要搬去东京了。”*
+
+1.  **摄入**：HTTP POST `/chat` 接收文本。
+2.  **认证**：验证 API Key。解析用户 ID。
+3.  **检索**：系统检查 `pgvector` 获取现有上下文（例如：“用户现在住在哪里？”）。
+4.  **推理 (LLM)**：
+    *   LLM 看到输入并决定：*我需要使用 `store_insight` 工具。*
+    *   LLM 生成参数：`{"content": "User is moving to Tokyo next month", "type": "profile"}`。
+5.  **执行**：
+    *   Agent 验证用户权限。
+    *   `MemoryManager` 嵌入文本并将其保存到 DB。
+6.  **响应**：Agent 确认操作：*“我已经更新了您的画像，记录了您要搬去东京的事。”*
+
+---
+
+## 5. 开发者指南
+
+### 目录结构
+*   **`/app/core`**：核心引擎。`agent.py` (图逻辑), `memory.py` (向量逻辑), `mcp.py` (工具)。
+*   **`/app/models`**：SQLModel 数据库定义。
+*   **`/scripts`**：实用工具。使用 `deploy_local.sh` 启动所有服务。
+
+### 扩展 Agent
+要添加新能力：
+1.  在 `servers/demo_tool.py` 中创建一个 Python 函数。
+2.  将其添加到 `mcp_server_config.json`。
+3.  重启 Agent。LLM 将自动发现并学会使用这个新工具。
