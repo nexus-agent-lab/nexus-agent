@@ -147,12 +147,26 @@ def create_agent_graph(tools: list):
                 if user:
                     tool_args["user_id"] = user.id
 
-                # The Interceptor handles PENDING -> SUCCESS/FAILURE logging
+                # Identify Tool Tags
+                # LangChain tools usually don't have tags standard in the object, 
+                # but we can try to get them or default to ["tag:safe"]
+                tool_tags = getattr(tool_to_call, "tags", ["tag:safe"])
+                # If tags are empty list, fallback
+                if not tool_tags: 
+                    tool_tags = ["tag:safe"]
+
+                current_context = state.get("context", "home")
+                user_role = user.role if user else "user"
+
+                # The Interceptor handles Permission Check + Logging
                 async with AuditInterceptor(
                     trace_id=trace_id,
                     user_id=user.id if user else None,
                     tool_name=tool_name,
-                    tool_args=tool_args
+                    tool_args=tool_args,
+                    user_role=user_role,
+                    context=current_context,
+                    tool_tags=tool_tags
                 ):
                     prediction = await tool_to_call.ainvoke(tool_args)
                     result_str = str(prediction)

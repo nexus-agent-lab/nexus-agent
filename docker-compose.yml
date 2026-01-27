@@ -1,16 +1,31 @@
 version: '3.8'
 
 services:
+  ts-nexus:
+    image: tailscale/tailscale:latest
+    hostname: nexus-agent-server
+    environment:
+      - TS_AUTHKEY=${TAILSCALE_AUTH_KEY}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=false
+      - TS_EXTRA_ARGS=--advertise-tags=tag:nexus-agent
+    volumes:
+      - ts_state:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    restart: unless-stopped
+
   nexus-app:
     build: .
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    network_mode: service:ts-nexus
     volumes:
       - .:/app
       - /var/run/docker.sock:/var/run/docker.sock
       - ./mcp_server_config.json:/app/mcp_server_config.json
       - ./servers:/app/servers
-    ports:
-      - "8000:8000"
     environment:
       - REDIS_URL=redis://redis:6379/0
       - DATABASE_URL=postgresql+asyncpg://nexus:nexus_password@postgres:5432/nexus_db
@@ -51,3 +66,4 @@ services:
 
 volumes:
   postgres_data:
+  ts_state:

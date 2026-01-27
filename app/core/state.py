@@ -11,3 +11,4 @@ class AgentState(TypedDict):
     user: Optional[User] 
     trace_id: uuid.UUID
     memories: Optional[List[str]] # Retrieved memories for context injection
+    context: str = "home" # Default context (home/work)

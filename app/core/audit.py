@@ -57,16 +57,36 @@ async def update_audit_entry(
             await session.commit()
 
 class AuditInterceptor:
-    def __init__(self, trace_id: uuid.UUID, user_id: Optional[int], tool_name: str, tool_args: Dict[str, Any]):
+    def __init__(self, trace_id: uuid.UUID, user_id: Optional[int], tool_name: str, tool_args: Dict[str, Any], user_role: str = "user", context: str = "home", tool_tags: list = None):
         self.trace_id = trace_id
         self.user_id = user_id
         self.tool_name = tool_name
         self.tool_args = tool_args
+        self.user_role = user_role
+        self.context = context
+        self.tool_tags = tool_tags or ["tag:safe"] # Default to safe
         self.log_id = None
         self.start_time = None
 
     async def __aenter__(self):
         self.start_time = time.time()
+        
+        # --- 1. Permission Check (Phase 4) ---
+        from app.core.policy import PolicyMatrix
+        allowed = PolicyMatrix.is_allowed(self.user_role, self.context, self.tool_tags)
+        
+        if not allowed:
+            # We log the attempt before raising error
+            await create_audit_entry(
+                trace_id=self.trace_id, 
+                user_id=self.user_id, 
+                action="tool_denied",
+                tool_name=self.tool_name,
+                tool_args=self.tool_args
+            )
+            raise PermissionError(f"Access Denied: Role '{self.user_role}' cannot use '{self.tool_name}' (Tags: {self.tool_tags}) in context '{self.context}'")
+        
+        # --- 2. Audit Logging ---
         # Create PENDING record
         self.log_id = await create_audit_entry(
             trace_id=self.trace_id, 
