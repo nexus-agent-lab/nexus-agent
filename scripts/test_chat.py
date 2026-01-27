@@ -34,9 +34,9 @@ import logging
 
 # Enable HTTP logging to see Payload & URL
 logging.basicConfig(level=logging.WARN)
-logging.getLogger("httpx").setLevel(logging.DEBUG)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("openai").setLevel(logging.DEBUG)
-logging.getLogger("httpcore").setLevel(logging.DEBUG)
 
 async def main():
     print(f"--- Testing Query: '{sys.argv[1]}' ---")

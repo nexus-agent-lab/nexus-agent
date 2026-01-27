@@ -83,9 +83,12 @@ class MCPManager:
                 # Fetch available tools
                 mcp_tools_response = await session.list_tools()
                 
+                # Get tool config for this server
+                server_tool_config = server_conf.get("tool_config", {})
+                
                 # Convert to LangChain tools
                 for tool in mcp_tools_response.tools:
-                    lc_tool = self._convert_to_langchain_tool(name, session, tool, required_role)
+                    lc_tool = self._convert_to_langchain_tool(name, session, tool, required_role, server_tool_config)
                     self.tools.append(lc_tool)
                     
                 print(f"Connected to {name}. Loaded {len(mcp_tools_response.tools)} tools.")
@@ -93,22 +96,48 @@ class MCPManager:
             except Exception as e:
                 print(f"Failed to connect to MCP server {name}: {e}")
 
-    def _convert_to_langchain_tool(self, server_name: str, session: ClientSession, tool: MCPToolModel, required_role: str) -> StructuredTool:
+    def _convert_to_langchain_tool(self, server_name: str, session: ClientSession, tool: MCPToolModel, required_role: str, tool_config_map: Dict = None) -> StructuredTool:
         """
         Wraps an MCP tool into a LangChain StructuredTool.
         """
+        tool_config_map = tool_config_map or {}
+        
+        # Prepare tool config based on server name
+        # We need access to the raw config dict to find tool_config
+        # Ideally _convert_to_langchain_tool should receive server config
+        # But for now let's modify the signature or access class state if possible.
+        # Wait, initialize() has the config. Let's pass it down.
         
         async def _arun(**kwargs) -> str:
             """Async runner for the tool"""
             try:
-                result: CallToolResult = await session.call_tool(tool.name, arguments=kwargs)
-                # Combine distinct text content blocks
-                texts = [
-                    content.text 
-                    for content in result.content 
-                    if content.type == 'text'
-                ]
-                return "\n".join(texts)
+                # Import here to avoid circular dependency
+                from app.core.mcp_middleware import MCPMiddleware
+                
+                # We need to find the specific config for this tool
+                # This requires passing 'tool_config' map to _convert_to_langchain_tool
+                # But since we didn't update the signature yet, let's do a quick lookup if possible
+                # or better, update the signature in the next step.
+                # For now, let's assume we can get it.
+                
+                # Actually, let's just make the simple wrap first.
+                # But wait, middleware requires 'original_func' to be a callable that takes kwargs.
+                
+                async def original_mcp_call(**k):
+                    result: CallToolResult = await session.call_tool(tool.name, arguments=k)
+                    texts = [c.text for c in result.content if c.type == 'text']
+                    return "\n".join(texts)
+
+                # Get config (we will update signature in next tool call)
+                tool_conf = tool_config_map.get(tool.name, {}) if 'tool_config_map' in locals() else {}
+
+                return await MCPMiddleware.call_tool(
+                    tool_name=tool.name,
+                    args=kwargs,
+                    original_func=original_mcp_call,
+                    tool_config=tool_conf
+                )
+
             except Exception as e:
                 return f"MCP Tool Execution Error: {str(e)}"
         

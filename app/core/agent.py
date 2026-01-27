@@ -178,9 +178,11 @@ def create_agent_graph(tools: list):
             logger.info(f"LLM INPUT MESSAGES: {json.dumps(msgs_dicts, ensure_ascii=False)}")
             
             response = llm_with_tools.invoke(messages)
-            logger.info(f"LLM OUTPUT: {response.content}")
-            if response.tool_calls:
-                 logger.info(f"LLM TOOL CALLS: {response.tool_calls}")
+            
+            # Debug: Log full output JSON
+            resp_dict = message_to_dict(response)
+            logger.info(f"LLM OUTPUT RAW JSON: {json.dumps(resp_dict, ensure_ascii=False)}")
+            
             return {"messages": [response]}
         except Exception as e:
             # Handle API errors gracefully
