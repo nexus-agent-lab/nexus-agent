@@ -21,7 +21,8 @@ from app.core.voice import transcribe_audio
 from app.core.mcp import get_mcp_tools
 from app.tools.registry import get_static_tools
 from app.core.mcp_manager import MCPManager
-from app.interfaces.telegram import run_telegram_bot, set_agent_graph
+from app.interfaces.telegram import run_telegram_bot, set_agent_graph, broadcast_message
+from app.core.telegram_callback import TelegramProgressCallback
 import asyncio
 
 app = FastAPI(title="Nexus Agent API", version="2.0.0")
@@ -85,7 +86,11 @@ async def chat(
         "trace_id": trace_id
     }
     
-    final_state = await agent_graph.ainvoke(initial_state)
+    # Configure Callbacks for Telegram Progress Sync
+    tg_callback = TelegramProgressCallback()
+    config = {"callbacks": [tg_callback]}
+    
+    final_state = await agent_graph.ainvoke(initial_state, config=config)
     
     messages = final_state["messages"]
     last_message = messages[-1]
@@ -124,7 +129,11 @@ async def voice_chat(
         "trace_id": trace_id
     }
     
-    final_state = await agent_graph.ainvoke(initial_state)
+    # Configure Callbacks for Telegram Progress Sync
+    tg_callback = TelegramProgressCallback()
+    config = {"callbacks": [tg_callback]}
+    
+    final_state = await agent_graph.ainvoke(initial_state, config=config)
     
     # Extract last message content
     last_message = final_state["messages"][-1]

@@ -144,7 +144,14 @@ class MCPManager:
         # Attach permission attribute directly to the function wrapper so registry/agent can read it
         _arun.required_role = required_role
 
+        from app.core.schema_utils import clean_schema
+
         # Dynamically create Pydantic model from JSON Schema
+        # Clean schema to remove unsupported keywords and flatten anyOf/oneOf
+        # cleaned_schema = clean_schema(tool.inputSchema)
+        # args_schema = self._create_args_schema(tool.name, cleaned_schema)
+        
+        # Using RAW schema as requested
         args_schema = self._create_args_schema(tool.name, tool.inputSchema)
 
         return StructuredTool.from_function(
@@ -183,7 +190,20 @@ class MCPManager:
             else:
                 fields[field_name] = (Optional[field_type], None) # Optional
 
-        return create_model(f"{tool_name}Schema", **fields)
+        # If schema is empty (no properties), allow extra arguments (e.g. for HA tools with missing schemas)
+        # Otherwise, stick to defaults (usually extra='ignore' or 'forbid')
+        model_config = None
+        if not properties:
+             # Create a config class to allow extra fields
+             class Config:
+                 extra = "allow"
+             model_config = Config
+
+        model = create_model(f"{tool_name}Schema", **fields)
+        if model_config:
+            model.Config = model_config
+            
+        return model
 
     def get_tools(self) -> List[StructuredTool]:
         return self.tools

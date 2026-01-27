@@ -135,8 +135,33 @@ async def run_telegram_bot():
     logger.info("Starting Telegram Bot Polling...")
     await application.initialize()
     await application.start()
+    
+    # Set global app reference for broadcast_message
+    global _global_app
+    _global_app = application
+    
     await application.updater.start_polling()
     
     # Keep running until cancelled
     # In a real asyncio app, we might need a better lifecycle management
     # For now, we rely on the main event loop
+
+_global_app = None
+
+async def broadcast_message(text: str):
+    """Broadcasts a message to all allowed Telegram users."""
+    if not _global_app:
+        logger.warning("Telegram Bot not initialized, skipping broadcast.")
+        return
+        
+    if not ALLOWED_USER_IDS or ALLOWED_USER_IDS == [""]:
+        logger.warning("No allowed users configured for broadcast.")
+        return
+        
+    for user_id in ALLOWED_USER_IDS:
+        if user_id.strip() == "*": continue # Don't broadcast to wildcard effectively (dangerous)
+        try:
+            await _global_app.bot.send_message(chat_id=user_id.strip(), text=text)
+        except Exception as e:
+            logger.error(f"Failed to broadcast to {user_id}: {e}")
+
