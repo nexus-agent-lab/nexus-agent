@@ -2,7 +2,7 @@ import argparse
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import List, Union, Optional
+from typing import List, Union, Optional, Any
 from sentence_transformers import SentenceTransformer
 import torch
 
@@ -12,7 +12,7 @@ app = FastAPI(title="Local Embedding Server (Nexus)")
 model = None
 
 class EmbeddingRequest(BaseModel):
-    input: Union[str, List[str]]
+    input: Any # More lenient to handle token lists from some clients
     model: Optional[str] = "local-embedding-model"
 
 class EmbeddingObject(BaseModel):
@@ -32,7 +32,15 @@ async def create_embeddings(request: EmbeddingRequest):
     if model is None:
         raise HTTPException(status_code=500, detail="Model not loaded")
     
-    inputs = [request.input] if isinstance(request.input, str) else request.input
+    inputs = request.input
+    if isinstance(inputs, str):
+        inputs = [inputs]
+    elif isinstance(inputs, list) and len(inputs) > 0 and isinstance(inputs[0], int):
+        # This looks like tokens - we should ideally decode them, 
+        # but the model.encode normally wants strings.
+        # For now, let's log and try to error gracefully or handle it.
+        print(f"Warning: Received tokenized input (integers). This server expects strings.")
+        raise HTTPException(status_code=422, detail="This local embedding server requires raw text strings, not tokenized integers.")
     
     try:
         # Generate embeddings

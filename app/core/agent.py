@@ -49,7 +49,7 @@ def create_agent_graph(tools: list):
         # We query for the last user message to find relevant memories
         last_user_msg = ""
         for msg in reversed(state["messages"]):
-            if msg.type == "user":
+            if msg.type == "human":
                 last_user_msg = msg.content
                 break
         

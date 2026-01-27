@@ -34,11 +34,11 @@ echo ""
 # Step 2: Embedding Server Setup
 echo "🧠 Step 2/3: Setting up Local Embedding Server"
 echo "----------------------------------------------"
-echo "Installing Python dependencies..."
-pip install -q sentence-transformers torch fastapi uvicorn
+echo "Installing Python dependencies with uv..."
+uv pip install sentence-transformers torch fastapi uvicorn
 
-echo "Starting embedding server..."
-python scripts/start_embedding_server.py --port 9292 > /tmp/embedding.log 2>&1 &
+echo "Starting embedding server with uv..."
+uv run scripts/start_embedding_server.py --port 9292 > /tmp/embedding.log 2>&1 &
 EMBEDDING_PID=$!
 echo "Embedding Server PID: $EMBEDDING_PID"
 sleep 5

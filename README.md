@@ -41,6 +41,8 @@ The easiest way to get started is using the automated deployment script:
 
 ## 🏗️ Architecture
 
+For a detailed deep-dive into the system components, data flow, and active memory implementation, please read the [Architecture Documentation](ARCHITECTURE.md).
+
 -   **LLM**: Ollama / Qwen2.5-14B (Local) or GLM-4/GPT-4 (Cloud).
 -   **Memory**: PostgreSQL + `pgvector` (512-dim).
 -   **Embeddings**: `bge-small-zh-v1.5` hosted on a local FastAPI server with Metal acceleration.

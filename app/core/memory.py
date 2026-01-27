@@ -24,13 +24,23 @@ class MemoryManager:
         # Get dimension from env (512 for local bge-small, 1536 for OpenAI)
         dimension = int(os.getenv("EMBEDDING_DIMENSION", "512"))
         
-        self.embeddings = OpenAIEmbeddings(
-            model=model_name,
-            api_key=api_key,
-            base_url=base_url,
-            # Set dimensions explicitly. Local models may not need this param, but OpenAI does.
-            dimensions=dimension if dimension == 1536 else None
-        )
+        if "9292" in base_url:
+            # Use a simpler approach for local server to avoid OpenAI-specific tokenization
+            from langchain_community.embeddings import DeterministicFakeEmbedding
+            # Actually, let's just use a custom simple wrapper or ensure OpenAIEmbeddings doesn't tokenize
+            self.embeddings = OpenAIEmbeddings(
+                model=model_name,
+                api_key=api_key,
+                base_url=base_url,
+                check_embedding_ctx_length=False # Disable internal tokenization checks
+            )
+        else:
+            self.embeddings = OpenAIEmbeddings(
+                model=model_name,
+                api_key=api_key,
+                base_url=base_url,
+                dimensions=dimension if dimension == 1536 else None
+            )
 
     async def add_memory(self, user_id: int, content: str, memory_type: str = "knowledge"):
         """
@@ -49,7 +59,7 @@ class MemoryManager:
             await session.commit()
             return new_memory
 
-    async def search_memory(self, user_id: int, query: str, limit: int = 3, threshold: float = 0.7):
+    async def search_memory(self, user_id: int, query: str, limit: int = 3, threshold: float = 0.4):
         """
         Performs vector similarity search.
         """

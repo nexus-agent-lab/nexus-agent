@@ -6,7 +6,7 @@ import asyncio
 import httpx
 import sys
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = "http://127.0.0.1:8000"
 
 async def test_memory_system():
     print("🧪 Testing Active Memory System")
@@ -14,9 +14,9 @@ async def test_memory_system():
     
     # Step 1: Create test user and get API key
     print("\n1️⃣ Setting up test user...")
-    async with httpx.AsyncClient() as client:
-        # Assuming you have a test admin key
-        admin_key = "test-admin-key-123"
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        # Match sk-test-123456 from create_admin.py
+        admin_key = "sk-test-123456"
         
         # Test basic connectivity
         try:
@@ -41,10 +41,13 @@ async def test_memory_system():
                     json={"message": f"Remember this: {msg}"},
                     headers={"X-API-Key": admin_key}
                 )
+                if response.status_code != 200:
+                    print(f"   ❌ Error {response.status_code}: {response.text}")
+                    continue
                 print(f"   📝 Sent: {msg[:40]}...")
                 print(f"   🤖 Response: {response.json()['response'][:60]}...")
             except Exception as e:
-                print(f"   ❌ Error: {e}")
+                print(f"   ❌ Exception: {e}")
         
         # Step 3: Test memory retrieval
         print("\n3️⃣ Testing memory retrieval...")
@@ -61,11 +64,14 @@ async def test_memory_system():
                     json={"message": query},
                     headers={"X-API-Key": admin_key}
                 )
+                if response.status_code != 200:
+                    print(f"   ❌ Error {response.status_code}: {response.text}")
+                    continue
                 result = response.json()
                 print(f"\n   ❓ Query: {query}")
                 print(f"   💬 Answer: {result['response'][:100]}...")
             except Exception as e:
-                print(f"   ❌ Error: {e}")
+                print(f"   ❌ Exception: {e}")
         
         # Step 4: Save insights
         print("\n4️⃣ Testing insight storage...")
@@ -75,9 +81,12 @@ async def test_memory_system():
                 json={"message": "I learned that using async/await improves performance significantly in Python web apps"},
                 headers={"X-API-Key": admin_key}
             )
-            print(f"   ✅ Insight saved: {response.json()['response'][:60]}...")
+            if response.status_code != 200:
+                print(f"   ❌ Error {response.status_code}: {response.text}")
+            else:
+                print(f"   ✅ Insight saved: {response.json()['response'][:60]}...")
         except Exception as e:
-            print(f"   ❌ Error: {e}")
+            print(f"   ❌ Exception: {e}")
         
         print("\n" + "=" * 50)
         print("✅ Memory system test complete!")
