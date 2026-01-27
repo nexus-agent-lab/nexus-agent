@@ -11,13 +11,29 @@ logger = logging.getLogger(__name__)
 from app.core.agent import create_agent_graph
 from app.core.auth import get_current_user
 from app.core.db import init_db
-from app.core.db import init_db
 from app.models.user import User
 from app.core.voice import transcribe_audio
+from app.core.mcp import get_mcp_tools
+from app.tools.registry import get_static_tools
 
 app = FastAPI(title="Nexus Agent API", version="2.0.0")
 
-agent_graph = create_agent_graph()
+# Global reference
+agent_graph = None
+
+@app.on_event("startup")
+async def startup_event():
+    await init_db()
+    
+    # Initialize Tools
+    static_tools = get_static_tools()
+    mcp_tools = await get_mcp_tools()
+    all_tools = static_tools + mcp_tools
+    
+    global agent_graph
+    agent_graph = create_agent_graph(all_tools)
+    
+    logger.info(f"Agent initialized with {len(all_tools)} tools.")
 
 class ChatRequest(BaseModel):
     message: str
@@ -27,10 +43,6 @@ class ChatResponse(BaseModel):
     response: str
     tool_calls: List[Dict[str, Any]] = []
     trace_id: str
-
-@app.on_event("startup")
-async def startup_event():
-    await init_db()
 
 @app.get("/")
 async def root():

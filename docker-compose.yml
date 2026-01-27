@@ -7,20 +7,26 @@ services:
     volumes:
       - .:/app
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./mcp_server_config.json:/app/mcp_server_config.json
+      - ./servers:/app/servers
     ports:
       - "8000:8000"
     environment:
       - REDIS_URL=redis://redis:6379/0
       - DATABASE_URL=postgresql+asyncpg://nexus:nexus_password@postgres:5432/nexus_db
       
-      # LLM Configuration (Defaulting to GLM for now as requested or generic)
-      # User should set these in .env
-      - LLM_API_KEY=${LLM_API_KEY}
-      - LLM_BASE_URL=${LLM_BASE_URL}
-      - LLM_MODEL=${LLM_MODEL:-glm-4.7}
+      # LLM Configuration (Local Ollama by default, cloud fallback available)
+      - LLM_API_KEY=${LLM_API_KEY:-ollama}
+      - LLM_BASE_URL=${LLM_BASE_URL:-http://host.docker.internal:11434/v1}
+      - LLM_MODEL=${LLM_MODEL:-qwen2.5:14b}
+      
+      # Embedding Configuration (Local by default)
+      - EMBEDDING_API_KEY=${EMBEDDING_API_KEY:-local}
+      - EMBEDDING_BASE_URL=${EMBEDDING_BASE_URL:-http://host.docker.internal:9292/v1}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-bge-small-zh-v1.5}
+      - EMBEDDING_DIMENSION=${EMBEDDING_DIMENSION:-512}
       
       # Voice Configuration
-      # Point to local MLX server (e.g. http://host.docker.internal:9191/v1) or OpenAI
       - STT_BASE_URL=${STT_BASE_URL:-http://host.docker.internal:9191/v1}
       - STT_API_KEY=${STT_API_KEY:-sk-local-test}
     depends_on:

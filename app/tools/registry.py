@@ -35,6 +35,8 @@ def dangerous_operation() -> str:
 
 from app.tools.sandbox import get_sandbox_tool
 
-def get_tools() -> List[Callable]:
-    """Returns the list of available tools, including the sandbox tool."""
-    return [get_current_time, calculate_number, dangerous_operation, get_sandbox_tool()]
+from app.tools.memory_tools import store_preference, save_insight
+
+def get_static_tools() -> List[Callable]:
+    """Returns the list of static tools."""
+    return [get_current_time, calculate_number, dangerous_operation, get_sandbox_tool(), store_preference, save_insight]

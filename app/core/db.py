@@ -12,6 +12,9 @@ logger = logging.getLogger(__name__)
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://nexus:nexus_password@localhost:5432/nexus_db")
 
 engine = create_async_engine(DATABASE_URL, echo=True, future=True)
+AsyncSessionLocal = sessionmaker(
+    engine, class_=AsyncSession, expire_on_commit=False
+)
 
 async def init_db():
     max_retries = 10
@@ -32,8 +35,5 @@ async def init_db():
     raise Exception("Database connection failed")
 
 async def get_session() -> AsyncSession:
-    async_session = sessionmaker(
-        engine, class_=AsyncSession, expire_on_commit=False
-    )
-    async with async_session() as session:
+    async with AsyncSessionLocal() as session:
         yield session

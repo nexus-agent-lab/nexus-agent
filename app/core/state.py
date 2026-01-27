@@ -1,4 +1,5 @@
 from typing import Annotated, Sequence, TypedDict, Union, Optional
+from typing import Annotated, Sequence, TypedDict, Union, Optional, List
 from langchain_core.messages import BaseMessage
 import operator
 import uuid
@@ -9,3 +10,4 @@ class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], operator.add]
     user: Optional[User] 
     trace_id: uuid.UUID
+    memories: Optional[List[str]] # Retrieved memories for context injection

@@ -15,3 +15,5 @@ greenlet
 docker
 python-multipart
 gTTS
+mcp
+pgvector
