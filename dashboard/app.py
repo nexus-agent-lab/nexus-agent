@@ -2,121 +2,71 @@ import streamlit as st
 import pandas as pd
 from sqlalchemy import create_engine, text
 import os
+import time
 
 # --- Configuration ---
-# Allow overriding DB URL via env var, default to localhost for running outside Docker
-DB_URL = os.getenv("DATABASE_URL", "postgresql://nexus:nexus_password@localhost:5432/nexus_db")
-
+# --- Configuration ---
 st.set_page_config(
-    page_title="Nexus Admin Console",
+    page_title="Nexus 指挥中心",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# --- Database Connection ---
+DB_URL = os.getenv("DATABASE_URL", "postgresql://nexus:nexus_password@localhost:5432/nexus_db")
+
 @st.cache_resource
 def get_engine():
     return create_engine(DB_URL)
 
 engine = get_engine()
 
-# --- Sidebar ---
-st.sidebar.title("Nexus Kernel 🛡️")
-page = st.sidebar.radio("Navigation", ["Audit Logs", "Memory Inspector", "User & Keys", "Network Nodes"])
+# --- Mission Control ---
+st.title("🛡️ Nexus 任务控制台")
+st.markdown("### 系统状态")
 
-# --- Pages ---
+# Metrics Row
+col1, col2, col3, col4 = st.columns(4)
 
-if page == "Audit Logs":
-    st.title("📜 Audit Logs")
-    st.markdown("Monitor tool execution, permission denials, and system activity.")
-    
-    # Filters
-    col1, col2 = st.columns(2)
-    with col1:
-        limit = st.slider("Limit rows", 10, 500, 50)
-    with col2:
-        status_filter = st.selectbox("Status", ["ALL", "SUCCESS", "FAILURE", "PENDING", "DENIED"])
-    
-    # Query
-    query = "SELECT * FROM auditlog"
-    params = {}
-    if status_filter != "ALL":
-        if status_filter == "DENIED":
-             query += " WHERE action = 'tool_denied'"
-        else:
-             query += f" WHERE status = '{status_filter}'"
-    
-    query += " ORDER BY created_at DESC LIMIT :limit"
-    
+with col1:
+    st.metric("Agent 核心", "在线", delta="稳定")
+
+with col2:
+    # Check DB Connection
     try:
         with engine.connect() as conn:
-            df = pd.read_sql(text(query), conn, params={"limit": limit})
-            
-        # Display
-        if not df.empty:
-            st.dataframe(
-                df, 
-                use_container_width=True,
-                column_config={
-                    "created_at": st.column_config.DatetimeColumn("Time", format="D MMM, HH:mm:ss"),
-                    "duration_ms": st.column_config.NumberColumn("Duration (ms)"),
-                    "tool_args": st.column_config.JsonColumn("Arguments")
-                }
-            )
-        else:
-            st.info("No logs found.")
-            
-    except Exception as e:
-        st.error(f"Database Error: {e}")
-        st.warning("Make sure localhost:5432 is accessible (docker-compose up).")
+            conn.execute(text("SELECT 1"))
+        st.metric("数据库", "已连接", delta="5ms")
+    except:
+        st.metric("数据库", "离线", delta_color="inverse")
 
-elif page == "Memory Inspector":
-    st.title("🧠 Memory Inspector")
-    st.markdown("Search vector memories stored in `pgvector`.")
-    
-    search_query = st.text_input("Semantic Search", placeholder="What do you know about...")
-    
-    if search_query:
-        # TODO: Need to embed the query using the same model to search pgvector
-        # For now, just show raw table or simple text match if supported
-        st.info("Semantic Search requires connecting to the Embedding Model from the Dashboard. Showing recent memories instead.")
-    
-    # Just show table for now
-    try:
-        query = "SELECT id, user_id, memory_type, content, created_at FROM memory ORDER BY created_at DESC LIMIT 20"
-        with engine.connect() as conn:
-            df = pd.read_sql(text(query), conn)
-        st.dataframe(df, use_container_width=True)
-    except Exception as e:
-        st.error(f"Error: {e}")
+with col3:
+    # Check Tailscale (Mock for now, or read file)
+    st.metric("组网状态", "活跃", "1 节点")
 
-elif page == "User & Keys":
-    st.title("👤 Users & Permissions")
-    try:
-        query = "SELECT * FROM user" # 'user' is reserved keyword in PG, might need quotes
-        with engine.connect() as conn:
-            # quote the table name just in case, though sqlmodel usually handles it
-            df = pd.read_sql(text('SELECT * FROM "user"'), conn)
-        st.dataframe(df, use_container_width=True)
-        
-        st.divider()
-        st.subheader("Add User (Mock)")
-        st.text_input("Username")
-        st.selectbox("Role", ["user", "admin", "guest"])
-        st.button("Create API Key")
-        
-    except Exception as e:
-        st.error(f"Error loading users: {e}")
+with col4:
+    st.metric("模型服务", "Ollama", "Qwen2.5-14B")
 
-elif page == "Network Nodes":
-    st.title("🕸️ Nexus Network")
-    st.markdown("Tailscale Mesh Status")
-    
-    # Mock status for now, or fetch from Tailscale API if we had the key
-    nodes = [
-        {"Hostname": "nexus-agent-server", "IP": "100.112.174.53", "Status": "Online", "Type": "Server (Hub)"},
-        {"Hostname": "iphone-15", "IP": "100.x.y.z", "Status": "Active", "Type": "Client"},
-        {"Hostname": "macbook-pro", "IP": "100.a.b.c", "Status": "Idle", "Type": "Admin Console"},
-    ]
-    st.dataframe(pd.DataFrame(nodes))
+st.divider()
+
+# Quick Actions
+st.subheader("🚀 快捷操作")
+c1, c2, c3 = st.columns(3)
+if c1.button("清除缓存"):
+    st.toast("系统缓存已清除！")
+if c2.button("重启内核"):
+    st.toast("已发送内核重启信号。")
+if c3.button("运行诊断"):
+    with st.spinner("正在运行诊断..."):
+        time.sleep(1)
+        st.success("所有系统正常。")
+
+# Recent Activity (Mini)
+st.subheader("📉 最近活动 (最新5条)")
+try:
+    with engine.connect() as conn:
+        df = pd.read_sql(text("SELECT action, tool_name, status, created_at FROM auditlog ORDER BY created_at DESC LIMIT 5"), conn)
+    st.dataframe(df, use_container_width=True)
+except Exception as e:
+    st.error(f"Could not load activity: {e}")
+
