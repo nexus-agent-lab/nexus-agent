@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://nexus:nexus_password@localhost:5432/nexus_db")
 
-engine = create_async_engine(DATABASE_URL, echo=True, future=True)
+engine = create_async_engine(DATABASE_URL, echo=False, future=True)
 AsyncSessionLocal = sessionmaker(
     engine, class_=AsyncSession, expire_on_commit=False
 )

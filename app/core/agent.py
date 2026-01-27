@@ -13,11 +13,24 @@ from langchain_core.messages import ToolMessage, SystemMessage, AIMessage
 from app.core.state import AgentState
 from app.core.audit import AuditInterceptor
 
+BASE_SYSTEM_PROMPT = """You are Nexus, an advanced AI Home Operating System.
+Your goal is to assist the user by controlling their Smart Home and managing their digital life.
+
+### INSTRUCTIONS
+*   **ALWAYS** use the provided tools to answer questions about the environment or perform actions.
+*   If you don't know the exact entity name (e.g. for Home Assistant), utilize list/search tools first.
+*   **LANGUAGE**: ALWAYS reply in the same language as the user's request. (e.g., Use Chinese for Chinese queries).
+*   Be concise and helpful.
+"""
+
 def get_llm():
     """Configures and returns the LLM instance based on environment variables."""
     api_key = os.getenv("LLM_API_KEY")
     base_url = os.getenv("LLM_BASE_URL")
     model_name = os.getenv("LLM_MODEL", "gpt-4o")
+
+    # CRITICAL DEBUG LOG
+    logger.info(f"initializing LLM with: generated_url={base_url}, model={model_name}")
 
     if not api_key:
         print("Warning: LLM_API_KEY is not set.")
@@ -110,8 +123,39 @@ def create_agent_graph(tools: list):
     tools_by_name = {t.name: t for t in tools}
     llm_with_tools = llm.bind_tools(tools)
 
+    # Group tools for cleaner System Prompt
+    domains = {}
+    for t in tools:
+        # Extract domain from description "[domain] desc" or use "system"
+        domain = "system"
+        desc = t.description or ""
+        if desc.startswith("[") and "]" in desc:
+            end = desc.find("]")
+            domain = desc[1:end]
+            desc = desc[end+1:].strip()
+        
+        if domain not in domains:
+            domains[domain] = []
+        domains[domain].append(t.name)
+
+    domain_summary = []
+    for domain, t_names in domains.items():
+        domain_summary.append(f"### {domain.upper()} TOOLS\n" + ", ".join(t_names))
+    
+    tools_summary = "\n\n".join(domain_summary)
+    
+    dynamic_system_prompt = BASE_SYSTEM_PROMPT + f"\n\n## AVAIABLE TOOLSETS\n{tools_summary}\n"
+
     def call_model(state: AgentState):
         messages = list(state["messages"])
+        
+        # Ensure System Prompt is present
+        if not messages or not isinstance(messages[0], SystemMessage):
+            messages.insert(0, SystemMessage(content=dynamic_system_prompt))
+        elif isinstance(messages[0], SystemMessage) and "You are Nexus" not in messages[0].content:
+            # If there's already a system message but it's not our base one, prepend ours
+             messages[0] = SystemMessage(content=dynamic_system_prompt + "\n\n" + messages[0].content)
+
         memories = state.get("memories", [])
         
         if memories:
@@ -127,7 +171,16 @@ def create_agent_graph(tools: list):
                 messages.insert(0, system_msg)
 
         try:
+            # CRITICAL DEBUG: Log input messages (converted to list/dict for readability)
+            import json
+            from langchain_core.messages import message_to_dict
+            msgs_dicts = [message_to_dict(m) for m in messages]
+            logger.info(f"LLM INPUT MESSAGES: {json.dumps(msgs_dicts, ensure_ascii=False)}")
+            
             response = llm_with_tools.invoke(messages)
+            logger.info(f"LLM OUTPUT: {response.content}")
+            if response.tool_calls:
+                 logger.info(f"LLM TOOL CALLS: {response.tool_calls}")
             return {"messages": [response]}
         except Exception as e:
             # Handle API errors gracefully
@@ -195,7 +248,26 @@ def create_agent_graph(tools: list):
                     result_str = str(prediction)
             
             except Exception as e:
-                result_str = f"Error executing tool: {e}"
+                error_text = str(e)
+                # 3. Error Sanitization
+                # If it's a low-level infrastructure error, DO NOT pass it to the LLM to avoid confusion/loops.
+                is_internal_error = any(k in error_text for k in [
+                    "sqlalchemy", "asyncpg", "ConnectionRefused", "BrokenPipe", "OperationalError"
+                ])
+                
+                if is_internal_error:
+                    # Log the specific crash for the admin
+                    logger.error(f"CRITICAL SYSTEM ERROR in tool '{tool_name}': {error_text}", exc_info=True)
+                    # Tell LLM generic info so it doesn't try to 'fix' code
+                    result_str = "Error: Internal System Error. Please contact administrator."
+                else:
+                    # Logic errors (e.g. User Not Found) are useful for the LLM
+                    logger.warning(f"Tool execution error ({tool_name}): {error_text}")
+                    result_str = f"Error execution tool: {error_text}"
+
+            # CRITICAL DEBUG LOG: Show what the tool actually returned
+            log_preview = (result_str[:500] + '...') if len(str(result_str)) > 500 else result_str
+            logger.info(f"TOOL OUTPUT ({tool_name}): {log_preview}")
             
             outputs.append(
                 ToolMessage(content=result_str, name=tool_name, tool_call_id=tool_call["id"])

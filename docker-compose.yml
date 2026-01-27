@@ -9,6 +9,7 @@ services:
       - TS_STATE_DIR=/var/lib/tailscale
       - TS_USERSPACE=false
       - TS_EXTRA_ARGS=--advertise-tags=tag:nexus-agent
+      - TS_NO_LOGS_NO_SUPPORT=true
     volumes:
       - ts_state:/var/lib/tailscale
       - /dev/net/tun:/dev/net/tun
@@ -26,6 +27,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./mcp_server_config.json:/app/mcp_server_config.json
       - ./servers:/app/servers
+      # Mount external MCP plugins from local host (Hybrid Mode)
+      - ${MCP_EXT_DIR:-./external_mcp}:/app/external_mcp
     environment:
       - REDIS_URL=redis://redis:6379/0
       - DATABASE_URL=postgresql+asyncpg://nexus:nexus_password@postgres:5432/nexus_db
@@ -44,6 +47,13 @@ services:
       # Voice Configuration
       - STT_BASE_URL=${STT_BASE_URL:-http://host.docker.internal:9191/v1}
       - STT_API_KEY=${STT_API_KEY:-sk-local-test}
+      
+      # Integrations
+      - HOMEASSISTANT_URL=${HOMEASSISTANT_URL}
+      - HOMEASSISTANT_TOKEN=${HOMEASSISTANT_TOKEN}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS}
+      - TELEGRAM_PROXY_URL=${TELEGRAM_PROXY_URL}
     depends_on:
       - redis
       - postgres

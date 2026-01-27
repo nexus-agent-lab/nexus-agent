@@ -21,3 +21,5 @@ langchain-community
 streamlit
 pandas
 sqlalchemy
+python-telegram-bot
+python-dotenv

@@ -1,12 +1,22 @@
 {
     "mcpServers": {
+        "homeassistant": {
+            "command": "node",
+            "cwd": "/app/external_mcp/mcp-homeassistant",
+            "args": [
+                "/app/external_mcp/mcp-homeassistant/build/index.js"
+            ],
+            "enabled": true,
+            "source": "hybrid"
+        },
         "demo_server": {
             "command": "python",
             "args": [
                 "/app/servers/demo_tool.py"
             ],
+            "enabled": true,
+            "source": "local",
             "required_role": "admin"
         }
-    },
-    "_comment": "required_role is an extensible string identifier. Currently validates against User.role. In future versions, this can map to granular permission keys (e.g., 'can_access_finance')."
+    }
 }

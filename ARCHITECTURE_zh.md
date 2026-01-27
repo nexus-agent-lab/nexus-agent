@@ -64,16 +64,39 @@ graph TD
         Route -->|需要工具| Auth["Context & Auth Manager 权限"]
         Route -->|直接回复| Reply
         
-        Auth -- 允许 --> Act["Act (MCP 注册表 / 沙箱)"]
+        Auth -- 允许 --> Act["Act (MCP Client)"]
         Auth -- 拒绝 --> Reply
         
         Act --> Reflexion["Reflexion (反思/反馈)"]
         Reflexion --> Think
     end
 
+    subgraph "Nexus Integration Hub (MCP Servers)"
+        Act <-->|Stdio/SSE| LocalTools["本地工具 (Time, Calculator)"]
+        Act <-->|SSE| HA["🏠 HomeAssistant MCP"]
+        Act <-->|SSE| Lark["🏢 飞书/Lark MCP"]
+        Act <-->|SSE| DB["🗄️ Read-Only Database MCP"]
+        Act <-->|SSE| Drive["☁️ Enterprise Drive MCP"]
+    end
+
     subgraph "基础设施"
         Think <-->|检索| Memory[("pgvector")]
-        Act <-->|执行| Sandbox["Docker 沙箱"]
         Act <-->|连接| Tailscale["Tailscale 网络"]
     end
 ```
+
+## 5. 集成中心 (Integration Hub) - Phase 5
+为满足多样化的外部系统对接需求，Nexus 采用 **MCP (Model Context Protocol)** 作为统一标准。
+
+*   **智能家居 (HomeAssistant)**: 
+    *   通过 MCP Server 对接 HA API。
+    *   能力: "打开客厅灯", "查询温度"。
+*   **企业协作 (Feishu/Lark)**:
+    *   通过 MCP Server 对接飞书开放平台。
+    *   能力: "发送消息给张三", "读取云文档"。
+*   **数据孤岛 (Read-Only DB)**:
+    *   通用 SQL MCP Server (只读权限)。
+    *   能力: "查询上月销售报表"。
+*   **文件系统 (Enterprise Drive)**:
+    *   文件管理 MCP。
+    *   能力: "上传发票 PDF 到财务目录"。
