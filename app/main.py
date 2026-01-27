@@ -1,13 +1,19 @@
-from fastapi import FastAPI, HTTPException, Security, Depends
+from fastapi import FastAPI, HTTPException, Security, Depends, File, UploadFile
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 import uuid
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 from app.core.agent import create_agent_graph
 from app.core.auth import get_current_user
 from app.core.db import init_db
+from app.core.db import init_db
 from app.models.user import User
+from app.core.voice import transcribe_audio
 
 app = FastAPI(title="Nexus Agent API", version="2.0.0")
 
@@ -56,3 +62,40 @@ async def chat(
         response_text = "Agent did not return an AI message."
         
     return ChatResponse(response=response_text, trace_id=str(trace_id))
+
+@app.post("/voice", response_model=ChatResponse)
+async def voice_chat(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    1. Upload Audio
+    2. Transcribe (STT)
+    3. Send text to Agent
+    4. Return text response (and optional audio if TTS were implemented)
+    """
+    # 1. Transcribe
+    transcribed_text = await transcribe_audio(file)
+    logger.info(f"Transcribed Text: {transcribed_text}")
+    
+    # 2. Run Agent
+    # Re-use logic from /chat but user message comes from STT
+    user_message = HumanMessage(content=transcribed_text)
+    trace_id = uuid.uuid4()
+    
+    initial_state = {
+        "messages": [user_message],
+        "user": current_user,
+        "trace_id": trace_id
+    }
+    
+    final_state = await agent_graph.ainvoke(initial_state)
+    
+    # Extract last message content
+    last_message = final_state["messages"][-1]
+    response_text = last_message.content
+    
+    return ChatResponse(
+        response=response_text,
+        trace_id=str(trace_id)
+    )

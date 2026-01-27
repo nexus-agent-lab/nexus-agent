@@ -12,3 +12,6 @@ psycopg2-binary
 alembic
 asyncpg
 greenlet
+docker
+python-multipart
+gTTS

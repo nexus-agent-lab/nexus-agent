@@ -6,6 +6,7 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8000:8000"
     environment:
@@ -17,6 +18,11 @@ services:
       - LLM_API_KEY=${LLM_API_KEY}
       - LLM_BASE_URL=${LLM_BASE_URL}
       - LLM_MODEL=${LLM_MODEL:-glm-4.7}
+      
+      # Voice Configuration
+      # Point to local MLX server (e.g. http://host.docker.internal:9191/v1) or OpenAI
+      - STT_BASE_URL=${STT_BASE_URL:-http://host.docker.internal:9191/v1}
+      - STT_API_KEY=${STT_API_KEY:-sk-local-test}
     depends_on:
       - redis
       - postgres

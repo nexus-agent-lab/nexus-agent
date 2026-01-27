@@ -2,13 +2,7 @@ from langchain_core.tools import tool
 from datetime import datetime
 from functools import wraps
 from typing import Callable, List
-
-# Decorators for permissions (metadata)
-def require_role(role: str):
-    def decorator(func: Callable):
-        func.required_role = role
-        return func
-    return decorator
+from app.core.decorators import require_role
 
 @tool
 @require_role("user")
@@ -39,8 +33,8 @@ def dangerous_operation() -> str:
     """A tool only admins can use."""
     return "Performed dangerous operation!"
 
+from app.tools.sandbox import get_sandbox_tool
+
 def get_tools() -> List[Callable]:
-    """Returns a list of available tools."""
-    # In a real dynamic system, we might scan modules or load from DB.
-    # For Phase 2, we explicitly list them ensuring they have the metadata.
-    return [get_current_time, calculate_number, dangerous_operation]
+    """Returns the list of available tools, including the sandbox tool."""
+    return [get_current_time, calculate_number, dangerous_operation, get_sandbox_tool()]
