@@ -37,3 +37,5 @@ docker-compose.override.yml
 
 # DB Data if locally creating folder (Docker volume is named but good practice)
 postgres_data/
+
+storage/

@@ -13,16 +13,23 @@ from langchain_core.messages import ToolMessage, SystemMessage, AIMessage
 from app.core.state import AgentState
 from app.core.audit import AuditInterceptor
 
-BASE_SYSTEM_PROMPT = """You are Nexus, an advanced AI Home Operating System.
-Your goal is to assist the user by controlling their Smart Home and managing their digital life.
+BASE_SYSTEM_PROMPT = """You are Nexus, an advanced AI Operating System connecting the physical and digital worlds.
 
-### INSTRUCTIONS
-*   **AUTONOMOUS SEARCH**: If you do not know the Entity ID (e.g., getting "Invalid entity ID" or not knowing "living room light"), you **MUST** first use `list_entities` or search tools. **DO NOT** ask the user for IDs.
-*   **DATA HANDLING**: If a tool response is large and offloaded to a file, you **MUST** write Python code to process it using `python_sandbox`.
-*   **LANGUAGE**: ALWAYS reply in the same language as the user's request.
-*   **BEHAVIOR**: Be proactive. If a user asks "lights on", find them and turn them on. Don't ask "which lights?". Try to infer context or list candidates.
-*   **CONCISE OUTPUT**: When reporting status (e.g., temperature, state), provide ONLY the relevant value. DO NOT mention Entity IDs or internal sensor names unless explicitly asked.
+### CORE OPERATING PROTOCOLS
+1. **AUTONOMOUS DISCOVERY**: 
+   - You rarely know specific IDs (Device IDs, User IDs, Table Names) beforehand.
+   - **MANDATORY**: Always use `list_*` or `search_*` tools FIRST to discover resources. Do NOT guess IDs.
+   - **PROACTIVE**: If the user's intent is clear (e.g., "turn on lights"), find the target and execute. Do not ask for clarification unless necessary.
 
+2. **DATA GOVERNANCE**:
+   - **UNIFIED OUTPUT**: All tools return a JSON object: `{"type": "json" | "text" | "error", "content": ...}`.
+   - **ACTION**: Always parse the `content` field.
+   - If `type` is "json", use `content` directly.
+   - If `type` is "text" and large string, write a Python script using `python_sandbox` to process/filter it.
+
+3. **RESPONSE STANDARDS**:
+   - **Language**: Strictly follow the user's language.
+   - **Conciseness**: Return only the requested value (e.g., "25°C") without exposing internal IDs (like `sensor.lumi_weather`), unless debugging.
 """
 
 def get_llm():
@@ -126,32 +133,11 @@ def create_agent_graph(tools: list):
     tools_by_name = {t.name: t for t in tools}
     llm_with_tools = llm.bind_tools(tools)
 
-    # Group tools for cleaner System Prompt
-    domains = {}
-    for t in tools:
-        # Extract domain from description "[domain] desc" or use "system"
-        domain = "system"
-        desc = t.description or ""
-        if desc.startswith("[") and "]" in desc:
-            end = desc.find("]")
-            domain = desc[1:end]
-            desc = desc[end+1:].strip()
-        
-        if domain not in domains:
-            domains[domain] = []
-        domains[domain].append(t.name)
-
-    domain_summary = []
-    for domain, t_names in domains.items():
-        domain_summary.append(f"### {domain.upper()} TOOLS\n" + ", ".join(t_names))
-    
-    tools_summary = "\n\n".join(domain_summary)
-    
     # Dynamic Instruction Injection from MCP Servers
     from app.core.mcp_manager import MCPManager
     mcp_instructions = MCPManager.get_system_instructions()
     
-    dynamic_system_prompt = BASE_SYSTEM_PROMPT + f"\n\n## AVAIABLE TOOLSETS\n{tools_summary}\n"
+    dynamic_system_prompt = BASE_SYSTEM_PROMPT
     
     if mcp_instructions:
         dynamic_system_prompt += f"\n## SPECIFIC DOMAIN RULES\n{mcp_instructions}\n"

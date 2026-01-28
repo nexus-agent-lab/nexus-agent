@@ -123,13 +123,48 @@ class MCPManager:
                 # Actually, let's just make the simple wrap first.
                 # But wait, middleware requires 'original_func' to be a callable that takes kwargs.
                 
+                # Unified Output Wrapper (Moltbot-inspired)
+                # Helps LLM distinguish between structured data, text, and errors without complex Teacher Mode
                 async def original_mcp_call(**k):
-                    result: CallToolResult = await session.call_tool(tool.name, arguments=k)
-                    texts = [c.text for c in result.content if c.type == 'text']
-                    return "\n".join(texts)
+                    try:
+                        result: CallToolResult = await session.call_tool(tool.name, arguments=k)
+                        
+                        # Extract text content
+                        texts = [c.text for c in result.content if c.type == 'text']
+                        raw_text = "\n".join(texts)
+                        
+                        # 1. Try Parse JSON
+                        json_content = None
+                        if raw_text.strip().startswith(("{", "[")):
+                            try:
+                                json_content = json.loads(raw_text)
+                            except json.JSONDecodeError:
+                                pass
+                                
+                        # 2. Construct Unified Wrapper
+                        if json_content is not None:
+                            wrapper = {
+                                "type": "json",
+                                "content": json_content
+                            }
+                        else:
+                            wrapper = {
+                                "type": "text",
+                                "content": raw_text
+                            }
+                            
+                        # RETURN JSON STRING (LangChain expects string output)
+                        return json.dumps(wrapper, ensure_ascii=False)
+
+                    except Exception as e:
+                        # Wrap execution errors too
+                        return json.dumps({
+                            "type": "error",
+                            "message": str(e)
+                        }, ensure_ascii=False)
 
                 # Get config (we will update signature in next tool call)
-                tool_conf = tool_config_map.get(tool.name, {}) if 'tool_config_map' in locals() else {}
+                tool_conf = tool_config_map.get(tool.name, {}) if tool_config_map else {}
 
                 return await MCPMiddleware.call_tool(
                     tool_name=tool.name,

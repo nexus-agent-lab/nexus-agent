@@ -1,177 +1,92 @@
-import logging
-from typing import Any, Dict, List, Optional, Set, Union
 
-logger = logging.getLogger(__name__)
+from typing import Any, Dict, List, Optional
 
-# Keywords that are often redundant or unsupported by some LLMs
-UNSUPPORTED_KEYWORDS = {
-    "patternProperties",
-    "additionalProperties",
-    "$schema",
-    "$id",
-    "$ref",
-    "$defs",
-    "definitions",
-    "examples",
-    "title",  # Often redundant if description is present
-    "minLength",
-    "maxLength",
-    "minItems",
-    "maxItems",
-    "uniqueItems",
-    "minProperties",
-    "maxProperties",
-    "pattern",
-    "format",
-    "multipleOf",
-}
-
-def clean_schema(schema: Any) -> Any:
+def clean_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Recursively cleans and simplifies a JSON schema.
-    - Flattens anyOf/oneOf with single options or literals.
-    - Removes unsupported or redundant keywords.
+    Cleans and normalizes JSON schemas for LLM compatibility.
+    Inspired by moltbot's cleanToolSchemaForGemini.
     """
-    if not isinstance(schema, dict):
-        if isinstance(schema, list):
-            return [clean_schema(item) for item in schema]
-        return schema
-
-    cleaned: Dict[str, Any] = {}
-
-    # 1. Handle anyOf/oneOf flattening
-    if "anyOf" in schema:
-        flattened = try_flatten_anyof(schema["anyOf"])
-        if flattened:
-            cleaned.update(flattened)
-        else:
-            # Recursively clean variants
-            cleaned["anyOf"] = [clean_schema(v) for v in schema["anyOf"]]
-            
-    elif "oneOf" in schema:
-        flattened = try_flatten_anyof(schema["oneOf"])
-        if flattened:
-            cleaned.update(flattened)
-        else:
-            cleaned["oneOf"] = [clean_schema(v) for v in schema["oneOf"]]
-
-    # 2. Process other properties
-    for key, value in schema.items():
-        if key in UNSUPPORTED_KEYWORDS:
-            continue
-        
-        # Skip if we already handled it (e.g., via flattening)
-        if key in ("anyOf", "oneOf") and (key in cleaned or "type" in cleaned):
-            continue
-
-        if key == "properties" and isinstance(value, dict):
-            cleaned[key] = {
-                k: clean_schema(v) for k, v in value.items()
-            }
-        elif key == "items":
-            cleaned[key] = clean_schema(value)
-        elif key == "allOf" and isinstance(value, list):
-            cleaned[key] = [clean_schema(v) for v in value]
-        else:
-            # Copy primitive values or recurse if needed
-            cleaned[key] = clean_schema(value) if isinstance(value, (dict, list)) else value
-
-    # 3. Ensure type is present if enum is present (helper)
-    if "enum" in cleaned and "type" not in cleaned:
-        # Infer type from enum values
-        if all(isinstance(x, str) for x in cleaned["enum"]):
-            cleaned["type"] = "string"
-        elif all(isinstance(x, (int, float)) for x in cleaned["enum"]):
-            cleaned["type"] = "number"
-
-    return cleaned
-
-def try_flatten_anyof(variants: List[Any]) -> Optional[Dict[str, Any]]:
-    """
-    Tries to flatten a list of anyOf/oneOf variants into a single simple schema.
-    Especially useful for:
-    - {anyOf: [{const: "A"}, {const: "B"}]} -> {type: "string", enum: ["A", "B"]}
-    - {anyOf: [{type: "string"}, {type: "null"}]} -> {type: "string"} (nullable implied)
-    - {anyOf: [{type: "string"}, {type: "array"}]} -> {type: "string"} (take first non-null)
-    """
-    if not variants:
-        return None
-
-    # Filter out nulls
-    non_null_variants = [
-        v for v in variants 
-        if not is_null_schema(v)
-    ]
-
-    # If everything was null (unlikely), return null type
-    if not non_null_variants:
-        return {"type": "null"}
-
-    # Case 1: All variants are literals (const or enum with 1 item)
-    all_values = []
-    all_literals = True
-    common_type = None
-
-    for v in non_null_variants:
-        if not isinstance(v, dict):
-            all_literals = False
-            break
-        
-        val = None
-        if "const" in v:
-            val = v["const"]
-        elif "enum" in v and isinstance(v["enum"], list) and len(v["enum"]) == 1:
-            val = v["enum"][0]
-        else:
-            # Not a literal, cannot flatten this way
-            all_literals = False
-            break
-        
-        # Check type consistency
-        current_type = get_type_of_value(val)
-        if common_type is None:
-            common_type = current_type
-        elif common_type != current_type:
-             # Mixed types (e.g. string and int)
-             all_literals = False
-             break
-        
-        all_values.append(val)
+    if not schema:
+        return {}
     
-    # If we successfully collected literal values, return as enum
-    if all_literals and all_values and common_type:
-        return {"type": common_type, "enum": all_values}
+    # Deep copy to avoid mutating original
+    s = schema.copy()
+    
+    # 1. Flatten unsupported anyOf/oneOf for Gemini/OpenAI compatibility
+    # If explicit type is missing but we have anyOf/oneOf, try to merge properties OR enums
+    if "type" not in s:
+        variants = s.get("anyOf") or s.get("oneOf")
+        if variants and isinstance(variants, list):
+            # Collections for merging
+            merged_props = {}
+            merged_required = set()
+            merged_enums = []
+            has_object_variant = False
+            
+            for v in variants:
+                if not isinstance(v, dict): continue
+                
+                # Merge Properties (for Objects)
+                if "properties" in v:
+                    has_object_variant = True
+                    merged_props.update(v["properties"]) 
+                    if "required" in v and isinstance(v["required"], list):
+                        merged_required.update(v["required"])
+                
+                # Merge Enums (for Strings)
+                if "enum" in v and isinstance(v["enum"], list):
+                    merged_enums.extend(v["enum"])
+                # Handle const as single-value enum
+                if "const" in v:
+                    merged_enums.append(v["const"])
+            
+            # Reconstruction Strategy
+            if has_object_variant:
+                # It's an object union -> Flatten
+                s["type"] = "object"
+                s["properties"] = merged_props
+                if merged_required:
+                    s["required"] = list(merged_required)
+            elif merged_enums:
+                # It's a string enum union -> Combine enums
+                s["type"] = "string"
+                s["enum"] = list(set(merged_enums)) # Deduplicate
+            else:
+                # Fallback: strict object (OpenAI prefers type specific) or just string if unknown
+                # If we couldn't merge anything meaningful, default to string to be safe for LLM (it can just output text)
+                # But creating an empty object might be safer for "any" type.
+                # However, Gemini hates "anyOf" at top level.
+                # Let's verify Case 1 (Format enum). It should hit the elif merged_enums block.
+                # If we have no info, maybe just remove anyOf and say type: string?
+                # Let's assume object if likely structure, otherwise string.
+                pass
+            
+            # Only remove variants if we successfully replaced them with a type
+            if "type" in s:
+                s.pop("anyOf", None)
+                s.pop("oneOf", None)
+    
+    # 2. Enforce top-level type: object if properties exist (OpenAI requirement)
+    if "properties" in s and s.get("type") != "object":
+        s["type"] = "object"
+        
+    # 3. Recursive cleanup of properties
+    if "properties" in s and isinstance(s["properties"], dict):
+        for key, prop in s["properties"].items():
+            if isinstance(prop, dict):
+                s["properties"][key] = clean_schema(prop)
+                
+    # 4. Remove unsupported keywords
+    # Gemini rejects: $schema, $id, title (sometimes), default (sometimes)
+    # We keep title/description as they are useful for LLM context, but remove metadata
+    keys_to_remove = ["$schema", "$id", "definitions", "$defs"]
+    for k in keys_to_remove:
+        s.pop(k, None)
+        
+    return s
 
-    # Case 2: Single non-null variant (e.g. string | null)
-    if len(non_null_variants) == 1:
-        return clean_schema(non_null_variants[0])
-
-    # Case 3: Multiple type variants (e.g., string | array)
-    # Strategy: Take the FIRST non-null variant to simplify
-    # This is a pragmatic choice for LLM compatibility
-    # For example: {anyOf: [{type: "string"}, {type: "array"}]} -> {type: "string"}
-    logger.debug(f"Flattening anyOf by taking first variant from {len(non_null_variants)} options")
-    return clean_schema(non_null_variants[0])
-
-def is_null_schema(schema: Any) -> bool:
-    """Check if a schema represents 'null'."""
-    if not isinstance(schema, dict):
-        return False
-    if schema.get("type") == "null":
-        return True
-    if "const" in schema and schema["const"] is None:
-        return True
-    if "enum" in schema and schema["enum"] == [None]:
-        return True
-    return False
-
-def get_type_of_value(val: Any) -> str:
-    if isinstance(val, str):
-        return "string"
-    if isinstance(val, (int, float)) and not isinstance(val, bool):
-        return "number"
-    if isinstance(val, bool):
-        return "boolean"
-    if val is None:
-        return "null"
-    return "object"
+def normalize_tool_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Main entry point for tool schema normalization.
+    """
+    return clean_schema(schema)
