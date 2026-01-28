@@ -4,7 +4,6 @@ langgraph
 langchain-openai
 langchain-core
 pydantic
-python-dotenv
 redis
 httpx
 sqlmodel
@@ -23,3 +22,4 @@ pandas
 sqlalchemy
 python-telegram-bot
 python-dotenv
+aiosqlite

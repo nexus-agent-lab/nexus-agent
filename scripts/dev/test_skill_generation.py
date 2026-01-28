@@ -28,10 +28,7 @@ os.environ.setdefault("LLM_MODEL", os.getenv("LLM_MODEL", ""))
 HOMEASSISTANT_TOOLS = [
     {
         "name": "query_entities",
-        "description": (
-            "Search and filter Home Assistant entities. "
-            "Returns matching entities with current states."
-        ),
+        "description": ("Search and filter Home Assistant entities. Returns matching entities with current states."),
         "parameters": {
             "type": "object",
             "properties": {
@@ -59,8 +56,7 @@ HOMEASSISTANT_TOOLS = [
     {
         "name": "call_service",
         "description": (
-            "Call a Home Assistant service to control an entity. "
-            "Use to turn on/off devices, set temperature, etc."
+            "Call a Home Assistant service to control an entity. Use to turn on/off devices, set temperature, etc."
         ),
         "parameters": {
             "type": "object",
