@@ -161,3 +161,17 @@ class MCPManager:
                 "description": config.get("description", "")
             })
         return status_list
+
+    @classmethod
+    def get_system_instructions(cls) -> str:
+        """Aggregates system instructions from all enabled servers."""
+        instructions = []
+        servers_config = cls._config.get("mcpServers", {})
+        
+        for name, config in servers_config.items():
+            if config.get("enabled", True):
+                instruction = config.get("system_instruction")
+                if instruction:
+                    instructions.append(f"### {name.upper()} INSTRUCTIONS\n{instruction}")
+        
+        return "\n\n".join(instructions)

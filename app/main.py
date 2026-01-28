@@ -1,4 +1,6 @@
 from fastapi import FastAPI, HTTPException, Security, Depends, File, UploadFile
+from fastapi.responses import StreamingResponse
+import json
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
@@ -8,12 +10,12 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
-logging.getLogger("openai").setLevel(logging.DEBUG)
+logging.getLogger("openai").setLevel(logging.INFO)
 logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 logging.getLogger("aiosqlite").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
-from app.core.agent import create_agent_graph
+from app.core.agent import create_agent_graph, stream_agent_events
 from app.core.auth import get_current_user
 from app.core.db import init_db
 from app.models.user import User
@@ -22,7 +24,6 @@ from app.core.mcp import get_mcp_tools
 from app.tools.registry import get_static_tools
 from app.core.mcp_manager import MCPManager
 from app.interfaces.telegram import run_telegram_bot, set_agent_graph, broadcast_message
-from app.core.telegram_callback import TelegramProgressCallback
 import asyncio
 
 app = FastAPI(title="Nexus Agent API", version="2.0.0")
@@ -86,11 +87,7 @@ async def chat(
         "trace_id": trace_id
     }
     
-    # Configure Callbacks for Telegram Progress Sync
-    tg_callback = TelegramProgressCallback()
-    config = {"callbacks": [tg_callback]}
-    
-    final_state = await agent_graph.ainvoke(initial_state, config=config)
+    final_state = await agent_graph.ainvoke(initial_state)
     
     messages = final_state["messages"]
     last_message = messages[-1]
@@ -102,6 +99,31 @@ async def chat(
         response_text = "Agent did not return an AI message."
         
     return ChatResponse(response=response_text, trace_id=str(trace_id))
+
+@app.post("/chat/stream")
+async def chat_stream(
+    request: ChatRequest,
+    current_user: User = Depends(get_current_user)
+):
+    user_message = HumanMessage(content=request.message)
+    trace_id = uuid.uuid4()
+    
+    initial_state = {
+        "messages": [user_message],
+        "user": current_user,
+        "trace_id": trace_id
+    }
+    
+    async def event_generator():
+        logger.info(f"Stream started for trace_id: {trace_id}")
+        count = 0
+        async for event in stream_agent_events(agent_graph, initial_state):
+            count += 1
+            # Format as SSE
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        logger.info(f"Stream finished for trace_id: {trace_id}, total events: {count}")
+            
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 @app.post("/voice", response_model=ChatResponse)
 async def voice_chat(
@@ -129,11 +151,7 @@ async def voice_chat(
         "trace_id": trace_id
     }
     
-    # Configure Callbacks for Telegram Progress Sync
-    tg_callback = TelegramProgressCallback()
-    config = {"callbacks": [tg_callback]}
-    
-    final_state = await agent_graph.ainvoke(initial_state, config=config)
+    final_state = await agent_graph.ainvoke(initial_state)
     
     # Extract last message content
     last_message = final_state["messages"][-1]

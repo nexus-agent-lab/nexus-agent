@@ -148,11 +148,8 @@ class MCPManager:
 
         # Dynamically create Pydantic model from JSON Schema
         # Clean schema to remove unsupported keywords and flatten anyOf/oneOf
-        # cleaned_schema = clean_schema(tool.inputSchema)
-        # args_schema = self._create_args_schema(tool.name, cleaned_schema)
-        
-        # Using RAW schema as requested
-        args_schema = self._create_args_schema(tool.name, tool.inputSchema)
+        cleaned_schema = clean_schema(tool.inputSchema)
+        args_schema = self._create_args_schema(tool.name, cleaned_schema)
 
         return StructuredTool.from_function(
             coroutine=_arun,

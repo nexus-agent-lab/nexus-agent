@@ -6,6 +6,8 @@ from typing import List
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
 from langchain_core.messages import HumanMessage
+from app.core.agent import stream_agent_events
+import time
 
 from app.models.user import User
 
@@ -88,20 +90,83 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        # Invoke Agent
+        # Initial State
         initial_state = {
             "messages": [HumanMessage(content=user_text)],
             "user": internal_user,
-            "trace_id": str(uuid.uuid4()) # Must be valid UUID for AuditLog
+            "trace_id": str(uuid.uuid4())
         }
         
-        final_state = await _agent_graph.ainvoke(initial_state)
-        response_text = final_state["messages"][-1].content
+        # 1. Send Initial Status Message
+        status_msg = await context.bot.send_message(
+            chat_id=update.effective_chat.id, 
+            text="🚀 **Nexus is thinking...**",
+            parse_mode="Markdown"
+        )
         
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=response_text)
+        current_thought = ""
+        current_status = ""
+        final_answer = ""
+        last_edit_time = time.time()
         
+        # 2. Consume Stream
+        async for event in stream_agent_events(_agent_graph, initial_state):
+            ev_type = event["event"]
+            ev_data = event["data"]
+            
+            if ev_type == "thought":
+                current_thought += ev_data
+            elif ev_type == "tool_start":
+                current_status = f"🔧 **Calling Tool**: `{ev_data['name']}`..."
+            elif ev_type == "tool_end":
+                current_status = f"✅ **Tool Finished**: `{ev_data['name']}`"
+            elif ev_type == "final_answer":
+                final_answer = ev_data
+            elif ev_type == "error":
+                current_status = f"❌ **Error**: `{ev_data}`"
+
+            # 3. Throttle Edits (Max 1 per 1.0s to avoid rate limits)
+            now = time.time()
+            if now - last_edit_time > 1.0:
+                # Format: Final thought snippet + current status
+                thought_preview = current_thought[-200:] if len(current_thought) > 200 else current_thought
+                display_text = f"💭 ...{thought_preview}\n\n{current_status}" if thought_preview else current_status
+                
+                if not display_text: display_text = "🚀 Processing..."
+                
+                try:
+                    await context.bot.edit_message_text(
+                        chat_id=update.effective_chat.id,
+                        message_id=status_msg.message_id,
+                        text=display_text,
+                        parse_mode="Markdown"
+                    )
+                    last_edit_time = now
+                except Exception:
+                    pass # Ignore 'Message is not modified' errors
+
+        # 4. Final Update
+        if final_answer:
+            try:
+                await context.bot.edit_message_text(
+                    chat_id=update.effective_chat.id,
+                    message_id=status_msg.message_id,
+                    text=final_answer,
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                await context.bot.send_message(chat_id=update.effective_chat.id, text=final_answer)
+        elif current_thought:
+            # If no final_answer event but we have thoughts
+             await context.bot.edit_message_text(
+                chat_id=update.effective_chat.id,
+                message_id=status_msg.message_id,
+                text=current_thought,
+                parse_mode="Markdown"
+            )
+
     except Exception as e:
-        logger.error(f"Error processing telegram message: {e}")
+        logger.error(f"Error processing telegram message: {e}", exc_info=True)
         await context.bot.send_message(chat_id=update.effective_chat.id, text=f"❌ Error: {str(e)}")
 
 async def run_telegram_bot():

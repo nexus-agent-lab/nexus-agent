@@ -17,10 +17,12 @@ BASE_SYSTEM_PROMPT = """You are Nexus, an advanced AI Home Operating System.
 Your goal is to assist the user by controlling their Smart Home and managing their digital life.
 
 ### INSTRUCTIONS
-*   **ALWAYS** use the provided tools to answer questions about the environment or perform actions.
-*   If you don't know the exact entity name (e.g. for Home Assistant), utilize list/search tools first.
-*   **LANGUAGE**: ALWAYS reply in the same language as the user's request. (e.g., Use Chinese for Chinese queries).
-*   Be concise and helpful.
+*   **AUTONOMOUS SEARCH**: If you do not know the Entity ID (e.g., getting "Invalid entity ID" or not knowing "living room light"), you **MUST** first use `list_entities` or search tools. **DO NOT** ask the user for IDs.
+*   **DATA HANDLING**: If a tool response is large and offloaded to a file, you **MUST** write Python code to process it using `python_sandbox`.
+*   **LANGUAGE**: ALWAYS reply in the same language as the user's request.
+*   **BEHAVIOR**: Be proactive. If a user asks "lights on", find them and turn them on. Don't ask "which lights?". Try to infer context or list candidates.
+*   **CONCISE OUTPUT**: When reporting status (e.g., temperature, state), provide ONLY the relevant value. DO NOT mention Entity IDs or internal sensor names unless explicitly asked.
+
 """
 
 def get_llm():
@@ -41,7 +43,8 @@ def get_llm():
         model=model_name,
         api_key=api_key,
         base_url=base_url, 
-        temperature=0
+        temperature=0,
+        streaming=True
     )
 
 async def retrieve_memories(state: AgentState):
@@ -144,9 +147,17 @@ def create_agent_graph(tools: list):
     
     tools_summary = "\n\n".join(domain_summary)
     
+    # Dynamic Instruction Injection from MCP Servers
+    from app.core.mcp_manager import MCPManager
+    mcp_instructions = MCPManager.get_system_instructions()
+    
     dynamic_system_prompt = BASE_SYSTEM_PROMPT + f"\n\n## AVAIABLE TOOLSETS\n{tools_summary}\n"
+    
+    if mcp_instructions:
+        dynamic_system_prompt += f"\n## SPECIFIC DOMAIN RULES\n{mcp_instructions}\n"
 
-    def call_model(state: AgentState):
+
+    async def call_model(state: AgentState):
         messages = list(state["messages"])
         
         # Ensure System Prompt is present
@@ -175,13 +186,103 @@ def create_agent_graph(tools: list):
             import json
             from langchain_core.messages import message_to_dict
             msgs_dicts = [message_to_dict(m) for m in messages]
-            logger.info(f"LLM INPUT MESSAGES: {json.dumps(msgs_dicts, ensure_ascii=False)}")
+            logger.info(f"LLM INPUT MESSAGES:\n{json.dumps(msgs_dicts, ensure_ascii=False, indent=2)}")
             
-            response = llm_with_tools.invoke(messages)
+            response = await llm_with_tools.ainvoke(messages)
             
             # Debug: Log full output JSON
             resp_dict = message_to_dict(response)
-            logger.info(f"LLM OUTPUT RAW JSON: {json.dumps(resp_dict, ensure_ascii=False)}")
+            logger.info(f"LLM OUTPUT RAW JSON:\n{json.dumps(resp_dict, ensure_ascii=False, indent=2)}")
+            
+            # ======================================================
+            # 🚑 【Universal Patch】Recover tool calls from plain text
+            # Some local models (Qwen, Llama) output tool calls as text
+            # instead of proper JSON. This patch recovers them.
+            # ======================================================
+            if not response.tool_calls:
+                content = response.content.strip() if response.content else ""
+                
+                # Patch A: Markdown JSON block (```json {...} ```)
+                if content.startswith("{") or "```json" in content:
+                    try:
+                        json_str = content.replace("```json", "").replace("```", "").strip()
+                        data = json.loads(json_str)
+                        if "name" in data:
+                            logger.warning(f"[Agent Patch] Recovered JSON Tool Call: {data['name']}")
+                            response = AIMessage(
+                                content="",
+                                tool_calls=[{
+                                    "name": data["name"],
+                                    "args": data.get("arguments", {}) or data.get("parameters", {}),
+                                    "id": f"patch_json_{id(response)}"
+                                }]
+                            )
+                    except json.JSONDecodeError:
+                        pass
+                
+                # Patch B: Pseudo-function text (python_sandbox(code))
+                if not response.tool_calls and "python_sandbox" in content:
+                    import re
+                    # Match python_sandbox(...) with any content inside
+                    match = re.search(r'python_sandbox\s*\(\s*["\']?(.*?)["\']?\s*\)', content, re.DOTALL)
+                    if not match:
+                        # Try matching triple-quoted code blocks
+                        match = re.search(r'python_sandbox\s*\(\s*"""(.*?)"""\s*\)', content, re.DOTALL)
+                    if not match:
+                        # Try extracting code from markdown block after python_sandbox mention
+                        code_match = re.search(r'```python\n(.*?)```', content, re.DOTALL)
+                        if code_match:
+                            match = code_match
+                    
+                    if match:
+                        code_content = match.group(1).strip()
+                        logger.warning(f"[Agent Patch] Recovered Regex Tool Call: python_sandbox")
+                        response = AIMessage(
+                            content="",
+                            tool_calls=[{
+                                "name": "python_sandbox",
+                                "args": {"code": code_content},
+                                "id": f"patch_regex_{id(response)}"
+                            }]
+                        )
+            # ======================================================
+            
+            # ======================================================
+            # 🔄 【Empty Response Reflexion】Force retry on silent failure
+            # Patch C: Auto-extract <<<CODE>>> from offload tool message
+            # ======================================================
+            if not response.tool_calls and not (response.content and response.content.strip()):
+                # Check if the last tool message contained offload alert
+                last_tool_msg = None
+                for msg in reversed(messages):
+                    if hasattr(msg, 'type') and msg.type == 'tool':
+                        last_tool_msg = msg
+                        break
+                
+                if last_tool_msg and "<<<OFFLOAD" in str(last_tool_msg.content):
+                    import re
+                    tool_content = str(last_tool_msg.content)
+                    code_match = re.search(r'<<<CODE>>>\n(.*?)<<<END>>>', tool_content, re.DOTALL)
+                    if code_match:
+                        code = code_match.group(1).strip()
+                        logger.warning(f"[Agent Patch C] Auto-extracted code from offload message")
+                        response = AIMessage(
+                            content="",
+                            tool_calls=[{
+                                "name": "python_sandbox",
+                                "args": {"code": code},
+                                "id": f"auto_extract_{id(response)}"
+                            }]
+                        )
+                    else:
+                        logger.warning("[Agent Reflexion] Empty response after offload, retrying...")
+                        nudge = SystemMessage(content="CALL python_sandbox NOW.")
+                        messages.append(response)
+                        messages.append(nudge)
+                        response = llm_with_tools.invoke(messages)
+                        resp_dict = message_to_dict(response)
+                        logger.info(f"LLM RETRY OUTPUT: {json.dumps(resp_dict, ensure_ascii=False)}")
+            # ======================================================
             
             return {"messages": [response]}
         except Exception as e:
@@ -291,3 +392,53 @@ def create_agent_graph(tools: list):
     workflow.add_edge("reflexion", "agent")
 
     return workflow.compile()
+
+async def stream_agent_events(graph, input_state: dict, config: dict = None):
+    """
+    Standardized wrapper for astream_events.
+    Yields events for UI/Telegram consumption.
+    """
+    try:
+        async for event in graph.astream_events(input_state, config=config, version="v2"):
+            kind = event["event"]
+            name = event.get("name", "Unknown")
+            
+            # 1. LLM Thoughts (Progressive Tokens)
+            if kind == "on_chat_model_stream":
+                chunk = event["data"]["chunk"]
+                if hasattr(chunk, "content") and chunk.content:
+                    yield {"event": "thought", "data": chunk.content}
+            
+            # 2. Tool Calls
+            elif kind == "on_tool_start":
+                yield {
+                    "event": "tool_start", 
+                    "data": {
+                        "name": name,
+                        "args": event["data"].get("input", {})
+                    }
+                }
+            elif kind == "on_tool_end":
+                output = event["data"].get("output")
+                # Truncate for preview
+                preview = (str(output)[:300] + "...") if len(str(output)) > 300 else str(output)
+                yield {
+                    "event": "tool_end",
+                    "data": {
+                        "name": name,
+                        "result": preview
+                    }
+                }
+            
+            # 3. Final State
+            elif kind == "on_chain_end" and name == "LangGraph":
+                final_state = event["data"]["output"]
+                if final_state and "messages" in final_state and final_state["messages"]:
+                    last_msg = final_state["messages"][-1]
+                    yield {"event": "final_answer", "data": getattr(last_msg, "content", "")}
+
+    except Exception as e:
+        logger.error(f"Error in astream_events: {e}", exc_info=True)
+        yield {"event": "error", "data": str(e)}
+
+
