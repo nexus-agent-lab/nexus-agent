@@ -4,16 +4,20 @@
             "url": "http://mcp-homeassistant:8080/sse",
             "source": "remote",
             "enabled": true,
-            "system_instruction": "### HOME ASSISTANT EXPERT RULES\n1. **AUTONOMOUS SEARCH**: If Entity ID is unknown, use `list_entities` first. DO NOT ask user.\n2. **BEHAVIOR**: Be proactive. If user says 'lights on', find them and turn them on.\n3. **DATA HANDLING**: If `list_entities` returns a file path, you MUST use `python_sandbox` to filter it.",
+            "skill_file": "homeassistant.md",
+            "system_instruction": "",
             "tool_config": {
-                "list_entities": {
+                "query_entities": {
                     "cache_ttl": 1800
                 },
-                "get_state": {
+                "get_entity_state": {
                     "cache_ttl": 5
                 },
-                "execute_service": {
+                "call_service": {
                     "cache_ttl": 0
+                },
+                "get_history": {
+                    "cache_ttl": 60
                 }
             }
         },

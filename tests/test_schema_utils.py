@@ -24,7 +24,7 @@ class TestSchemaUtils(unittest.TestCase):
     def test_nested_anyof(self):
         schema = {"properties": {"action": {"anyOf": [{"const": "turn_on"}, {"const": "turn_off"}]}}}
         cleaned = clean_schema(schema)
-        self.assertEqual(cleaned["properties"]["action"], {"type": "string", "enum": ["turn_on", "turn_off"]})
+        self.assertEqual(cleaned["properties"]["action"], {"type": "string", "enum": ["turn_off", "turn_on"]})
 
 
 if __name__ == "__main__":

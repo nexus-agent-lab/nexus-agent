@@ -5,10 +5,10 @@ import sys
 # Enhance path to allow imports from app
 sys.path.append("/app")
 
-from app.core.mcp import get_mcp_tools
 from langchain_core.messages import HumanMessage
 
 from app.core.agent import create_agent_graph
+from app.core.mcp_manager import get_mcp_tools
 from app.core.state import AgentState
 
 # Setup logging

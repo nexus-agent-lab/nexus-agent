@@ -17,7 +17,50 @@ class MCPMiddleware:
     CACHE_TTL_DEFAULT = 300
     RATE_LIMIT_WINDOW = 1.0
     RATE_LIMIT_MAX = 5
-    LARGE_RESPONSE_THRESHOLD = 5000
+
+    # Dynamic thresholds based on model capabilities and deployment
+    # Format: (chars) ≈ tokens × 3-4 for estimation
+    THRESHOLD_LOCAL_SMALL = 5_000  # Local small models: ~1.2k tokens
+    THRESHOLD_LOCAL_LARGE = 30_000  # Local GLM-4.7: ~8k tokens (保守，避免推理慢)
+    THRESHOLD_CLOUD_GLM = 400_000  # Cloud GLM-4.7 (128k context): ~100k tokens
+    THRESHOLD_CLOUD_GEMINI = 3_000_000  # Cloud Gemini Flash (1M context): ~750k tokens
+    THRESHOLD_CLOUD_GPT = 200_000  # Cloud GPT-4/Claude: ~50k tokens
+
+    @classmethod
+    def _get_response_threshold(cls) -> int:
+        """
+        Dynamically determine response threshold based on:
+        1. Deployment location (local vs cloud)
+        2. Model type and capabilities
+        """
+        model_name = os.getenv("LLM_MODEL", "").lower()
+        base_url = os.getenv("LLM_BASE_URL", "").lower()
+
+        # Detect local deployment
+        is_local = any(
+            indicator in base_url for indicator in ["localhost", "127.0.0.1", "host.docker.internal", ":11434"]
+        )
+
+        # Cloud models with massive context
+        if not is_local:
+            if "gemini" in model_name or "flash" in model_name:
+                logger.debug("Cloud Gemini Flash detected: using 3M char threshold")
+                return cls.THRESHOLD_CLOUD_GEMINI
+            elif "glm-4" in model_name:
+                logger.debug("Cloud GLM-4.7 detected: using 400k char threshold")
+                return cls.THRESHOLD_CLOUD_GLM
+            elif any(kw in model_name for kw in ["gpt-4", "claude"]):
+                logger.debug("Cloud GPT-4/Claude detected: using 200k char threshold")
+                return cls.THRESHOLD_CLOUD_GPT
+
+        # Local large context models (need conservative limits)
+        if is_local and "glm-4" in model_name:
+            logger.debug("Local GLM-4.7 detected: using 30k char threshold")
+            return cls.THRESHOLD_LOCAL_LARGE
+
+        # Default: small local models
+        logger.debug("Default small model threshold: 5k chars")
+        return cls.THRESHOLD_LOCAL_SMALL
 
     @classmethod
     def _get_cache_key(cls, tool_name: str, args: dict) -> str:
@@ -86,8 +129,11 @@ class MCPMiddleware:
         result_str = str(result)
         result_len = len(result_str)
 
-        if result_len > cls.LARGE_RESPONSE_THRESHOLD:
-            logger.info(f"Response too large ({result_len} chars). Offloading...")
+        # Use dynamic threshold based on model capabilities
+        threshold = cls._get_response_threshold()
+
+        if result_len > threshold:
+            logger.info(f"Response too large ({result_len} chars, threshold={threshold}). Offloading...")
             os.makedirs(SANDBOX_DATA_DIR, exist_ok=True)
 
             # Determine effective content to save

@@ -51,7 +51,7 @@ def clean_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
             elif merged_enums:
                 # It's a string enum union -> Combine enums
                 s["type"] = "string"
-                s["enum"] = list(set(merged_enums))  # Deduplicate
+                s["enum"] = sorted(list(set(merged_enums)))  # Deduplicate and sort
             else:
                 # Fallback: strict object (OpenAI prefers type specific)
                 # or just string if unknown.
@@ -79,10 +79,8 @@ def clean_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
             if isinstance(prop, dict):
                 s["properties"][key] = clean_schema(prop)
 
-    # 4. Remove unsupported keywords
-    # Gemini rejects: $schema, $id, title (sometimes), default (sometimes)
-    # We keep title/description as they are useful for LLM context, but remove metadata
-    keys_to_remove = ["$schema", "$id", "definitions", "$defs"]
+    # Gemini/OpenAI sometimes reject: $schema, $id, additionalProperties, title
+    keys_to_remove = ["$schema", "$id", "definitions", "$defs", "additionalProperties", "title"]
     for k in keys_to_remove:
         s.pop(k, None)
 

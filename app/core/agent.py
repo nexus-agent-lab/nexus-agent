@@ -49,13 +49,25 @@ def get_llm():
     model_name = os.getenv("LLM_MODEL", "gpt-4o")
 
     # CRITICAL DEBUG LOG
-    logger.info(f"initializing LLM with: generated_url={base_url}, model={model_name}")
+    logger.info(f"initializing LLM with: base_url={base_url}, model={model_name}")
 
     if not api_key:
         print("Warning: LLM_API_KEY is not set.")
 
-    # We use ChatOpenAI as the universal client for compatible APIs (GLM, DeepSeek, generic OpenAI)
-    # If base_url is provided, it targets the custom provider.
+    # 针对 GLM-4.7-Flash 的特殊配置
+    if "glm-4" in model_name.lower() and "flash" in model_name.lower():
+        logger.info("Using optimized config for GLM-4.7-Flash")
+        # 注意: num_ctx 应该在 Ollama 的 Modelfile 或启动时配置
+        # OpenAI 兼容接口不支持通过 API 动态传递 num_ctx
+        return ChatOpenAI(
+            model=model_name,
+            api_key=api_key,
+            base_url=base_url,
+            temperature=0.1,  # Flash 模型建议值
+            streaming=True,
+        )
+
+    # 其他模型使用默认配置
     return ChatOpenAI(model=model_name, api_key=api_key, base_url=base_url, temperature=0, streaming=True)
 
 
@@ -140,13 +152,20 @@ def create_agent_graph(tools: list):
 
     # Dynamic Instruction Injection from MCP Servers
     from app.core.mcp_manager import MCPManager
+    from app.core.skill_loader import SkillLoader
 
     mcp_instructions = MCPManager.get_system_instructions()
+    skill_cards = SkillLoader.load_all()
 
     dynamic_system_prompt = BASE_SYSTEM_PROMPT
 
+    # Layer 1: MCP-specific rules (legacy, will be deprecated)
     if mcp_instructions:
         dynamic_system_prompt += f"\n## SPECIFIC DOMAIN RULES\n{mcp_instructions}\n"
+
+    # Layer 2: Skill Cards (new approach)
+    if skill_cards:
+        dynamic_system_prompt += f"\n## LOADED SKILLS\n{skill_cards}\n"
 
     async def call_model(state: AgentState):
         messages = list(state["messages"])

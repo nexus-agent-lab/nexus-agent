@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import uuid
+from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, File, UploadFile
@@ -9,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel
 
+from app.api.skills import router as skills_router
 from app.core.agent import create_agent_graph, stream_agent_events
 from app.core.auth import get_current_user
 from app.core.db import init_db
@@ -28,8 +30,6 @@ logger = logging.getLogger(__name__)
 
 # Global reference
 agent_graph = None
-
-from contextlib import asynccontextmanager
 
 
 @asynccontextmanager
@@ -66,6 +66,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Nexus Agent API", version="2.0.0", lifespan=lifespan)
+
+# Register API routers
+app.include_router(skills_router)
 
 
 class ChatRequest(BaseModel):
