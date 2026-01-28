@@ -15,12 +15,44 @@ class SkillLoader:
     SKILLS_DIR = Path(__file__).parent.parent.parent / "skills"
 
     @classmethod
+    def load_registry(cls) -> str:
+        """
+        Load a lightweight registry of all skills, including only Critical Rules.
+        This optimizes context usage by excluding examples and lower-priority text.
+        """
+        if not cls.SKILLS_DIR.exists():
+            return ""
+
+        skills = []
+        for skill_file in sorted(cls.SKILLS_DIR.glob("*.md")):
+            if skill_file.name.startswith("_") or skill_file.name.startswith("."):
+                continue
+
+            try:
+                content = skill_file.read_text(encoding="utf-8")
+                metadata = cls._extract_metadata(content)
+                critical_rules = cls._extract_section(content, "Critical Rules")
+                
+                skill_entry = f"### {skill_file.stem} (Domain: {metadata.get('domain', 'general')})\n"
+                if critical_rules:
+                    skill_entry += f"{critical_rules}\n"
+                else:
+                    skill_entry += "No critical rules defined.\n"
+                    
+                skills.append(skill_entry)
+            except Exception as e:
+                logger.error(f"Failed to load skill {skill_file.name}: {e}")
+
+        if not skills:
+            return ""
+
+        return "\n".join(skills)
+
+    @classmethod
     def load_all(cls) -> str:
         """
-        Load all .md skill files and format for prompt injection.
-
-        Returns:
-            Formatted string containing all skill cards, ready for System Prompt.
+        Legacy: Load all .md skill files fully.
+        Recommended: Use load_registry() for efficiency.
         """
         if not cls.SKILLS_DIR.exists():
             logger.warning(f"Skills directory not found: {cls.SKILLS_DIR}")
@@ -47,6 +79,37 @@ class SkillLoader:
         formatted = "\n\n---\n\n".join(skills)
         logger.info(f"Loaded {len(skills)} skill cards")
         return formatted
+
+    @classmethod
+    def _extract_section(cls, content: str, section_name: str) -> Optional[str]:
+        """
+        Extract a specific markdown section (headers matching section_name).
+        Uses simple line-based parsing for robustness.
+        """
+        lines = content.split("\n")
+        start_idx = -1
+        end_idx = -1
+        
+        # Find start
+        for i, line in enumerate(lines):
+            if line.strip().startswith("##") and section_name.lower() in line.lower():
+                start_idx = i + 1
+                break
+                
+        if start_idx == -1:
+            return None
+            
+        # Find end (next header or end of file)
+        for i in range(start_idx, len(lines)):
+            if lines[i].strip().startswith("##"):
+                end_idx = i
+                break
+                
+        if end_idx == -1:
+            end_idx = len(lines)
+            
+        section_content = "\n".join(lines[start_idx:end_idx]).strip()
+        return section_content if section_content else None
 
     @classmethod
     def load_by_name(cls, skill_name: str) -> Optional[str]:
