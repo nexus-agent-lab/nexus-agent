@@ -1,7 +1,8 @@
-import streamlit as st
-import pandas as pd
-from sqlalchemy import create_engine, text
 import os
+
+import pandas as pd
+import streamlit as st
+from sqlalchemy import create_engine, text
 
 st.set_page_config(page_title="记忆皮层", page_icon="🧠", layout="wide")
 
@@ -17,7 +18,7 @@ try:
     query = "SELECT id, user_id, memory_type, content, created_at FROM memory ORDER BY created_at DESC LIMIT 50"
     with engine.connect() as conn:
         df = pd.read_sql(text(query), conn)
-    
+
     if not df.empty:
         st.dataframe(df, use_container_width=True)
     else:

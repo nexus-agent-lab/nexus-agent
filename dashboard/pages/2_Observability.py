@@ -1,8 +1,8 @@
-import streamlit as st
-import pandas as pd
-from sqlalchemy import create_engine, text
 import os
-import json
+
+import pandas as pd
+import streamlit as st
+from sqlalchemy import create_engine, text
 
 st.set_page_config(page_title="可观测性", page_icon="👁️", layout="wide")
 
@@ -25,29 +25,29 @@ with tab1:
             where_clauses.append("action = 'tool_denied'")
         else:
             where_clauses.append(f"status = '{status_filter}'")
-    
+
     if where_clauses:
         query += " WHERE " + " AND ".join(where_clauses)
-    
+
     query += " ORDER BY created_at DESC LIMIT :limit"
 
     try:
         with engine.connect() as conn:
             df = pd.read_sql(text(query), conn, params={"limit": limit})
-        
+
         if not df.empty:
             # Fix UUID and JSON
             if "trace_id" in df.columns:
                 df["trace_id"] = df["trace_id"].astype(str)
-            
+
             st.dataframe(
-                df, 
+                df,
                 use_container_width=True,
                 column_config={
                     "created_at": st.column_config.DatetimeColumn("时间", format="HH:mm:ss"),
                     "tool_args": st.column_config.JsonColumn("参数"),
-                    "status": st.column_config.Column("状态")
-                }
+                    "status": st.column_config.Column("状态"),
+                },
             )
         else:
             st.info("暂无日志。")

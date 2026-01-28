@@ -1,10 +1,11 @@
-import sys
 import os
+import sys
 
 # Ensure app is in pythonpath
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.tools.sandbox import get_sandbox_tool
+
 
 def run_tests():
     tool = get_sandbox_tool()
@@ -43,6 +44,7 @@ for i in range(15):
         print(f"Output:\n{res}")
     except Exception as e:
         print(f"Error: {e}")
+
 
 if __name__ == "__main__":
     run_tests()

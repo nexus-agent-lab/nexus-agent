@@ -1,4 +1,3 @@
-import asyncio
 import os
 import sys
 
@@ -6,6 +5,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.tools.sandbox import get_sandbox_tool
+
 
 def test_sandbox():
     print("Initializing Sandbox Tool...")
@@ -36,12 +36,18 @@ def test_sandbox():
     try:
         result = tool.run({"code": code_net})
         print(f"Result: {result}")
-        if "Execution Error" in result or "Network is unreachable" in result or "Temporary failure in name resolution" in result or "System Error" in result:
+        if (
+            "Execution Error" in result
+            or "Network is unreachable" in result
+            or "Temporary failure in name resolution" in result
+            or "System Error" in result
+        ):
             print("PASS: Network request failed as expected.")
         else:
             print("FAIL: Network request seemed to succeed (unexpected).")
     except Exception as e:
         print(f"PASS: Exception caught (likely network error): {e}")
+
 
 if __name__ == "__main__":
     test_sandbox()

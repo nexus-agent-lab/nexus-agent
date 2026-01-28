@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import List
 
 # Policy Definition
 # Role-based and Context-based access control
@@ -7,12 +7,13 @@ from typing import Dict, List
 # Tools should be registered with these tags
 # e.g., @tool(tags=["home", "read_only"])
 
+
 class PolicyMatrix:
     # Role Permissions (What can this role do?)
     ROLE_POLICIES = {
         "admin": ["*"],  # Superuser access
-        "user": ["tag:safe", "tag:home"], # Standard user
-        "guest": ["tag:read_only"]
+        "user": ["tag:safe", "tag:home"],  # Standard user
+        "guest": ["tag:read_only"],
     }
 
     # Context Permissions (What is allowed in this environment?)
@@ -20,14 +21,14 @@ class PolicyMatrix:
     CONTEXT_POLICIES = {
         "home": ["tag:home", "tag:safe", "tag:personal"],
         "work": ["tag:work", "tag:enterprise", "tag:safe"],
-        "public": ["tag:read_only"]
+        "public": ["tag:read_only"],
     }
 
     @staticmethod
     def is_allowed(user_role: str, context: str, tool_tags: List[str]) -> bool:
         """
         Determines if access is granted based on Intersection of Role and Context.
-        Access is granted if AT LEAST ONE of the tool's tags is allowed by BOTH 
+        Access is granted if AT LEAST ONE of the tool's tags is allowed by BOTH
         the Role Policy AND the Context Policy.
         """
         allowed_by_role = PolicyMatrix.ROLE_POLICIES.get(user_role, [])
@@ -43,7 +44,7 @@ class PolicyMatrix:
             if tag in allowed_by_role:
                 role_match = True
                 break
-        
+
         if not role_match:
             return False
 
@@ -53,12 +54,12 @@ class PolicyMatrix:
             # Allow "*" in context policy too if needed, but usually contexts are restrictive
             if "*" in allowed_by_context:
                 return True
-                
+
             for tag in tool_tags:
                 if tag in allowed_by_context:
                     context_match = True
                     break
             if not context_match:
                 return False
-        
+
         return True

@@ -1,5 +1,5 @@
-from functools import wraps
 from typing import Callable
+
 
 # Decorators for permissions (metadata)
 def require_role(role: str):
@@ -9,4 +9,5 @@ def require_role(role: str):
         # If applied to a function tool:
         func.required_role = role
         return func
+
     return decorator

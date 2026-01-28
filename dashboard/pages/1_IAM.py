@@ -1,7 +1,8 @@
-import streamlit as st
-import pandas as pd
-from sqlalchemy import create_engine, text
 import os
+
+import pandas as pd
+import streamlit as st
+from sqlalchemy import create_engine, text
 
 st.set_page_config(page_title="身份与权限", page_icon="🛡️", layout="wide")
 
@@ -32,7 +33,7 @@ try:
     with engine.connect() as conn:
         # 'user' is reserved in PG, need quotes
         df = pd.read_sql(text('SELECT id, username, role, api_key FROM "user"'), conn)
-        
+
     st.dataframe(df, use_container_width=True)
 
     with st.expander("➕ 创建新用户"):

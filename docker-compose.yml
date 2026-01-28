@@ -27,8 +27,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./mcp_server_config.json:/app/mcp_server_config.json
       - ./servers:/app/servers
-      # Mount external MCP plugins from local host (Hybrid Mode)
-      - ${MCP_EXT_DIR:-./external_mcp}:/app/external_mcp
     environment:
       - REDIS_URL=redis://redis:6379/0
       - DATABASE_URL=postgresql+asyncpg://nexus:nexus_password@postgres:5432/nexus_db
@@ -73,6 +71,24 @@ services:
       - POSTGRES_DB=nexus_db
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
+  mcp-homeassistant:
+    build: 
+      context: https://github.com/voska/hass-mcp.git
+    image: nexus-mcp-ha
+    ports:
+      - "8080:8080"
+    entrypoint: python
+    command: -c "from app.server import mcp; import uvicorn; mcp.settings.transport_security = None; uvicorn.run(mcp.sse_app(), host='0.0.0.0', port=8080)"
+    environment:
+      - HA_URL=${HOMEASSISTANT_URL}
+      - HA_TOKEN=${HOMEASSISTANT_TOKEN}
+      - FASTMCP_TRANSPORT_SECURITY__ENABLE_DNS_REBINDING_PROTECTION=false
+    restart: unless-stopped
+
+networks:
+  default:
+    name: nexus-network
 
 volumes:
   postgres_data:

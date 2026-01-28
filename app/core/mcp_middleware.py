@@ -1,18 +1,19 @@
-import logging
-import time
-import json
 import hashlib
+import json
+import logging
 import os
-from typing import Any, Callable, Dict, Optional
+import time
+from typing import Any, Callable, Dict
 
 logger = logging.getLogger(__name__)
 
 SANDBOX_DATA_DIR = os.getenv("SANDBOX_DATA_DIR", "/app/storage/sandbox_data")
 
+
 class MCPMiddleware:
     _cache: Dict[str, tuple[float, Any]] = {}
     _rate_limits: Dict[str, list[float]] = {}
-    
+
     CACHE_TTL_DEFAULT = 300
     RATE_LIMIT_WINDOW = 1.0
     RATE_LIMIT_MAX = 5
@@ -31,17 +32,17 @@ class MCPMiddleware:
         now = time.time()
         if tool_name not in cls._rate_limits:
             cls._rate_limits[tool_name] = []
-        
+
         cls._rate_limits[tool_name] = [t for t in cls._rate_limits[tool_name] if now - t < cls.RATE_LIMIT_WINDOW]
-        
+
         if len(cls._rate_limits[tool_name]) >= cls.RATE_LIMIT_MAX:
             logger.warning(f"Rate limit hit for {tool_name}")
             return f"Rate limit exceeded for '{tool_name}'. Wait 1s."
-        
+
         cls._rate_limits[tool_name].append(now)
 
         cache_key = cls._get_cache_key(tool_name, args)
-        
+
         if ttl > 0 and cache_key in cls._cache:
             ts, cached_data = cls._cache[cache_key]
             if now - ts < ttl:
@@ -60,7 +61,7 @@ class MCPMiddleware:
         # Helper: Extract unified wrapper content if present (Moltbot architecture)
         is_wrapper = False
         parsed_wrapper = None
-        
+
         # Check if result is a JSON string of our wrapper
         if isinstance(result, str) and result.strip().startswith("{"):
             try:
@@ -69,7 +70,7 @@ class MCPMiddleware:
                     is_wrapper = True
                     parsed_wrapper = parsed
                     # Unwrap logic: If valid wrapper, we want to offload the CONTENT, not the wrapper itself
-                    # But we must be careful: if we return unwrapped content here, we break the contract 
+                    # But we must be careful: if we return unwrapped content here, we break the contract
                     # that mcp.py ALWAYS returns a JSON string.
                     # Wait, middleware returns to mcp.py? No, mcp.py calls middleware.
                     # mcp.py: return await Middleware.call_tool(..., original_func=unwrapped_logic)
@@ -84,11 +85,11 @@ class MCPMiddleware:
         # Improve Large Response Handling
         result_str = str(result)
         result_len = len(result_str)
-        
+
         if result_len > cls.LARGE_RESPONSE_THRESHOLD:
             logger.info(f"Response too large ({result_len} chars). Offloading...")
             os.makedirs(SANDBOX_DATA_DIR, exist_ok=True)
-            
+
             # Determine effective content to save
             if is_wrapper and parsed_wrapper:
                 data_to_save = parsed_wrapper["content"]
@@ -97,7 +98,7 @@ class MCPMiddleware:
 
             # Detect structure of the DATA to save (not the wrapper)
             is_structured = isinstance(data_to_save, (dict, list))
-            
+
             # Additional check: If data_to_save is a string but likely JSON
             if not is_structured and isinstance(data_to_save, str) and data_to_save.strip().startswith(("{", "[")):
                 try:
@@ -109,14 +110,14 @@ class MCPMiddleware:
             ext = ".json" if is_structured else ".txt"
             filename = f"tool_output_{cache_key[:8]}_{int(now)}{ext}"
             filepath = os.path.join(SANDBOX_DATA_DIR, filename)
-            
+
             try:
                 with open(filepath, "w") as f:
                     if is_structured:
                         json.dump(data_to_save, f, indent=2, ensure_ascii=False)
                     else:
                         f.write(str(data_to_save))
-                
+
                 # Enhanced System Alert: "Teacher Mode" with Preview
                 preview = ""
                 if not is_structured:
@@ -150,18 +151,15 @@ class MCPMiddleware:
                 # But strict Agent expects JSON wrapper?
                 # Let's check agent.py: "Always parse the `content` field."
                 # So we should wrap this alert in {type: "text", content: ...}
-                
+
                 alert_text = (
                     f"SYSTEM_ALERT: OUTPUT_TOO_LARGE ({result_len} bytes). "
                     f"Data saved to: '{filepath}'.\n"
                     f"{message_content}"
                 )
-                
+
                 # Wrap it so Agent parses it correctly
-                result = json.dumps({
-                    "type": "text", 
-                    "content": alert_text
-                }, ensure_ascii=False)
+                result = json.dumps({"type": "text", "content": alert_text}, ensure_ascii=False)
 
             except Exception as e:
                 logger.error(f"Offload failed: {e}")
@@ -170,5 +168,5 @@ class MCPMiddleware:
 
         if ttl > 0:
             cls._cache[cache_key] = (now, result)
-            
+
         return result

@@ -1,177 +1,246 @@
 import json
-import subprocess
-import os
-import signal
 import logging
-from typing import Dict, Optional, List
+import os
+from contextlib import AsyncExitStack
+from typing import Any, Dict, List, Optional, Type
+
+# LangChain imports
+from langchain_core.tools import StructuredTool
+from pydantic import BaseModel, create_model
+
+# MCP SDK imports
+try:
+    from mcp import ClientSession, StdioServerParameters
+    from mcp.client.sse import sse_client
+    from mcp.client.stdio import stdio_client
+    from mcp.types import CallToolResult
+    from mcp.types import Tool as MCPToolModel
+except ImportError:
+    print("WARNING: 'mcp' module not found. MCP features will be disabled.")
+    ClientSession = Any
+    StdioServerParameters = Any
+    sse_client = Any
+    MCPToolModel = Any
 
 logger = logging.getLogger("nexus.mcp")
 
-CONFIG_PATH = os.getenv("MCP_CONFIG_PATH", "mcp_server_config.json")
+CONFIG_PATH = os.getenv("MCP_CONFIG_PATH", "/app/mcp_server_config.json")
+
 
 class MCPManager:
     _instance = None
-    _servers: Dict[str, subprocess.Popen] = {}
-    _config: Dict = {}
 
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(MCPManager, cls).__new__(cls)
+            cls._instance.exit_stack = AsyncExitStack()
+            cls._instance.sessions: Dict[str, ClientSession] = {}  # server_name -> session
+            cls._instance.tools: List[StructuredTool] = []
+            cls._instance._config: Dict = {}
         return cls._instance
 
     @classmethod
-    def load_config(cls):
+    def get_instance(cls):
+        if cls._instance is None:
+            cls._instance = MCPManager()
+        return cls._instance
+
+    def _load_config(self):
         """Loads and parses the MCP configuration file."""
         if not os.path.exists(CONFIG_PATH):
             logger.warning(f"MCP config not found at {CONFIG_PATH}")
-            cls._config = {"mcpServers": {}}
+            self._config = {"mcpServers": {}}
             return
 
         try:
-            with open(CONFIG_PATH, 'r') as f:
-                cls._config = json.load(f)
-            logger.info(f"Loaded MCP config with {len(cls._config.get('mcpServers', {}))} servers.")
+            with open(CONFIG_PATH, "r") as f:
+                self._config = json.load(f)
+            logger.info(f"Loaded MCP config with {len(self._config.get('mcpServers', {}))} servers.")
         except Exception as e:
             logger.error(f"Failed to load MCP config: {e}")
-            cls._config = {"mcpServers": {}}
+            self._config = {"mcpServers": {}}
 
-    @classmethod
-    def start_all(cls):
-        """Starts all enabled MCP servers defined in config."""
-        cls.load_config()
-        servers = cls._config.get("mcpServers", {})
-        
-        for name, config in servers.items():
-            if config.get("enabled", True):
-                cls.start_server(name, config)
+    async def initialize(self):
+        """Connects to servers and caches tools."""
+        self._load_config()
+        servers = self._config.get("mcpServers", {})
 
-    @classmethod
-    def start_server(cls, name: str, config: Dict):
-        """Starts a single MCP server subprocess."""
-        if name in cls._servers:
-            logger.info(f"MCP Server '{name}' is already running.")
-            return
+        for name, server_conf in servers.items():
+            if not server_conf.get("enabled", True):
+                continue
 
-        command = config.get("command")
-        args = config.get("args", [])
-        cwd = config.get("cwd", os.getcwd())
-        env = config.get("env", os.environ.copy())
-
-        if not command:
-            logger.error(f"No command specified for MCP server '{name}'")
-            return
-
-        # Prepare Environment Variables
-        # 1. Start with system environment (or a cleaner subset if strict isolation is desired)
-        # For compatibility, we copy system env, but we could filter sensitive global keys if needed.
-        proc_env = os.environ.copy()
-
-        # 2. Local .env file loading (Per-MCP Isolation)
-        # If 'cwd' is set, look for .env there
-        if cwd and os.path.exists(os.path.join(cwd, ".env")):
             try:
-                from dotenv import dotenv_values
-                local_env = dotenv_values(os.path.join(cwd, ".env"))
-                logger.info(f"Loaded {len(local_env)} variables from local .env for '{name}'")
-                proc_env.update(local_env)
-            except ImportError:
-                logger.warning("python-dotenv not installed. Skipping local .env loading.")
+                command = server_conf.get("command")
+                args = server_conf.get("args", [])
+                env = server_conf.get("env", None)
+                required_role = server_conf.get("required_role", "user")
+
+                # Check for SSE (URL) configuration first
+                url = server_conf.get("url")
+
+                read, write = None, None
+
+                if url:
+                    logger.info(f"Connecting to Remote MCP: {name} ({url}) [Role: {required_role}]...")
+                    try:
+                        # Headers to bypass local testing validation if needed
+                        # Note: Server-side fix via MCP_TRANSPORT_SECURITY__ENABLE_DNS_REBINDING_PROTECTION is preferred
+                        read, write = await self.exit_stack.enter_async_context(sse_client(url))
+                    except Exception as e:
+                        logger.error(f"Failed to connect to SSE MCP {name}: {e}")
+                        continue
+
+                elif command:
+                    logger.info(f"Connecting to Local MCP: {name} ({command} {args}) [Role: {required_role}]...")
+                    try:
+                        server_params = StdioServerParameters(
+                            command=command, args=args, env={**os.environ, **(env or {})}
+                        )
+                        read, write = await self.exit_stack.enter_async_context(stdio_client(server_params))
+                    except Exception as e:
+                        logger.error(f"Failed to connect to Stdio MCP {name}: {e}")
+                        continue
+
+                if not read or not write:
+                    continue
+
+                # Create session (Common for both Stdio and SSE)
+                session = await self.exit_stack.enter_async_context(ClientSession(read, write))
+                await session.initialize()
+                self.sessions[name] = session
+
+                # Fetch available tools
+                mcp_tools_response = await session.list_tools()
+                server_tool_config = server_conf.get("tool_config", {})
+
+                for tool in mcp_tools_response.tools:
+                    lc_tool = self._convert_to_langchain_tool(name, session, tool, required_role, server_tool_config)
+                    self.tools.append(lc_tool)
+
+                logger.info(f"Connected to {name}. Loaded {len(mcp_tools_response.tools)} tools.")
+
             except Exception as e:
-                logger.error(f"Error loading local .env: {e}")
-        
-        # 3. Merge config 'env' with variable expansion support
-        # This overrides local .env if collision occurs (Configuration takes precedence)
-        config_env = config.get("env", {})
-        for key, value in config_env.items():
-            if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
-                # Expand ${VAR_NAME}
-                var_name = value[2:-1]
-                # Look in proc_env first (so we can reference local .env vars), then system
-                env_val = proc_env.get(var_name) or os.getenv(var_name)
-                if env_val:
-                    proc_env[key] = env_val
-                else:
-                    logger.warning(f"Environment variable {var_name} not found for server '{name}'")
+                logger.error(f"Failed to connect to MCP server {name}: {e}")
+
+    def _convert_to_langchain_tool(
+        self,
+        server_name: str,
+        session: ClientSession,
+        tool: MCPToolModel,
+        required_role: str,
+        tool_config_map: Dict = None,
+    ) -> StructuredTool:
+        tool_config_map = tool_config_map or {}
+
+        async def _arun(**kwargs) -> str:
+            try:
+                from app.core.mcp_middleware import MCPMiddleware
+
+                async def original_mcp_call(**k):
+                    try:
+                        result: CallToolResult = await session.call_tool(tool.name, arguments=k)
+                        texts = [c.text for c in result.content if c.type == "text"]
+                        raw_text = "\n".join(texts)
+                        json_content = None
+                        if raw_text.strip().startswith(("{", "[")):
+                            try:
+                                json_content = json.loads(raw_text)
+                            except Exception:
+                                pass
+                        wrapper = (
+                            {"type": "json", "content": json_content}
+                            if json_content is not None
+                            else {"type": "text", "content": raw_text}
+                        )
+                        return json.dumps(wrapper, ensure_ascii=False)
+                    except Exception as e:
+                        return json.dumps({"type": "error", "message": str(e)}, ensure_ascii=False)
+
+                tool_conf = tool_config_map.get(tool.name, {})
+                return await MCPMiddleware.call_tool(
+                    tool_name=tool.name, args=kwargs, original_func=original_mcp_call, tool_config=tool_conf
+                )
+            except Exception as e:
+                return f"MCP Tool Execution Error: {str(e)}"
+
+        _arun.required_role = required_role
+        from app.core.schema_utils import clean_schema
+
+        cleaned_schema = clean_schema(tool.inputSchema)
+        args_schema = self._create_args_schema(tool.name, cleaned_schema)
+
+        return StructuredTool.from_function(
+            coroutine=_arun,
+            name=tool.name,
+            description=f"[{server_name}] {tool.description or tool.name}",
+            args_schema=args_schema,
+        )
+
+    def _create_args_schema(self, tool_name: str, schema: Dict[str, Any]) -> Type[BaseModel]:
+        fields = {}
+        required = schema.get("required", [])
+        properties = schema.get("properties", {})
+        for field_name, field_info in properties.items():
+            field_type = str
+            t = field_info.get("type", "string")
+            if t == "integer":
+                field_type = int
+            elif t == "number":
+                field_type = float
+            elif t == "boolean":
+                field_type = bool
+            elif t == "array":
+                field_type = List[Any]
+
+            if field_name in required:
+                fields[field_name] = (field_type, ...)
             else:
-                proc_env[key] = str(value)
+                fields[field_name] = (Optional[field_type], None)
 
-        try:
-            logger.info(f"Starting MCP Server '{name}': {command} {args} (CWD: {cwd})")
-            
-            process = subprocess.Popen(
-                [command] + args,
-                cwd=cwd,
-                env=proc_env,
-            )
-            cls._servers[name] = process
-            logger.info(f"MCP Server '{name}' started (PID: {process.pid})")
-            
-        except Exception as e:
-            logger.error(f"Failed to start MCP Server '{name}': {e}")
+        model_config = None
+        if not properties:
 
-    @classmethod
-    def stop_server(cls, name: str):
-        """Stops a running MCP server."""
-        process = cls._servers.get(name)
-        if process:
-            logger.info(f"Stopping MCP Server '{name}'...")
-            try:
-                process.terminate()
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-            except Exception as e:
-                logger.error(f"Error stopping server '{name}': {e}")
-            
-            del cls._servers[name]
-        else:
-            logger.warning(f"MCP Server '{name}' is not running.")
+            class Config:
+                extra = "allow"
 
-    @classmethod
-    def stop_all(cls):
-        """Stops all running MCP servers."""
-        # Convert keys to list to avoid runtime error during iteration
-        for name in list(cls._servers.keys()):
-            cls.stop_server(name)
+            model_config = Config
+        model = create_model(f"{tool_name}Schema", **fields)
+        if model_config:
+            model.Config = model_config
+        return model
 
-    @classmethod
-    def reload(cls):
-        """Restarts all servers with fresh config."""
-        logger.info("Reloading MCP Manager...")
-        cls.stop_all()
-        cls.start_all()
-        logger.info("MCP Manager reload complete.")
-
-    @classmethod
-    def get_status(cls) -> List[Dict]:
-        """Returns the status of all configured servers."""
-        status_list = []
-        servers_config = cls._config.get("mcpServers", {})
-        
-        for name, config in servers_config.items():
-            process = cls._servers.get(name)
-            is_running = process is not None and process.poll() is None
-            
-            status_list.append({
-                "name": name,
-                "enabled": config.get("enabled", True),
-                "status": "Running" if is_running else "Stopped",
-                "pid": process.pid if is_running else None,
-                "source": config.get("source", "unknown"),
-                "description": config.get("description", "")
-            })
-        return status_list
+    def get_tools(self) -> List[StructuredTool]:
+        return self.tools
 
     @classmethod
     def get_system_instructions(cls) -> str:
         """Aggregates system instructions from all enabled servers."""
+        inst = cls.get_instance()
+        if not inst._config:
+            inst._load_config()
+
         instructions = []
-        servers_config = cls._config.get("mcpServers", {})
-        
+        servers_config = inst._config.get("mcpServers", {})
         for name, config in servers_config.items():
             if config.get("enabled", True):
                 instruction = config.get("system_instruction")
                 if instruction:
                     instructions.append(f"### {name.upper()} INSTRUCTIONS\n{instruction}")
-        
         return "\n\n".join(instructions)
+
+    async def cleanup(self):
+        await self.exit_stack.aclose()
+
+
+# Global accessor
+_mcp_manager = MCPManager.get_instance()
+
+
+async def get_mcp_tools() -> List[StructuredTool]:
+    if not _mcp_manager.sessions:
+        await _mcp_manager.initialize()
+    return _mcp_manager.get_tools()
+
+
+async def stop_mcp():
+    await _mcp_manager.cleanup()

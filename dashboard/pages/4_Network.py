@@ -1,13 +1,13 @@
-import streamlit as st
+import json
+import subprocess
+
 import pandas as pd
-import os
+import streamlit as st
 
 st.set_page_config(page_title="Nexus 网络", page_icon="🕸️", layout="wide")
 
 st.title("🕸️ Nexus 网络状态")
 
-import json
-import subprocess
 
 def get_tailscale_status():
     try:
@@ -22,13 +22,20 @@ def get_tailscale_status():
     except Exception as e:
         return None, str(e)
 
+
 status_data, err = get_tailscale_status()
 
 if err:
     st.warning(f"无法获取实时网络状态: {err}")
     st.info("显示演示数据。")
     nodes = [
-        {"Hostname": "nexus-agent-server", "IP": "100.112.174.53", "Role": "Hub", "Tags": ["tag:nexus-agent"], "Status": "Active 🟢"},
+        {
+            "Hostname": "nexus-agent-server",
+            "IP": "100.112.174.53",
+            "Role": "Hub",
+            "Tags": ["tag:nexus-agent"],
+            "Status": "Active 🟢",
+        },
         {"Hostname": "iphone-15", "IP": "100.x.y.z", "Role": "Client", "Tags": [], "Status": "Idle 🟡"},
     ]
 else:
@@ -37,24 +44,28 @@ else:
     # Self
     if "Self" in status_data:
         s = status_data["Self"]
-        nodes.append({
-            "Hostname": s.get("HostName"),
-            "IP": s.get("TailscaleIPs", [""])[0],
-            "OS": s.get("OS"),
-            "Online": s.get("Online"),
-            "Type": "Local (本节点)" 
-        })
-    
+        nodes.append(
+            {
+                "Hostname": s.get("HostName"),
+                "IP": s.get("TailscaleIPs", [""])[0],
+                "OS": s.get("OS"),
+                "Online": s.get("Online"),
+                "Type": "Local (本节点)",
+            }
+        )
+
     # Peers
     peers = status_data.get("Peer", {})
     for _, p in peers.items():
-        nodes.append({
-            "Hostname": p.get("HostName"),
-            "IP": p.get("TailscaleIPs", [""])[0],
-            "OS": p.get("OS"),
-            "Online": p.get("Online"),
-            "Type": "Peer"
-        })
+        nodes.append(
+            {
+                "Hostname": p.get("HostName"),
+                "IP": p.get("TailscaleIPs", [""])[0],
+                "OS": p.get("OS"),
+                "Online": p.get("Online"),
+                "Type": "Peer",
+            }
+        )
 
 if nodes:
     st.success(f"网络状态: 在线 ({len(nodes)} 节点)")

@@ -1,8 +1,9 @@
-import streamlit as st
-import pandas as pd
-from sqlalchemy import create_engine, text
 import os
 import time
+
+import pandas as pd
+import streamlit as st
+from sqlalchemy import create_engine, text
 
 # --- Configuration ---
 # --- Configuration ---
@@ -15,9 +16,11 @@ st.set_page_config(
 
 DB_URL = os.getenv("DATABASE_URL", "postgresql://nexus:nexus_password@localhost:5432/nexus_db")
 
+
 @st.cache_resource
 def get_engine():
     return create_engine(DB_URL)
+
 
 engine = get_engine()
 
@@ -37,7 +40,7 @@ with col2:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         st.metric("数据库", "已连接", delta="5ms")
-    except:
+    except Exception:
         st.metric("数据库", "离线", delta_color="inverse")
 
 with col3:
@@ -65,8 +68,8 @@ if c3.button("运行诊断"):
 st.subheader("📉 最近活动 (最新5条)")
 try:
     with engine.connect() as conn:
-        df = pd.read_sql(text("SELECT action, tool_name, status, created_at FROM auditlog ORDER BY created_at DESC LIMIT 5"), conn)
+        query = text("SELECT action, tool_name, status, created_at FROM auditlog ORDER BY created_at DESC LIMIT 5")
+        df = pd.read_sql(query, conn)
     st.dataframe(df, use_container_width=True)
 except Exception as e:
     st.error(f"Could not load activity: {e}")
-

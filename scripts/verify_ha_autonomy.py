@@ -1,19 +1,35 @@
 import asyncio
 import logging
+import os
 import sys
 
 # Enhance path to allow imports from app
 sys.path.append("/app")
+sys.path.append(os.getcwd())
 
-from app.core.mcp import get_mcp_tools
 from langchain_core.messages import HumanMessage
+from sqlalchemy import text
 
 from app.core.agent import create_agent_graph
+from app.core.db import AsyncSessionLocal
+from app.core.mcp_manager import get_mcp_tools
 from app.core.state import AgentState
+from app.models.user import User
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("debug_ha")
+
+
+async def get_admin_user():
+    """Fetch the real admin user from DB to satisfy FK constraints"""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(text("SELECT * FROM \"user\" WHERE role = 'admin' LIMIT 1"))
+        user_row = result.first()
+        if user_row:
+            # Reconstruct User object (assuming order based on model)
+            return User(id=user_row.id, username=user_row.username, api_key=user_row.api_key, role=user_row.role)
+        return None
 
 
 async def run_test():
@@ -45,12 +61,15 @@ async def run_test():
     query = "给我查一下客厅温度。"
     print(f"\n📝 User Query: {query}")
 
-    initial_state = AgentState(
-        messages=[HumanMessage(content=query)],
-        user=None,  # Mock user
-        files=[],
-        context="home",
-    )
+    # Fetch real admin user
+    admin_user = await get_admin_user()
+    if not admin_user:
+        print("❌ FAIL: No admin user found in DB. Run create_admin.py first.")
+        return
+
+    print(f"Authenticated as: {admin_user.username} (Role: {admin_user.role})")
+
+    initial_state = AgentState(messages=[HumanMessage(content=query)], user=admin_user, files=[], context="home")
 
     print("\n--- 🏃 Running Graph ---")
     async for event in app.astream(initial_state):

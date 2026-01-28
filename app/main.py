@@ -1,11 +1,22 @@
-from fastapi import FastAPI, HTTPException, Security, Depends, File, UploadFile
-from fastapi.responses import StreamingResponse
+import asyncio
 import json
-from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
-from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
-import uuid
 import logging
+import uuid
+from typing import Any, Dict, List, Optional
+
+from fastapi import Depends, FastAPI, File, UploadFile
+from fastapi.responses import StreamingResponse
+from langchain_core.messages import AIMessage, HumanMessage
+from pydantic import BaseModel
+
+from app.core.agent import create_agent_graph, stream_agent_events
+from app.core.auth import get_current_user
+from app.core.db import init_db
+from app.core.mcp_manager import get_mcp_tools
+from app.core.voice import transcribe_audio
+from app.interfaces.telegram import run_telegram_bot, set_agent_graph
+from app.models.user import User
+from app.tools.registry import get_static_tools
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -15,121 +26,109 @@ logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 logging.getLogger("aiosqlite").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
-from app.core.agent import create_agent_graph, stream_agent_events
-from app.core.auth import get_current_user
-from app.core.db import init_db
-from app.models.user import User
-from app.core.voice import transcribe_audio
-from app.core.mcp import get_mcp_tools
-from app.tools.registry import get_static_tools
-from app.core.mcp_manager import MCPManager
-from app.interfaces.telegram import run_telegram_bot, set_agent_graph, broadcast_message
-import asyncio
-
-app = FastAPI(title="Nexus Agent API", version="2.0.0")
-
 # Global reference
 agent_graph = None
 
-@app.on_event("startup")
-async def startup_event():
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup logic
     await init_db()
-    
-    # Start MCP Servers
-    MCPManager.start_all()
-    
+
+    # Start MCP Servers (Handled automatically by get_mcp_tools)
+    # MCPManager.start_all() - REMOVED
+
     # Initialize Tools
     static_tools = get_static_tools()
     mcp_tools = await get_mcp_tools()
     all_tools = static_tools + mcp_tools
-    
+
     global agent_graph
     agent_graph = create_agent_graph(all_tools)
-    
+
     # Inject Graph into Telegram Service
     set_agent_graph(agent_graph)
-    
+
     # Start Telegram Bot in Background
     asyncio.create_task(run_telegram_bot())
-    
+
     tool_names = [t.name for t in all_tools]
     logger.info(f"Agent initialized with {len(all_tools)} tools: {tool_names}")
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    # Stop all child processes
-    MCPManager.stop_all()
+    yield
+
+    # Shutdown logic
+    from app.core.mcp_manager import stop_mcp
+
+    await stop_mcp()
+
+
+app = FastAPI(title="Nexus Agent API", version="2.0.0", lifespan=lifespan)
+
 
 class ChatRequest(BaseModel):
     message: str
     thread_id: Optional[str] = None
+
 
 class ChatResponse(BaseModel):
     response: str
     tool_calls: List[Dict[str, Any]] = []
     trace_id: str
 
+
 @app.get("/")
 async def root():
     return {"message": "Nexus Agent is running"}
 
+
 @app.post("/chat", response_model=ChatResponse)
-async def chat(
-    request: ChatRequest,
-    current_user: User = Depends(get_current_user)
-):
+async def chat(request: ChatRequest, current_user: User = Depends(get_current_user)):
     user_message = HumanMessage(content=request.message)
     trace_id = uuid.uuid4()
-    
-    initial_state = {
-        "messages": [user_message],
-        "user": current_user,
-        "trace_id": trace_id
-    }
-    
+
+    initial_state = {"messages": [user_message], "user": current_user, "trace_id": trace_id}
+
     final_state = await agent_graph.ainvoke(initial_state)
-    
+
     messages = final_state["messages"]
     last_message = messages[-1]
-    
+
     response_text = ""
     if isinstance(last_message, AIMessage):
         response_text = str(last_message.content)
     else:
         response_text = "Agent did not return an AI message."
-        
+
     return ChatResponse(response=response_text, trace_id=str(trace_id))
 
+
 @app.post("/chat/stream")
-async def chat_stream(
-    request: ChatRequest,
-    current_user: User = Depends(get_current_user)
-):
+async def chat_stream(request: ChatRequest, current_user: User = Depends(get_current_user)):
     user_message = HumanMessage(content=request.message)
     trace_id = uuid.uuid4()
-    
-    initial_state = {
-        "messages": [user_message],
-        "user": current_user,
-        "trace_id": trace_id
-    }
-    
+
+    initial_state = {"messages": [user_message], "user": current_user, "trace_id": trace_id}
+
     async def event_generator():
         logger.info(f"Stream started for trace_id: {trace_id}")
         count = 0
         async for event in stream_agent_events(agent_graph, initial_state):
-            count += 1
-            # Format as SSE
-            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+            try:
+                count += 1
+                # Format as SSE
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+            except Exception:
+                pass
         logger.info(f"Stream finished for trace_id: {trace_id}, total events: {count}")
-            
+
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
+
 @app.post("/voice", response_model=ChatResponse)
-async def voice_chat(
-    file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user)
-):
+async def voice_chat(file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
     """
     1. Upload Audio
     2. Transcribe (STT)
@@ -139,25 +138,18 @@ async def voice_chat(
     # 1. Transcribe
     transcribed_text = await transcribe_audio(file)
     logger.info(f"Transcribed Text: {transcribed_text}")
-    
+
     # 2. Run Agent
     # Re-use logic from /chat but user message comes from STT
     user_message = HumanMessage(content=transcribed_text)
     trace_id = uuid.uuid4()
-    
-    initial_state = {
-        "messages": [user_message],
-        "user": current_user,
-        "trace_id": trace_id
-    }
-    
+
+    initial_state = {"messages": [user_message], "user": current_user, "trace_id": trace_id}
+
     final_state = await agent_graph.ainvoke(initial_state)
-    
+
     # Extract last message content
     last_message = final_state["messages"][-1]
     response_text = last_message.content
-    
-    return ChatResponse(
-        response=response_text,
-        trace_id=str(trace_id)
-    )
+
+    return ChatResponse(response=response_text, trace_id=str(trace_id))

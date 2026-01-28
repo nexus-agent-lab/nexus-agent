@@ -1,5 +1,7 @@
 from typing import Optional
+
 from sqlmodel import Field, SQLModel
+
 
 class ToolDefinition(SQLModel, table=True):
     __tablename__ = "tools"

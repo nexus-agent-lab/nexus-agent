@@ -1,26 +1,36 @@
-import sys
 import os
+import sys
+
+import pytest
 
 # Set path so we can import app
 sys.path.append(os.getcwd())
 
-print("--- 🔍 Running Smoke Test ---")
 
-try:
-    print("Checking app.core.agent...")
-    import app.core.agent
-    print("✅ app.core.agent imported")
+def test_imports():
+    """Smoke test to ensure core components can be imported."""
+    print("--- 🔍 Running Smoke Test ---")
 
-    print("Checking app.interfaces.telegram...")
-    import app.interfaces.telegram
-    print("✅ app.interfaces.telegram imported")
+    # We use importlib to check if components can be imported
+    import importlib
 
-    print("Checking app.main...")
-    import app.main
-    print("✅ app.main imported")
+    components = ["app.core.agent", "app.interfaces.telegram", "app.main"]
+
+    for component in components:
+        try:
+            importlib.import_module(component)
+            print(f"✅ {component} imported")
+        except Exception as e:
+            pytest.fail(f"❌ Failed to import {component}: {e}")
 
     print("--- ✨ Smoke Test Passed ---")
-    sys.exit(0)
-except Exception as e:
-    print(f"\n❌ SMOEK TEST FAILED: {e}")
-    sys.exit(1)
+
+
+if __name__ == "__main__":
+    # If run directly, we call the test manually
+    try:
+        test_imports()
+        sys.exit(0)
+    except Exception as e:
+        print(f"\n❌ SMOKE TEST FAILED: {e}")
+        sys.exit(1)
