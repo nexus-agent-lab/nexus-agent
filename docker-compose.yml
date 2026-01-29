@@ -1,4 +1,4 @@
-version: '3.8'
+
 
 services:
   ts-nexus:
@@ -17,6 +17,9 @@ services:
       - NET_ADMIN
       - NET_RAW
     restart: unless-stopped
+    ports:
+      - "8000:8000"
+      - "8501:8501"
 
   nexus-app:
     build: .
@@ -54,6 +57,19 @@ services:
       - TELEGRAM_PROXY_URL=${TELEGRAM_PROXY_URL}
     depends_on:
       - redis
+      - postgres
+
+  dashboard:
+    build: .
+    command: streamlit run dashboard/Main.py --server.port 8501 --server.address 0.0.0.0
+    network_mode: service:ts-nexus
+    volumes:
+      - .:/app
+    environment:
+      - API_URL=http://localhost:8000
+      - DATABASE_URL=postgresql://nexus:nexus_password@postgres:5432/nexus_db
+    depends_on:
+      - nexus-app
       - postgres
 
   redis:

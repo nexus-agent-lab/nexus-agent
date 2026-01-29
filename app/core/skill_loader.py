@@ -228,3 +228,49 @@ class SkillLoader:
         except Exception as e:
             logger.error(f"Failed to save skill {skill_name}: {e}")
             return False
+
+    @classmethod
+    def append_learned_rule(cls, skill_name: str, rule_content: str) -> bool:
+        """
+        Append a new learned rule to the skill card.
+        Only adds if valid and not duplicate.
+        """
+        content = cls.load_by_name(skill_name)
+        if not content:
+            logger.error(f"Cannot append rule: Skill {skill_name} not found")
+            return False
+
+        learned_header = "## 🧠 Learned Rules"
+        
+        # Check if rule already exists (simple substring check for now)
+        if rule_content in content:
+            logger.info(f"Rule already exists in {skill_name}, skipping.")
+            return True
+
+        if learned_header in content:
+            # Append to existing section
+            # Find the header, then find the next header or end
+            lines = content.split("\n")
+            insert_idx = -1
+            found_header = False
+            
+            for i, line in enumerate(lines):
+                if learned_header in line:
+                    found_header = True
+                    continue
+                if found_header and line.strip().startswith("##"):
+                    insert_idx = i
+                    break
+            
+            if insert_idx == -1:
+                insert_idx = len(lines)
+                
+            # Insert before the next header (ensure newline)
+            new_lines = lines[:insert_idx] + [f"- {rule_content}"] + lines[insert_idx:]
+            new_content = "\n".join(new_lines)
+        else:
+            # Create new section at the end
+            new_content = content.strip() + f"\n\n{learned_header}\n\n- {rule_content}\n"
+
+        return cls.save_skill(skill_name, new_content)
+

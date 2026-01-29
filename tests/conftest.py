@@ -18,7 +18,10 @@ os.environ["LLM_BASE_URL"] = "http://localhost:8000"
 os.environ["LLM_API_KEY"] = "sk-dummy"
 os.environ["OPENAI_API_KEY"] = "sk-dummy"
 # Use file-based sqlite for sharing between app and test fixtures
-os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///test.db"
+import tempfile
+TEST_DB_DIR = tempfile.mkdtemp()
+TEST_DB_PATH = os.path.join(TEST_DB_DIR, "test.db")
+os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{TEST_DB_PATH}"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -27,7 +30,10 @@ from sqlalchemy.orm import sessionmaker  # noqa: E402
 from sqlmodel import SQLModel  # noqa: E402
 
 from app.core.db import get_session  # noqa: E402
-from app.main import app  # noqa: E402
+from app.core.db import get_session  # noqa: E402
+import app.core.db  # Import module for patching
+import app.core.session # Import module for patching
+from app.main import app as fastapi_app  # noqa: E402
 from app.models.user import User  # noqa: E402
 
 # ============================================================================
@@ -47,11 +53,11 @@ def event_loop() -> Generator:
 async def test_db() -> AsyncGenerator[AsyncSession, None]:
     """Provide a file-based SQLite database for testing."""
     # Ensure any previous test.db is removed for isolation
-    if os.path.exists("test.db"):
-        os.remove("test.db")
+    if os.path.exists(TEST_DB_PATH):
+        os.remove(TEST_DB_PATH)
 
     engine = create_async_engine(
-        "sqlite+aiosqlite:///test.db",
+        f"sqlite+aiosqlite:///{TEST_DB_PATH}",
         echo=False,
     )
 
@@ -60,9 +66,22 @@ async def test_db() -> AsyncGenerator[AsyncSession, None]:
 
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
+    # PATCH app.core.db.AsyncSessionLocal to use our test engine
+    # This ensures background tasks (SessionManager) use the same DB
+    original_sessionmaker = app.core.db.AsyncSessionLocal
+    app.core.db.AsyncSessionLocal = async_session
+    
+    # Also patch app.core.session because it imported AsyncSessionLocal
+    original_session_sessionmaker = getattr(app.core.session, "AsyncSessionLocal", None)
+    app.core.session.AsyncSessionLocal = async_session
+
     async with async_session() as session:
         yield session
 
+    # Restore
+    app.core.db.AsyncSessionLocal = original_sessionmaker
+    if original_session_sessionmaker:
+        app.core.session.AsyncSessionLocal = original_session_sessionmaker
     await engine.dispose()
 
 
@@ -100,15 +119,16 @@ def api_client(test_db: AsyncSession, mocker) -> TestClient:
     async def _get_test_session():
         yield test_db
 
-    app.dependency_overrides[get_session] = _get_test_session
-    with TestClient(app) as client:
+    fastapi_app.dependency_overrides[get_session] = _get_test_session
+    with TestClient(fastapi_app) as client:
         yield client
-    app.dependency_overrides.clear()
+    fastapi_app.dependency_overrides.clear()
 
     # Cleanup database file after test
-    if os.path.exists("test.db"):
+    # Cleanup database file after test
+    if os.path.exists(TEST_DB_PATH):
         try:
-            os.remove("test.db")
+            os.remove(TEST_DB_PATH)
         except PermissionError:
             pass
 
@@ -152,5 +172,9 @@ def mock_llm():
 @pytest.fixture(scope="session", autouse=True)
 def test_env():
     """Environment is already set at module level."""
-    os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///test.db"
+    os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{TEST_DB_PATH}"
     yield
+    # Cleanup directory
+    import shutil
+    if os.path.exists(TEST_DB_DIR):
+        shutil.rmtree(TEST_DB_DIR, ignore_errors=True)

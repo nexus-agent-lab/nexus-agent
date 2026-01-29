@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import time
+import requests
 
 import pandas as pd
 import streamlit as st
@@ -35,7 +36,9 @@ config = load_config()
 servers = config.get("mcpServers", {})
 
 # --- Tabs ---
-tab_mcp, tab_skills = st.tabs(["🧩 MCP 服务", "🧠 技能卡 (Skill Cards)"])
+tab_mcp, tab_skills, tab_audit = st.tabs(["🧩 MCP 服务", "🧠 技能卡 (Skill Cards)", "🛡️ 学习审计 (Audit)"])
+
+API_BASE = "http://localhost:8000"
 
 # ============================================================================
 # TAB: MCP Servers
@@ -244,3 +247,75 @@ with tab_skills:
     - **AI 生成**: 自动分析 MCP 服务提供的工具定义，生成初步的技能卡模板。
     - **绑定链接**: 绑定后，当 Agent 使用对应的 MCP 服务时，会自动加载相关技能。
     """)
+
+# ============================================================================
+# TAB: Audit Log
+# ============================================================================
+with tab_audit:
+    st.subheader("🛡️ 自我学习审计日志")
+    
+    # 1. Config
+    st.write("### ⚙️ 设置")
+    try:
+        res = requests.get(f"{API_BASE}/skill-learning/config/mode")
+        curr_mode = res.json().get("mode", "manual")
+    except Exception:
+        curr_mode = "manual"
+        
+    new_mode = st.radio("学习模式 (Learning Mode)", ["manual", "auto"], index=0 if curr_mode == "manual" else 1, horizontal=True)
+    if new_mode != curr_mode:
+        requests.post(f"{API_BASE}/skill-learning/config/mode", params={"mode": new_mode})
+        st.success(f"已切换为: {new_mode}")
+        time.sleep(1)
+        st.rerun()
+        
+    st.info("""
+    - **Manual**: Agent 提出的规则仅记录，需人工审核通过后生效。
+    - **Auto**: Agent 提出的规则立即生效（直接写入技能卡），但保留审计日志供回滚。
+    """)
+    
+    st.divider()
+    
+    # 2. Logs
+    st.write("### 📜 变更记录")
+    
+    try:
+        logs_res = requests.get(f"{API_BASE}/skill-learning/logs", params={"limit": 50})
+        logs = logs_res.json()
+    except Exception as e:
+        st.error(f"无法获取日志: {e}")
+        logs = []
+        
+    if logs:
+        # Convert to DF for display
+        df_logs = pd.DataFrame(logs)
+        # Rename cols for display
+        display_df = df_logs[["id", "created_at", "skill_name", "status", "reason", "rule_content"]]
+        
+        # Display as table
+        st.dataframe(display_df, use_container_width=True)
+        
+        # Action Area for Pending
+        st.write("### ⚠️ 待审核项 (Pending Review)")
+        pending_logs = [l for l in logs if l["status"] == "pending"]
+        
+        if pending_logs:
+            for p_log in pending_logs:
+                with st.expander(f"[{p_log['id']}] {p_log['skill_name']}: {p_log['reason']}"):
+                    st.code(p_log['rule_content'], language="markdown")
+                    col_a, col_r = st.columns(2)
+                    with col_a:
+                        if st.button("✅ 批准 (Approve)", key=f"app_{p_log['id']}"):
+                            requests.post(f"{API_BASE}/skill-learning/logs/{p_log['id']}/approve")
+                            st.success("已批准！")
+                            st.rerun()
+                    with col_r:
+                        if st.button("❌ 拒绝 (Reject)", key=f"rej_{p_log['id']}"):
+                            requests.post(f"{API_BASE}/skill-learning/logs/{p_log['id']}/reject")
+                            st.warning("已拒绝")
+                            st.rerun()
+        else:
+            st.info("没有待审核的项目")
+            
+    else:
+        st.info("暂无审计日志")

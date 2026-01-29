@@ -11,6 +11,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel
 
 from app.api.skills import router as skills_router
+from app.api.skill_learning import router as skills_learning_router
 from app.core.agent import create_agent_graph, stream_agent_events
 from app.core.auth import get_current_user
 from app.core.db import init_db
@@ -69,6 +70,7 @@ app = FastAPI(title="Nexus Agent API", version="2.0.0", lifespan=lifespan)
 
 # Register API routers
 app.include_router(skills_router)
+app.include_router(skills_learning_router)
 
 
 class ChatRequest(BaseModel):
