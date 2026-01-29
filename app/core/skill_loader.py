@@ -255,7 +255,7 @@ class SkillLoader:
                         try:
                             # Try to parse as JSON for complex types
                             metadata[key] = json.loads(value.replace("'", '"'))
-                        except:
+                        except Exception:
                             metadata[key] = value
                     else:
                         metadata[key] = value
