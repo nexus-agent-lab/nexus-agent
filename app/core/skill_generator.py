@@ -99,24 +99,23 @@ Output ONLY the Markdown content, no additional commentary.
         Returns:
             Generated skill card content in Markdown
         """
-        try:
-            # Format tools for prompt
-            tools_json = json.dumps(tools, indent=2, ensure_ascii=False)
+        # Format tools for prompt
+        tools_json = json.dumps(tools, indent=2, ensure_ascii=False)
 
-            # Build prompt
-            prompt = cls.GENERATION_PROMPT_TEMPLATE.format(mcp_name=mcp_name, tools_json=tools_json)
+        # Build prompt
+        prompt = cls.GENERATION_PROMPT_TEMPLATE.format(mcp_name=mcp_name, tools_json=tools_json)
 
-            # Call LLM
-            llm = cls.get_llm()
-            logger.info(f"Generating skill card for {mcp_name} using {llm.__class__.__name__}")
+        # Call LLM
+        llm = cls.get_llm()
+        logger.info(f"Generating skill card for {mcp_name} using {llm.__class__.__name__}")
 
-            response = await llm.ainvoke([HumanMessage(content=prompt)])
-            skill_content = response.content
+        response = await llm.ainvoke([HumanMessage(content=prompt)])
+        skill_content = response.content
 
-            # Ensure frontmatter exists
-            if not skill_content.startswith("---"):
-                # Add basic frontmatter
-                frontmatter = f"""---
+        # Ensure frontmatter exists
+        if not skill_content.startswith("---"):
+            # Add basic frontmatter
+            frontmatter = f"""---
 name: {mcp_name.title()}
 domain: {domain}
 priority: medium
@@ -124,15 +123,10 @@ mcp_server: {mcp_name}
 ---
 
 """
-                skill_content = frontmatter + skill_content
+            skill_content = frontmatter + skill_content
 
-            logger.info(f"Successfully generated skill card for {mcp_name}")
-            return skill_content
-
-        except Exception as e:
-            logger.error(f"Failed to generate skill card for {mcp_name}: {e}")
-            # Return a basic template as fallback
-            return cls._get_fallback_template(mcp_name, tools, domain)
+        logger.info(f"Successfully generated skill card for {mcp_name}")
+        return skill_content
 
     @classmethod
     def _get_fallback_template(cls, mcp_name: str, tools: List[Dict[str, Any]], domain: str) -> str:

@@ -67,7 +67,12 @@ services:
       - .:/app
     environment:
       - API_URL=http://localhost:8000
-      - DATABASE_URL=postgresql://nexus:nexus_password@postgres:5432/nexus_db
+      - DATABASE_URL=postgresql+asyncpg://nexus:nexus_password@postgres:5432/nexus_db
+      
+      # LLM Configuration (For Skill Generation & Local Tools)
+      - LLM_API_KEY=${LLM_API_KEY:-ollama}
+      - LLM_BASE_URL=${LLM_BASE_URL:-http://host.docker.internal:11434/v1}
+      - LLM_MODEL=${LLM_MODEL:-qwen2.5:14b}
     depends_on:
       - nexus-app
       - postgres
