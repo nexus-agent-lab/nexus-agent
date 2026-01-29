@@ -19,6 +19,8 @@ def get_tailscale_status():
         if result.returncode != 0:
             return None, f"Error: {result.stderr}"
         return json.loads(result.stdout), None
+    except FileNotFoundError:
+        return None, "Docker CLI not found (running in container?)"
     except Exception as e:
         return None, str(e)
 
@@ -26,17 +28,19 @@ def get_tailscale_status():
 status_data, err = get_tailscale_status()
 
 if err:
-    st.warning(f"无法获取实时网络状态: {err}")
-    st.info("显示演示数据。")
+    st.warning("无法通过 Docker 接口获取实时状态 (Sidecar 隔离)。")
+    st.info("请访问 Tailscale 控制台查看详细节点列表。")
+    st.markdown("[👉 打开 Tailscale Admin Console](https://login.tailscale.com/admin/machines)")
+
+    # Generic Placeholder
     nodes = [
         {
-            "Hostname": "nexus-agent-server",
-            "IP": "100.112.174.53",
+            "Hostname": "nexus-agent-server (本机)",
+            "IP": "自动获取 (MagicDNS)",
             "Role": "Hub",
             "Tags": ["tag:nexus-agent"],
-            "Status": "Active 🟢",
-        },
-        {"Hostname": "iphone-15", "IP": "100.x.y.z", "Role": "Client", "Tags": [], "Status": "Idle 🟡"},
+            "Status": "运行中 (假设) 🟢",
+        }
     ]
 else:
     # Parse Real Data

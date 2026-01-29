@@ -48,7 +48,10 @@ with col3:
     st.metric("组网状态", "活跃", "1 节点")
 
 with col4:
-    st.metric("模型服务", "Ollama", "Qwen2.5-14B")
+    llm_key = os.getenv("LLM_API_KEY", "ollama")
+    llm_model = os.getenv("LLM_MODEL", "qwen2.5:14b")
+    provider = "Ollama" if "ollama" in llm_key.lower() or llm_key == "test" else "Cloud/GLM"
+    st.metric("模型服务", provider, llm_model)
 
 st.divider()
 

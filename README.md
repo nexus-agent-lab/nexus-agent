@@ -125,6 +125,23 @@ graph TD
 - [x] **Interfaces**: Telegram Bot, CLI
 - [ ] **Enterprise**: Feishu (Lark) Integration (Coming Soon / 即将推出)
 - [ ] **Capabilities**: Computer Use / Desktop Automation (WIP)
+- [ ] **Capabilities**: Computer Use / Desktop Automation (WIP)
+
+## 🌍 Remote Access & Security / 远程访问与安全
+
+Nexus Agent prioritizes security for home and enterprise deployments:
+
+1.  **Private Network (Tailscale)**: 
+    - Built-in Tailscale Sidecar ensures secure, encrypted access without exposing ports.
+    - No public IP required; accessible via MagicDNS (e.g., `http://nexus-agent-server:8501`).
+    - [Setup Guide](https://tailscale.com/kb/1017/install) | [Admin Console](https://login.tailscale.com/admin/machines)
+
+2.  **Audit Logs**:
+    - All tool executions and "Self-Learning" rule changes are recorded in the PostgreSQL audit log.
+    - Viewable via the **Mission Control Dashboard**.
+
+3.  **Authentication**:
+    - Role-based access control (Admin/User) available for Telegram and API endpoints.
 
 ## 📄 License
 
