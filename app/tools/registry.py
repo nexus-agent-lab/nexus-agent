@@ -4,9 +4,9 @@ from typing import Callable, List
 from langchain_core.tools import tool
 
 from app.core.decorators import require_role
+from app.tools.learning_tools import learn_skill_rule
 from app.tools.memory_tools import save_insight, store_preference
 from app.tools.sandbox import get_sandbox_tool
-from app.tools.learning_tools import learn_skill_rule
 
 
 @tool
@@ -43,4 +43,12 @@ def dangerous_operation() -> str:
 
 def get_static_tools() -> List[Callable]:
     """Returns the list of static tools."""
-    return [get_current_time, calculate_number, dangerous_operation, get_sandbox_tool(), store_preference, save_insight, learn_skill_rule]
+    return [
+        get_current_time,
+        calculate_number,
+        dangerous_operation,
+        get_sandbox_tool(),
+        store_preference,
+        save_insight,
+        learn_skill_rule,
+    ]

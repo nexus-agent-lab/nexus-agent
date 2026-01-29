@@ -3,17 +3,17 @@ import json
 import os
 import sys
 import time
-import requests
 
 import pandas as pd
+import requests
 import streamlit as st
 
 # Add project root to sys.path to allow imports from app
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from app.core.skill_loader import SkillLoader
-from app.core.skill_generator import SkillGenerator
 from app.core.mcp_manager import get_mcp_tools
+from app.core.skill_generator import SkillGenerator
+from app.core.skill_loader import SkillLoader
 
 st.set_page_config(page_title="集成与技能", page_icon="🧩", layout="wide")
 
@@ -22,15 +22,18 @@ st.markdown("管理 Nexus Agent 的外部集成 (MCP) 与 领域专家技能 (Sk
 
 CONFIG_PATH = os.getenv("MCP_CONFIG_PATH", "mcp_server_config.json")
 
+
 def load_config():
     if os.path.exists(CONFIG_PATH):
         with open(CONFIG_PATH, "r") as f:
             return json.load(f)
     return {"mcpServers": {}}
 
+
 def save_config(config):
     with open(CONFIG_PATH, "w") as f:
         json.dump(config, f, indent=4)
+
 
 config = load_config()
 servers = config.get("mcpServers", {})
@@ -54,7 +57,7 @@ with tab_mcp:
 
     # --- Server List ---
     st.subheader("已安装服务")
-    
+
     mcp_data = []
     for name, cfg in servers.items():
         mcp_data.append(
@@ -63,7 +66,9 @@ with tab_mcp:
                 "Enabled": "✅" if cfg.get("enabled", True) else "❌",
                 "Skill File": cfg.get("skill_file", "-"),
                 "Source": cfg.get("source", "local"),
-                "Command": f"{cfg.get('command')} {' '.join(cfg.get('args', []))}" if cfg.get("command") else cfg.get("url", "-"),
+                "Command": f"{cfg.get('command')} {' '.join(cfg.get('args', []))}"
+                if cfg.get("command")
+                else cfg.get("url", "-"),
                 "Role": cfg.get("required_role", "user"),
             }
         )
@@ -78,9 +83,9 @@ with tab_mcp:
 
     # --- Add Integration ---
     st.subheader("➕ 添加集成")
-    
+
     col_add1, col_add2 = st.columns(2)
-    
+
     with col_add1:
         with st.expander("挂载本地目录 (Dev Mode)"):
             local_name = st.text_input("服务名称 (ID)", placeholder="homeassistant")
@@ -110,25 +115,22 @@ with tab_mcp:
 # ============================================================================
 with tab_skills:
     st.subheader("领域专家技能管理")
-    
+
     # Load all skills
     skills_meta = SkillLoader.list_skills()
-    skill_names = [s['name'] for s in skills_meta]
-    
+    skill_names = [s["name"] for s in skills_meta]
+
     col_s1, col_s2 = st.columns([1, 3])
-    
+
     with col_s1:
         st.write("### 技能选择")
-        selected_skill_name = st.radio(
-            "选择现有技能卡或新建",
-            ["✨ 新建技能 (Create New)"] + skill_names
-        )
-        
+        selected_skill_name = st.radio("选择现有技能卡或新建", ["✨ 新建技能 (Create New)"] + skill_names)
+
         st.divider()
         st.write("### AI 辅助生成")
         gen_mcp = st.selectbox("基于 MCP 服务生成", ["-"] + list(servers.keys()))
         gen_domain = st.text_input("所属领域 (Domain)", value="smart_home")
-        
+
         if st.button("🪄 立即生成 (AI Generate)", disabled=(gen_mcp == "-")):
             with st.spinner(f"正在分析 {gen_mcp} 工具并生成技能卡..."):
                 try:
@@ -145,21 +147,18 @@ with tab_skills:
                             pass
                         # Fallback: check description if it contains [gen_mcp]
                         if f"[{gen_mcp}]" in t.description:
-                            target_tools.append({
-                                "name": t.name,
-                                "description": t.description.replace(f"[{gen_mcp}] ", "")
-                            })
-                    
+                            target_tools.append(
+                                {"name": t.name, "description": t.description.replace(f"[{gen_mcp}] ", "")}
+                            )
+
                     if not target_tools:
                         st.warning(f"未能找到 {gen_mcp} 的已加载工具。尝试基础生成。")
-                    
+
                     # 2. Call generator
-                    new_content = asyncio.run(SkillGenerator.generate_skill_card(
-                        mcp_name=gen_mcp,
-                        tools=target_tools,
-                        domain=gen_domain
-                    ))
-                    
+                    new_content = asyncio.run(
+                        SkillGenerator.generate_skill_card(mcp_name=gen_mcp, tools=target_tools, domain=gen_domain)
+                    )
+
                     # 3. Cache the result in session state to preview
                     st.session_state["preview_skill_content"] = new_content
                     st.session_state["preview_skill_name"] = gen_mcp
@@ -170,14 +169,14 @@ with tab_skills:
     with col_s2:
         if selected_skill_name == "✨ 新建技能 (Create New)":
             st.write("### ✨ 新建技能卡")
-            
+
             # Check if we have a preview from AI generation
             initial_content = st.session_state.get("preview_skill_content", "")
             initial_name = st.session_state.get("preview_skill_name", "new_skill")
-            
+
             new_name = st.text_input("技能 ID (文件名)", value=initial_name)
             skill_content = st.text_area("Markdown 内容", value=initial_content, height=500)
-            
+
             if st.button("💾 保存新技能 (Save)"):
                 if new_name and skill_content:
                     if SkillLoader.save_skill(new_name, skill_content):
@@ -190,17 +189,17 @@ with tab_skills:
                         st.error("保存失败，请检查文件系统权限。")
                 else:
                     st.warning("名称和内容不能为空")
-        
+
         else:
             st.write(f"### 📝 编辑技能: `{selected_skill_name}`")
-            
+
             # Load metadata for display
-            curr_meta = next((s for s in skills_meta if s['name'] == selected_skill_name), {})
+            curr_meta = next((s for s in skills_meta if s["name"] == selected_skill_name), {})
             st.info(f"领域: {curr_meta.get('domain', 'unknown')} | 优先级: {curr_meta.get('priority', 'medium')}")
-            
+
             # Load existing content
             existing_content = SkillLoader.load_by_name(selected_skill_name)
-            
+
             # Check if we should override with AI preview
             if st.session_state.get("preview_skill_name") == selected_skill_name:
                 display_content = st.session_state.get("preview_skill_content", existing_content)
@@ -209,9 +208,9 @@ with tab_skills:
                 display_content = existing_content
 
             edited_content = st.text_area("编辑内容 (Editor)", value=display_content, height=600)
-            
+
             btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 3])
-            
+
             with btn_col1:
                 if st.button("💾 更新 (Save)", key="save_existing"):
                     if SkillLoader.save_skill(selected_skill_name, edited_content):
@@ -220,7 +219,7 @@ with tab_skills:
                             del st.session_state["preview_skill_content"]
                             del st.session_state["preview_skill_name"]
                         st.rerun()
-            
+
             with btn_col2:
                 if st.button("🗑️ 删除 (Delete)", key="delete_skill"):
                     skill_file = SkillLoader.SKILLS_DIR / f"{selected_skill_name}.md"
@@ -253,7 +252,7 @@ with tab_skills:
 # ============================================================================
 with tab_audit:
     st.subheader("🛡️ 自我学习审计日志")
-    
+
     # 1. Config
     st.write("### ⚙️ 设置")
     try:
@@ -261,48 +260,50 @@ with tab_audit:
         curr_mode = res.json().get("mode", "manual")
     except Exception:
         curr_mode = "manual"
-        
-    new_mode = st.radio("学习模式 (Learning Mode)", ["manual", "auto"], index=0 if curr_mode == "manual" else 1, horizontal=True)
+
+    new_mode = st.radio(
+        "学习模式 (Learning Mode)", ["manual", "auto"], index=0 if curr_mode == "manual" else 1, horizontal=True
+    )
     if new_mode != curr_mode:
         requests.post(f"{API_BASE}/skill-learning/config/mode", params={"mode": new_mode})
         st.success(f"已切换为: {new_mode}")
         time.sleep(1)
         st.rerun()
-        
+
     st.info("""
     - **Manual**: Agent 提出的规则仅记录，需人工审核通过后生效。
     - **Auto**: Agent 提出的规则立即生效（直接写入技能卡），但保留审计日志供回滚。
     """)
-    
+
     st.divider()
-    
+
     # 2. Logs
     st.write("### 📜 变更记录")
-    
+
     try:
         logs_res = requests.get(f"{API_BASE}/skill-learning/logs", params={"limit": 50})
         logs = logs_res.json()
     except Exception as e:
         st.error(f"无法获取日志: {e}")
         logs = []
-        
+
     if logs:
         # Convert to DF for display
         df_logs = pd.DataFrame(logs)
         # Rename cols for display
         display_df = df_logs[["id", "created_at", "skill_name", "status", "reason", "rule_content"]]
-        
+
         # Display as table
         st.dataframe(display_df, use_container_width=True)
-        
+
         # Action Area for Pending
         st.write("### ⚠️ 待审核项 (Pending Review)")
         pending_logs = [l for l in logs if l["status"] == "pending"]
-        
+
         if pending_logs:
             for p_log in pending_logs:
                 with st.expander(f"[{p_log['id']}] {p_log['skill_name']}: {p_log['reason']}"):
-                    st.code(p_log['rule_content'], language="markdown")
+                    st.code(p_log["rule_content"], language="markdown")
                     col_a, col_r = st.columns(2)
                     with col_a:
                         if st.button("✅ 批准 (Approve)", key=f"app_{p_log['id']}"):
@@ -316,6 +317,6 @@ with tab_audit:
                             st.rerun()
         else:
             st.info("没有待审核的项目")
-            
+
     else:
         st.info("暂无审计日志")

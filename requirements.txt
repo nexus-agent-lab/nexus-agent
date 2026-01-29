@@ -24,3 +24,4 @@ sqlalchemy
 python-telegram-bot
 python-dotenv
 aiosqlite
+

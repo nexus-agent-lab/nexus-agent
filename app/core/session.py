@@ -4,11 +4,9 @@ import uuid
 from typing import List, Optional
 
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 
 from app.core.db import AsyncSessionLocal
 from app.models.session import Session, SessionMessage
-from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
@@ -37,13 +35,8 @@ class SessionManager:
             # If no UUID provided or not found, try to find latest active session
             # (Optional: define policy here - always new? or reuse latest?)
             # For now, let's create a NEW session if UUID not provided to avoid endless context
-            
-            new_session = Session(
-                user_id=user_id,
-                session_uuid=str(uuid.uuid4()),
-                active=True,
-                title="New Chat"
-            )
+
+            new_session = Session(user_id=user_id, session_uuid=str(uuid.uuid4()), active=True, title="New Chat")
             db.add(new_session)
             await db.commit()
             await db.refresh(new_session)
@@ -59,7 +52,7 @@ class SessionManager:
         tool_call_id: Optional[str] = None,
         tool_name: Optional[str] = None,
         is_pruned: bool = False,
-        original_content: Optional[str] = None
+        original_content: Optional[str] = None,
     ) -> SessionMessage:
         """
         Save a message to the session history.
@@ -74,7 +67,7 @@ class SessionManager:
                 tool_name=tool_name,
                 is_pruned=is_pruned,
                 original_content=original_content,
-                token_count=len(content) // 4  # Allow approximation or pass from outside
+                token_count=len(content) // 4,  # Allow approximation or pass from outside
             )
             db.add(msg)
             await db.commit()
@@ -107,14 +100,14 @@ class SessionManager:
             return content, False, None
 
         logger.info(f"Pruning output for tool {tool_name} (size: {len(content)})")
-        
+
         original = content
         summary = f"[Tool Output Truncated] Original size: {len(content)} chars.\n"
 
         try:
             # Try to parse as JSON
             data = json.loads(content)
-            
+
             if isinstance(data, list):
                 summary += f"Type: List, Count: {len(data)} items.\n"
                 # Extract first 3 items IDs if possible
@@ -124,17 +117,17 @@ class SessionManager:
                         ids.append(str(item.get("entity_id") or item.get("id") or "item"))
                 if ids:
                     summary += f"Sample IDs: {', '.join(ids)}...\n"
-            
+
             elif isinstance(data, dict):
                 summary += f"Type: Dict. Keys: {', '.join(list(data.keys())[:5])}...\n"
-                
+
             else:
                 summary += "Structure: Complex JSON.\n"
-                
+
         except json.JSONDecodeError:
             summary += "Format: Text/Raw.\n"
             summary += f"Preview: {content[:100]}...\n"
 
         summary += "Use `python_sandbox` to process the full data if needed."
-        
+
         return summary, True, original

@@ -10,11 +10,6 @@ from sqlmodel import SQLModel
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-from app.models.memory import Memory
-from app.models.session import Session, SessionMessage
-from app.models.skill_log import SkillChangelog
-from app.models.settings import SystemSetting
-from app.models.user import User
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://nexus:nexus_password@localhost:5432/nexus_db")
 

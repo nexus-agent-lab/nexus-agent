@@ -19,6 +19,7 @@ os.environ["LLM_API_KEY"] = "sk-dummy"
 os.environ["OPENAI_API_KEY"] = "sk-dummy"
 # Use file-based sqlite for sharing between app and test fixtures
 import tempfile
+
 TEST_DB_DIR = tempfile.mkdtemp()
 TEST_DB_PATH = os.path.join(TEST_DB_DIR, "test.db")
 os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{TEST_DB_PATH}"
@@ -29,10 +30,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine  # noqa: E4
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 from sqlmodel import SQLModel  # noqa: E402
 
-from app.core.db import get_session  # noqa: E402
-from app.core.db import get_session  # noqa: E402
 import app.core.db  # Import module for patching
-import app.core.session # Import module for patching
+import app.core.session  # Import module for patching
+from app.core.db import get_session  # noqa: E402
 from app.main import app as fastapi_app  # noqa: E402
 from app.models.user import User  # noqa: E402
 
@@ -70,7 +70,7 @@ async def test_db() -> AsyncGenerator[AsyncSession, None]:
     # This ensures background tasks (SessionManager) use the same DB
     original_sessionmaker = app.core.db.AsyncSessionLocal
     app.core.db.AsyncSessionLocal = async_session
-    
+
     # Also patch app.core.session because it imported AsyncSessionLocal
     original_session_sessionmaker = getattr(app.core.session, "AsyncSessionLocal", None)
     app.core.session.AsyncSessionLocal = async_session
@@ -176,5 +176,6 @@ def test_env():
     yield
     # Cleanup directory
     import shutil
+
     if os.path.exists(TEST_DB_DIR):
         shutil.rmtree(TEST_DB_DIR, ignore_errors=True)

@@ -32,13 +32,13 @@ class SkillLoader:
                 content = skill_file.read_text(encoding="utf-8")
                 metadata = cls._extract_metadata(content)
                 critical_rules = cls._extract_section(content, "Critical Rules")
-                
+
                 skill_entry = f"### {skill_file.stem} (Domain: {metadata.get('domain', 'general')})\n"
                 if critical_rules:
                     skill_entry += f"{critical_rules}\n"
                 else:
                     skill_entry += "No critical rules defined.\n"
-                    
+
                 skills.append(skill_entry)
             except Exception as e:
                 logger.error(f"Failed to load skill {skill_file.name}: {e}")
@@ -89,25 +89,25 @@ class SkillLoader:
         lines = content.split("\n")
         start_idx = -1
         end_idx = -1
-        
+
         # Find start
         for i, line in enumerate(lines):
             if line.strip().startswith("##") and section_name.lower() in line.lower():
                 start_idx = i + 1
                 break
-                
+
         if start_idx == -1:
             return None
-            
+
         # Find end (next header or end of file)
         for i in range(start_idx, len(lines)):
             if lines[i].strip().startswith("##"):
                 end_idx = i
                 break
-                
+
         if end_idx == -1:
             end_idx = len(lines)
-            
+
         section_content = "\n".join(lines[start_idx:end_idx]).strip()
         return section_content if section_content else None
 
@@ -241,7 +241,7 @@ class SkillLoader:
             return False
 
         learned_header = "## 🧠 Learned Rules"
-        
+
         # Check if rule already exists (simple substring check for now)
         if rule_content in content:
             logger.info(f"Rule already exists in {skill_name}, skipping.")
@@ -253,7 +253,7 @@ class SkillLoader:
             lines = content.split("\n")
             insert_idx = -1
             found_header = False
-            
+
             for i, line in enumerate(lines):
                 if learned_header in line:
                     found_header = True
@@ -261,10 +261,10 @@ class SkillLoader:
                 if found_header and line.strip().startswith("##"):
                     insert_idx = i
                     break
-            
+
             if insert_idx == -1:
                 insert_idx = len(lines)
-                
+
             # Insert before the next header (ensure newline)
             new_lines = lines[:insert_idx] + [f"- {rule_content}"] + lines[insert_idx:]
             new_content = "\n".join(new_lines)
@@ -273,4 +273,3 @@ class SkillLoader:
             new_content = content.strip() + f"\n\n{learned_header}\n\n- {rule_content}\n"
 
         return cls.save_skill(skill_name, new_content)
-

@@ -92,7 +92,6 @@ async def retrieve_memories(state: AgentState):
 
     return {"memories": memory_strings}
 
-
     return {"memories": memory_strings}
 
 
@@ -109,31 +108,31 @@ async def load_session_history(state: AgentState):
     # For now, we assume one active session per user or create new
     # Ideally, the frontend should pass a session_id if resuming
     session = await SessionManager.get_or_create_session(user.id)
-    
+
     # Load history (e.g., last 10 messages)
     history = await SessionManager.get_history(session.id, limit=10)
-    
+
     # Store session ID in state for saving future messages
     # We'll need to update AgentState definition to include session_id
-    
+
     # Convert DB messages back to LangChain format
     lc_messages = []
     for msg in history:
         if msg.type == "human":
             lc_messages.append(HumanMessage(content=msg.content))
         elif msg.type == "ai":
-            # Reconstruct tool calls if we stored them (not fully implemented in DB model yet, 
+            # Reconstruct tool calls if we stored them (not fully implemented in DB model yet,
             # for now simple text restoration)
             # If we had tool_call_id, we'd reconstruct AIMessage(tool_calls=...)
             # For this MVP, we focus on text context
             lc_messages.append(AIMessage(content=msg.content))
         elif msg.type == "tool":
             lc_messages.append(ToolMessage(content=msg.content, tool_call_id=msg.tool_call_id or "unknown"))
-            
-    # Combine with current input messages? 
+
+    # Combine with current input messages?
     # Actually, state["messages"] usually contains JUST the new input from user at start.
     # We should PREPEND history.
-    
+
     return {"messages": lc_messages, "session_id": session.id}
 
 
@@ -145,31 +144,30 @@ async def save_interaction_node(state: AgentState):
     session_id = state.get("session_id")
     if not session_id:
         return {}
-        
+
     messages = state["messages"]
     if not messages:
         return {}
-        
+
     last_msg = messages[-1]
-    
+
     # Determine role and type
     role, msg_type = "user", "human"
     if isinstance(last_msg, AIMessage):
         role, msg_type = "assistant", "ai"
     elif isinstance(last_msg, ToolMessage):
         role, msg_type = "tool", "tool"
-    
+
     # Pruning check for ToolMessages
     content = last_msg.content
     is_pruned = False
     original_content = None
-    
+
     if isinstance(last_msg, ToolMessage):
         content, is_pruned, original_content = await SessionManager.prune_tool_output(
-            str(last_msg.content), 
-            getattr(last_msg, "name", "unknown")
+            str(last_msg.content), getattr(last_msg, "name", "unknown")
         )
-            
+
     await SessionManager.save_message(
         session_id=session_id,
         role=role,
@@ -178,11 +176,10 @@ async def save_interaction_node(state: AgentState):
         tool_call_id=getattr(last_msg, "tool_call_id", None),
         tool_name=getattr(last_msg, "name", None),
         is_pruned=is_pruned,
-        original_content=original_content if is_pruned else None
+        original_content=original_content if is_pruned else None,
     )
-    
-    return {}
 
+    return {}
 
     return {"memories": memory_strings}
 
@@ -198,10 +195,10 @@ async def load_session_history(state: AgentState):
 
     # Get active session
     session = await SessionManager.get_or_create_session(user.id)
-    
+
     # Load history (e.g., last 10 messages)
     history = await SessionManager.get_history(session.id, limit=10)
-    
+
     # Convert DB messages back to LangChain format
     lc_messages = []
     for msg in history:
@@ -210,82 +207,86 @@ async def load_session_history(state: AgentState):
         elif msg.type == "ai":
             lc_messages.append(AIMessage(content=msg.content))
         elif msg.type == "tool":
-            lc_messages.append(ToolMessage(content=msg.content, tool_call_id=msg.tool_call_id or "unknown", name=msg.tool_name or "unknown"))
-            
+            lc_messages.append(
+                ToolMessage(
+                    content=msg.content, tool_call_id=msg.tool_call_id or "unknown", name=msg.tool_name or "unknown"
+                )
+            )
+
     # We return messages to be PREPENDED to the current state messages
     # LangGraph's add operator will handle this if we return {"messages": lc_messages}
-    # BUT we want to ensure history is before current input. 
-    # Current input is already in state["messages"]. 
+    # BUT we want to ensure history is before current input.
+    # Current input is already in state["messages"].
     # If we return {"messages": lc_messages}, they get appended.
-    # So we might need to manually reconstruct the list order if we want precise control, 
-    # but `add` usually appends. 
+    # So we might need to manually reconstruct the list order if we want precise control,
+    # but `add` usually appends.
     # Actually, if we return `{"messages": lc_messages}`, they are added to the existing ones.
-    # To prepend, we might need a custom reducer or just accept that history comes after the user input? 
+    # To prepend, we might need a custom reducer or just accept that history comes after the user input?
     # Wait, history MUST be before the *current* user input.
     # The current input is in `state['messages']` when the graph starts.
-    # If we are effectively "initializing" the state, we might replace? 
+    # If we are effectively "initializing" the state, we might replace?
     # LangGraph's default reducer is add.
-    
+
     # WORKAROUND: For this MVP, we assume the graph starts with the USER INPUT.
     # We want History + User Input.
     # If we return messages, they are appended. User Input + History = Bad.
-    # We probably need to return a NEW list that includes everything? 
+    # We probably need to return a NEW list that includes everything?
     # Or rely on the fact that we can modify the list if we use a custom reducer.
-    
-    # Better approach: 
+
+    # Better approach:
     # We can use a custom reducer for messages, but standard is `operator.add`.
-    # Let's try to just return the session_id for now, and handle history loading 
+    # Let's try to just return the session_id for now, and handle history loading
     # by ensuring this node runs FIRST and maybe we can mutate the state if we are careful,
     # or we can just accept that "messages" is a sequence.
-    
+
     # Alternative: The "load_history" node returns `messages` which are added.
     # To fix order, we might need to clear messages and re-add them?
     # No, that's messy.
-    
-    # Let's just return session_id for now and solve history injection order 
-    # by using a separate key "history" or assume we can live with appending for a moment 
+
+    # Let's just return session_id for now and solve history injection order
+    # by using a separate key "history" or assume we can live with appending for a moment
     # (which is wrong).
-    
+
     # CORRECT FIX for LangGraph:
-    # If we want to prepend, we can return `{"messages": lc_messages + state["messages"]}` 
+    # If we want to prepend, we can return `{"messages": lc_messages + state["messages"]}`
     # IF the reducer supports overwrite or we are careful.
     # But `operator.add` will append `lc_messages + state["messages"]` to `state["messages"]`.
     # Duplicate user input!
-    
-    # Let's keep it simple: We return `session_id`. We rely on `retrieve_memories` or `agent` 
-    # to actually USE the history if needed, OR we inject it into the prompt explicitly 
+
+    # Let's keep it simple: We return `session_id`. We rely on `retrieve_memories` or `agent`
+    # to actually USE the history if needed, OR we inject it into the prompt explicitly
     # without modifying `messages` state variable.
     # BUT standard is to have it in messages.
-    
-    # Let's try to just return `session_id` and `messages=lc_messages`. 
+
+    # Let's try to just return `session_id` and `messages=lc_messages`.
     # If they are appended after user input, the LLM sees: User: "Hi", History: "...", User: "Hi".
     # That's confusing.
-    
+
     # Strategy: We assume `state["messages"]` has the current user input.
-    # Implementation detail: We can return NOTHING for messages here, but manually 
+    # Implementation detail: We can return NOTHING for messages here, but manually
     # Insert into the list if we modify the list object in place? No, `state` is immutable-ish in flow.
-    
-    # Let's stick to just returning session_id, and we modify `call_model` to prepend history 
+
+    # Let's stick to just returning session_id, and we modify `call_model` to prepend history
     # from a separate state key if we wanted.
     # BUT `AgentState` defines messages as `Annotated[Sequence, operator.add]`.
-    
-    # Let's return `messages` now. If they are out of order, we will fix later. 
+
+    # Let's return `messages` now. If they are out of order, we will fix later.
     # Actually, current User Input is typically LAST.
-    # History should be BEFORE it. 
-    
-    # If we run this node first, and it returns history, history is added. 
+    # History should be BEFORE it.
+
+    # If we run this node first, and it returns history, history is added.
     # But current input was added at graph start.
     # So: [User Input] + [History].
-    
+
     # To fix this, the entry point should be a node that constructs the initial state properly.
     # Or we can just leave it as is for this iteration and focus on SAVING.
-    # For loading, we can inject into system prompt? 
-    
+    # For loading, we can inject into system prompt?
+
     # Let's try to just return session_id for now to enable SAVING.
-    # We will handle Loading by a direct DB call inside `call_model` or `retrieve_memories` 
+    # We will handle Loading by a direct DB call inside `call_model` or `retrieve_memories`
     # to prepend to the list passed to LLM (without modifying state).
     # Ideally `retrieve_memories` does exactly this context assembly.
-    
+
     return {"session_id": session.id}
 
 
@@ -296,29 +297,33 @@ async def save_interaction_node(state: AgentState):
     session_id = state.get("session_id")
     if not session_id or not state["messages"]:
         return {}
-        
+
     last_msg = state["messages"][-1]
-    
+
     role, msg_type = "user", "human"
     if isinstance(last_msg, AIMessage):
         role, msg_type = "assistant", "ai"
     elif isinstance(last_msg, ToolMessage):
         role, msg_type = "tool", "tool"
-    
+
     content = str(last_msg.content)
     is_pruned = False
     original_content = None
-    
+
     if isinstance(last_msg, ToolMessage):
         content, is_pruned, original_content = await SessionManager.prune_tool_output(
             content, getattr(last_msg, "name", "unknown")
         )
-            
+
     await SessionManager.save_message(
-        session_id=session_id, role=role, type=msg_type, content=content,
+        session_id=session_id,
+        role=role,
+        type=msg_type,
+        content=content,
         tool_call_id=getattr(last_msg, "tool_call_id", None),
         tool_name=getattr(last_msg, "name", None),
-        is_pruned=is_pruned, original_content=original_content if is_pruned else None
+        is_pruned=is_pruned,
+        original_content=original_content if is_pruned else None,
     )
     return {}
 
@@ -395,7 +400,7 @@ def create_agent_graph(tools: list):
 
     async def call_model(state: AgentState):
         messages = list(state["messages"])
-        
+
         # Prepend History from DB (if session_id exists)
         session_id = state.get("session_id")
         if session_id:
@@ -409,18 +414,18 @@ def create_agent_graph(tools: list):
                     history_msgs.append(AIMessage(content=msg.content))
                 elif msg.type == "tool":
                     # For simplicity, we restore tool outputs as ToolMessages
-                    history_msgs.append(ToolMessage(
-                        content=msg.content, 
-                        tool_call_id=msg.tool_call_id or "unknown", 
-                        name=msg.tool_name or "unknown"
-                    ))
-            
+                    history_msgs.append(
+                        ToolMessage(
+                            content=msg.content,
+                            tool_call_id=msg.tool_call_id or "unknown",
+                            name=msg.tool_name or "unknown",
+                        )
+                    )
+
             # Combine: [History] + [Current Messages]
             # Note: Current messages usually start with User Input.
             messages = history_msgs + messages
 
-        
-            
         # 3. System Prompt logic...
 
         # Ensure System Prompt is present
@@ -651,34 +656,34 @@ def create_agent_graph(tools: list):
         return {"messages": outputs}
 
     workflow = StateGraph(AgentState)
-    
+
     # Logic Nodes
     workflow.add_node("load_history", load_session_history)
     workflow.add_node("retrieve_memories", retrieve_memories)
     workflow.add_node("agent", call_model)
     workflow.add_node("tools", tool_node_with_permissions)
     workflow.add_node("reflexion", reflexion_node)
-    
+
     # Saving Nodes (Pass-through)
     workflow.add_node("save_agent", save_interaction_node)
     workflow.add_node("save_tool", save_interaction_node)
-    
+
     # Flow
     workflow.set_entry_point("load_history")
-    
+
     workflow.add_edge("load_history", "retrieve_memories")
     workflow.add_edge("retrieve_memories", "agent")
 
     # After Agent generates message, save it
     workflow.add_edge("agent", "save_agent")
-    
+
     # Then decide where to go
     workflow.add_conditional_edges("save_agent", should_continue)
-    
+
     # After Tools run, save the output, then reflect/loop back
     workflow.add_edge("tools", "save_tool")
     workflow.add_conditional_edges("save_tool", should_reflect)
-    
+
     workflow.add_edge("reflexion", "agent")
 
     return workflow.compile()
