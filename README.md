@@ -139,23 +139,23 @@ graph TD
 - [x] **Interfaces**: Telegram Bot, CLI
 - [ ] **Enterprise**: Feishu (Lark) Integration (Coming Soon / 即将推出)
 - [ ] **Capabilities**: Computer Use / Desktop Automation (WIP)
-- [ ] **Capabilities**: Computer Use / Desktop Automation (WIP)
+- [ ] **Reliability**: Persistent Telegram Message Queue (Redis/Postgres) / 消息队列持久化
 
 ## 🌍 Remote Access & Security / 远程访问与安全
 
-Nexus Agent prioritizes security for home and enterprise deployments:
+Nexus Agent 把安全放在首位，无论是家庭还是企业部署：
 
-1.  **Private Network (Tailscale)**: 
-    - Built-in Tailscale Sidecar ensures secure, encrypted access without exposing ports.
-    - No public IP required; accessible via MagicDNS (e.g., `http://nexus-agent-server:8501`).
-    - [Setup Guide](https://tailscale.com/kb/1017/install) | [Admin Console](https://login.tailscale.com/admin/machines)
+1.  **Private Network (Tailscale) / 私有网络**:
+    - 内置 **Tailscale Sidecar**，无需在路由器开放端口即可实现加密安全访问。
+    - 无需公网 IP，通过 MagicDNS 直接访问 (例如: `http://nexus-agent-server:8501`)。
+    - [安装指南](https://tailscale.com/kb/1017/install) | [管理后台](https://login.tailscale.com/admin/machines)
 
-2.  **Audit Logs**:
-    - All tool executions and "Self-Learning" rule changes are recorded in the PostgreSQL audit log.
-    - Viewable via the **Mission Control Dashboard**.
+2.  **Audit Logs / 审计日志**:
+    - 所有的工具调用和“自我学习”规则变更都会被记录在 PostgreSQL 审计日志中。
+    - 可以通过 **Mission Control Dashboard** (任务控制台) 查看。
 
-3.  **Authentication**:
-    - Role-based access control (Admin/User) available for Telegram and API endpoints.
+3.  **Authentication / 权限管理**:
+    - Telegram 和 API 端点均支持基于角色的访问控制 (Admin/User)。
 
 ## 📄 License
 
