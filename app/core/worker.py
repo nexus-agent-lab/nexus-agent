@@ -1,9 +1,8 @@
 import asyncio
 import logging
 import time
-import uuid
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from sqlmodel import select
 
 from app.core.db import get_session
@@ -107,8 +106,36 @@ class AgentWorker:
         initial_state = {
             "messages": [HumanMessage(content=msg.content)],
             "user": user,
-            "session_id": str(uuid.uuid4()),
+            "session_id": None,
         }
+
+        # 1. Resolve Session & History
+        # We need to do this OUTSIDE the graph to avoid duplication
+        from app.core.session import SessionManager
+
+        session = await SessionManager.get_or_create_session(user.id)
+        history = await SessionManager.get_history(session.id, limit=10)
+
+        # 2. Convert history to LangChain messages
+        history_msgs = []
+        for h_msg in history:
+            if h_msg.type == "human":
+                history_msgs.append(HumanMessage(content=h_msg.content))
+            elif h_msg.type == "ai":
+                history_msgs.append(AIMessage(content=h_msg.content))
+            elif h_msg.type == "tool":
+                history_msgs.append(
+                    ToolMessage(
+                        content=h_msg.content,
+                        tool_call_id=h_msg.tool_call_id or "unknown",
+                        name=h_msg.tool_name or "unknown",
+                    )
+                )
+
+        # 3. Construct Initial State: [History] + [Current Message]
+        # This ensures the Agent sees the full context immediately
+        initial_state["messages"] = history_msgs + initial_state["messages"]
+        initial_state["session_id"] = session.id
 
         current_thought = ""
         current_status = ""

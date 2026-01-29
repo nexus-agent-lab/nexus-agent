@@ -1,6 +1,8 @@
 ---
 name: PythonSandbox
 domain: data_processing
+description: 执行 Python 代码进行复杂计算、大数据过滤和统计分析
+intent_keywords: ["计算", "过滤", "代码", "分析", "数学", "统计", "处理", "sandbox", "python"]
 priority: high
 mcp_server: null  # Native tool
 ---

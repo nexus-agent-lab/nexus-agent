@@ -15,6 +15,55 @@ class SkillLoader:
     SKILLS_DIR = Path(__file__).parent.parent.parent / "skills"
 
     @classmethod
+    def load_summaries(cls) -> str:
+        """
+        Load a very lightweight summary of all skills for the default system prompt.
+        Format: - [Name] (Domain: [Domain]): [Description]
+        """
+        if not cls.SKILLS_DIR.exists():
+            return ""
+
+        summaries = []
+        for skill_file in sorted(cls.SKILLS_DIR.glob("*.md")):
+            if skill_file.name.startswith("_") or skill_file.name.startswith("."):
+                continue
+
+            try:
+                content = skill_file.read_text(encoding="utf-8")
+                metadata = cls._extract_metadata(content)
+                desc = metadata.get("description", "No description available.")
+
+                summaries.append(f"- **{skill_file.stem}** (Domain: {metadata.get('domain', 'general')}): {desc}")
+            except Exception as e:
+                logger.error(f"Failed to load summary for {skill_file.name}: {e}")
+
+        return "\n".join(summaries)
+
+    @classmethod
+    def load_registry_with_metadata(cls) -> List[Dict]:
+        """
+        Load all skills with their full rules and metadata for dynamic injection.
+        """
+        if not cls.SKILLS_DIR.exists():
+            return []
+
+        registry = []
+        for skill_file in sorted(cls.SKILLS_DIR.glob("*.md")):
+            if skill_file.name.startswith("_") or skill_file.name.startswith("."):
+                continue
+
+            try:
+                content = skill_file.read_text(encoding="utf-8")
+                metadata = cls._extract_metadata(content)
+                critical_rules = cls._extract_section(content, "Critical Rules") or "No critical rules defined."
+
+                registry.append({"name": skill_file.stem, "metadata": metadata, "rules": critical_rules})
+            except Exception as e:
+                logger.error(f"Failed to load skill for registry: {skill_file.name}: {e}")
+
+        return registry
+
+    @classmethod
     def load_registry(cls) -> str:
         """
         Load a lightweight registry of all skills, including only Critical Rules.
@@ -170,22 +219,17 @@ class SkillLoader:
         return skills
 
     @classmethod
-    def _extract_metadata(cls, content: str) -> Dict[str, str]:
+    def _extract_metadata(cls, content: str) -> Dict:
         """
         Extract YAML frontmatter from skill card.
-
-        Args:
-            content: Full skill card content
-
-        Returns:
-            Dict of metadata fields
         """
         metadata = {}
-
         if not content.startswith("---"):
             return metadata
 
         try:
+            import json
+
             # Find the closing ---
             lines = content.split("\n")
             end_idx = None
@@ -197,11 +241,24 @@ class SkillLoader:
             if end_idx is None:
                 return metadata
 
-            # Parse YAML-like frontmatter (simple key: value)
+            # Parse YAML-like frontmatter
             for line in lines[1:end_idx]:
                 if ":" in line:
                     key, value = line.split(":", 1)
-                    metadata[key.strip()] = value.strip()
+                    key = key.strip()
+                    value = value.strip()
+
+                    # Enhanced parsing for lists (intent_keywords)
+                    if (value.startswith("[") and value.endswith("]")) or (
+                        value.startswith("{") and value.endswith("}")
+                    ):
+                        try:
+                            # Try to parse as JSON for complex types
+                            metadata[key] = json.loads(value.replace("'", '"'))
+                        except:
+                            metadata[key] = value
+                    else:
+                        metadata[key] = value
         except Exception as e:
             logger.warning(f"Failed to parse metadata: {e}")
 

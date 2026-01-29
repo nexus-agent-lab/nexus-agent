@@ -93,47 +93,6 @@ async def retrieve_memories(state: AgentState):
     return {"memories": memory_strings}
 
 
-async def load_session_history(state: AgentState):
-    """
-    Loads recent conversation history from the database.
-    This runs at the start of the graph.
-    """
-    user = state.get("user")
-    if not user:
-        return {}
-
-    # Get active session
-    # For now, we assume one active session per user or create new
-    # Ideally, the frontend should pass a session_id if resuming
-    session = await SessionManager.get_or_create_session(user.id)
-
-    # Load history (e.g., last 10 messages)
-    history = await SessionManager.get_history(session.id, limit=10)
-
-    # Store session ID in state for saving future messages
-    # We'll need to update AgentState definition to include session_id
-
-    # Convert DB messages back to LangChain format
-    lc_messages = []
-    for msg in history:
-        if msg.type == "human":
-            lc_messages.append(HumanMessage(content=msg.content))
-        elif msg.type == "ai":
-            # Reconstruct tool calls if we stored them (not fully implemented in DB model yet,
-            # for now simple text restoration)
-            # If we had tool_call_id, we'd reconstruct AIMessage(tool_calls=...)
-            # For this MVP, we focus on text context
-            lc_messages.append(AIMessage(content=msg.content))
-        elif msg.type == "tool":
-            lc_messages.append(ToolMessage(content=msg.content, tool_call_id=msg.tool_call_id or "unknown"))
-
-    # Combine with current input messages?
-    # Actually, state["messages"] usually contains JUST the new input from user at start.
-    # We should PREPEND history.
-
-    return {"messages": lc_messages, "session_id": session.id}
-
-
 async def save_interaction_node(state: AgentState):
     """
     Saves the LAST message in the state to the history.
@@ -238,57 +197,59 @@ def create_agent_graph(tools: list):
     from app.core.skill_loader import SkillLoader
 
     mcp_instructions = MCPManager.get_system_instructions()
-    skill_cards = SkillLoader.load_registry()
+
+    # NEW: Load both summaries and full registry for two-stage loading
+    skill_summaries = SkillLoader.load_summaries()
+    skill_registry = SkillLoader.load_registry_with_metadata()
 
     dynamic_system_prompt = BASE_SYSTEM_PROMPT
 
-    # Layer 1: MCP-specific rules (legacy, will be deprecated)
+    # Layer 1: MCP-specific rules (legacy)
     if mcp_instructions:
         dynamic_system_prompt += f"\n## SPECIFIC DOMAIN RULES\n{mcp_instructions}\n"
 
-    # Layer 2: Skill Cards (new approach)
-    if skill_cards:
-        dynamic_system_prompt += f"\n## LOADED SKILLS\n{skill_cards}\n"
+    # Layer 2: Skill Index (Summaries) - ALWAYS present so Agent knows what it CAN do
+    if skill_summaries:
+        dynamic_system_prompt += (
+            f"\n## AVAILABLE SKILLS (Overview)\n"
+            f"You have the following skills available. Detailed rules for a skill will be activated when relevant.\n"
+            f"{skill_summaries}\n"
+        )
 
     async def call_model(state: AgentState):
         messages = list(state["messages"])
 
-        # Prepend History from DB (if session_id exists)
-        session_id = state.get("session_id")
-        if session_id:
-            # We load history here to ensure it's presented to the LLM BEFORE the current interaction
-            history = await SessionManager.get_history(session_id, limit=10)
-            history_msgs = []
-            for msg in history:
-                if msg.type == "human":
-                    history_msgs.append(HumanMessage(content=msg.content))
-                elif msg.type == "ai":
-                    history_msgs.append(AIMessage(content=msg.content))
-                elif msg.type == "tool":
-                    # For simplicity, we restore tool outputs as ToolMessages
-                    history_msgs.append(
-                        ToolMessage(
-                            content=msg.content,
-                            tool_call_id=msg.tool_call_id or "unknown",
-                            name=msg.tool_name or "unknown",
-                        )
-                    )
+        # 1. Capture User Intent for Dynamic Injection
+        last_human_msg = ""
+        for msg in reversed(messages):
+            if isinstance(msg, HumanMessage):
+                last_human_msg = str(msg.content).lower()
+                break
 
-            # Combine: [History] + [Current Messages]
-            # Note: Current messages usually start with User Input.
-            messages = history_msgs + messages
+        # 2. Dynamic Rule Activation
+        active_rules = []
+        if last_human_msg:
+            for skill in skill_registry:
+                keywords = skill["metadata"].get("intent_keywords", [])
+                # Activation Trigger: If any keyword matches the user message
+                if any(kw.lower() in last_human_msg for kw in keywords):
+                    logger.info(f"🚀 [Dynamic Injection] Activating full rules for skill: {skill['name']}")
+                    active_rules.append(f"### FULL RULES: {skill['name']}\n{skill['rules']}")
 
-        # 3. System Prompt logic...
+        final_system_prompt = dynamic_system_prompt
+        if active_rules:
+            final_system_prompt += "\n## ACTIVE SKILL RULES (CONTEXTUAL)\n" + "\n\n".join(active_rules) + "\n"
 
-        # Ensure System Prompt is present
+        # Ensure System Prompt is present with the latest dynamic rules
         if not messages or not isinstance(messages[0], SystemMessage):
-            messages.insert(0, SystemMessage(content=dynamic_system_prompt))
+            messages.insert(0, SystemMessage(content=final_system_prompt))
         elif isinstance(messages[0], SystemMessage) and "You are Nexus" not in messages[0].content:
-            # If there's already a system message but it's not our base one, prepend ours
-            messages[0] = SystemMessage(content=dynamic_system_prompt + "\n\n" + messages[0].content)
+            messages[0] = SystemMessage(content=final_system_prompt + "\n\n" + messages[0].content)
+        else:
+            # Update the existing system message with new dynamic rules if it was our base one
+            messages[0] = SystemMessage(content=final_system_prompt)
 
         memories = state.get("memories", [])
-
         if memories:
             memory_context = "\n".join(memories)
             system_msg = SystemMessage(
@@ -430,6 +391,12 @@ def create_agent_graph(tools: list):
         for tool_call in last_message.tool_calls:
             tool_name = tool_call["name"]
             tool_to_call = tools_by_name.get(tool_name)
+            if not tool_to_call:
+                error_msg = f"Error: Tool '{tool_name}' not found."
+                logger.error(error_msg)
+                outputs.append(ToolMessage(content=error_msg, name=tool_name, tool_call_id=tool_call["id"]))
+                continue
+
             tool_args = tool_call["args"]
 
             # 1. Permission Check
@@ -510,7 +477,7 @@ def create_agent_graph(tools: list):
     workflow = StateGraph(AgentState)
 
     # Logic Nodes
-    workflow.add_node("load_history", load_session_history)
+    # Logic Nodes
     workflow.add_node("retrieve_memories", retrieve_memories)
     workflow.add_node("agent", call_model)
     workflow.add_node("tools", tool_node_with_permissions)
@@ -521,9 +488,8 @@ def create_agent_graph(tools: list):
     workflow.add_node("save_tool", save_interaction_node)
 
     # Flow
-    workflow.set_entry_point("load_history")
+    workflow.set_entry_point("retrieve_memories")
 
-    workflow.add_edge("load_history", "retrieve_memories")
     workflow.add_edge("retrieve_memories", "agent")
 
     # After Agent generates message, save it

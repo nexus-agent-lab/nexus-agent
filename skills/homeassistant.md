@@ -1,6 +1,8 @@
 ---
 name: HomeAssistant
 domain: smart_home
+description: 查询和控制智能家居设备（灯、开关、传感器、空调等）
+intent_keywords: ["温度", "灯", "设备", "状态", "空调", "家居", "客厅", "卧室", "厨房", "阳台"]
 priority: high
 mcp_server: homeassistant
 generated_by: placeholder  # Replace with actual generation
