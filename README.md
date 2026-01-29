@@ -98,20 +98,34 @@ graph TD
 
 ## 🚀 Quick Start / 快速开始
 
-1.  **Clone Repository / 克隆仓库**
+1.  **Install & Configure Ollama** / **安装 Ollama**
+    - Download from [Ollama.com](https://ollama.com).
+    - Pull the **GLM-4.7-flash** Model (Required for high performance):
+      ```bash
+      # Mac mini M4 (32GB) Requirement
+      # Create custom model with 32k context
+      ollama create glm4.7-flash-32k -f ./scripts/glm4-flash-32k.Modelfile
+      ```
+
+2.  **Environment Setup** / **环境配置**
     ```bash
     git clone https://github.com/nexus-agent-lab/nexus-agent.git
     cd nexus-agent
+    
+    # Configure Tailscale & Env (Interactive Script)
+    ./scripts/admin/setup_tailscale.sh
+    
+    # Or manually copy config
+    # cp .env.example .env
     ```
+    
+    > **Tip / 提示**: 
+    > To enable Telegram control:
+    > 1. Talk to `@BotFather` to create a bot -> Get `TELEGRAM_BOT_TOKEN`.
+    > 2. Talk to `@userinfobot` -> Get your ID -> Set `TELEGRAM_ALLOWED_USERS`.
+    > 3. Add them to your `.env` file.
 
-2.  **Configuration / 配置环境**
-    ```bash
-    cp .env.example .env
-    # Edit .env to set LLM_MODEL (e.g., qwen2.5:14b or glm-4)
-    # 修改 .env 文件配置模型参数
-    ```
-
-3.  **Launch / 启动服务**
+3.  **Launch** / **启动服务**
     ```bash
     docker-compose up -d --build
     ```

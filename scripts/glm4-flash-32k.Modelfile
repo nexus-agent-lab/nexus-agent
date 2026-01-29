@@ -1,0 +1,5 @@
+FROM glm-4.7-flash
+PARAMETER num_ctx 32768
+
+# Set temperature (Lower is better for precise tool usage)
+PARAMETER temperature 0.1
