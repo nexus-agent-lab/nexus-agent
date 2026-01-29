@@ -400,25 +400,22 @@ def create_agent_graph(tools: list):
             tool_args = tool_call["args"]
 
             # 1. Permission Check
-            required_role = getattr(tool_to_call, "required_role", "user")
+            from app.core.auth_service import AuthService
 
-            if required_role == "user" and hasattr(tool_to_call, "coroutine"):
-                required_role = getattr(tool_to_call.coroutine, "required_role", "user")
+            # Infer domain from tool name or tags (Simplification)
+            # e.g. "homeassistant_get_state" -> domain="homeassistant" ??
+            # For now, default to "standard" and rely on tool name blocking.
 
-            # DEBUG LOG
-            print(
-                f"DEBUG: Permission Check for '{tool_name}': "
-                f"Required={required_role}, "
-                f"User={user.username if user else 'None'}, "
-                f"Role={user.role if user else 'None'}"
-            )
-
-            if required_role == "admin" and (not user or user.role != "admin"):
-                err_msg = f"Error: Permission denied. Tool '{tool_name}' requires '{required_role}' role."
+            if not AuthService.check_tool_permission(user, tool_name, domain="standard"):
+                err_msg = (
+                    f"Error: Permission denied. Access to tool '{tool_name}' is restricted for user '{user.username}'."
+                )
                 async with AuditInterceptor(
                     trace_id=trace_id, user_id=user.id if user else None, tool_name=tool_name, tool_args=tool_args
                 ):
-                    raise PermissionError(err_msg)
+                    # We treat policy denial as a soft error for the agent to know,
+                    # but we also raise exception to abort execution.
+                    pass  # AuditInterceptor handles logging
 
                 outputs.append(ToolMessage(content=err_msg, name=tool_name, tool_call_id=tool_call["id"]))
                 continue

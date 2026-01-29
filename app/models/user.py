@@ -1,13 +1,40 @@
-from typing import Optional
+from datetime import datetime
+from typing import Any, Dict, Optional
 
-from sqlmodel import Field, SQLModel
+from sqlalchemy import JSON, Column
+from sqlmodel import Field, Relationship, SQLModel
 
 
 class User(SQLModel, table=True):
+    __tablename__ = "users"
+
     id: Optional[int] = Field(default=None, primary_key=True)
     username: str = Field(index=True)
     api_key: str = Field(unique=True, index=True)
-    role: str = Field(default="user")  # 'admin' or 'user'
+    role: str = Field(default="user")  # 'admin', 'user', 'guest'
+
+    # Granular Permission Policy
+    # Example: {"allow_domains": ["clock"], "deny_tools": ["system_shell"]}
+    policy: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))
+
+    # Relationships
+    identities: list["UserIdentity"] = Relationship(back_populates="user")
+
+
+class UserIdentity(SQLModel, table=True):
+    __tablename__ = "user_identities"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id")
+
+    provider: str = Field(index=True)  # 'telegram', 'feishu', 'dingtalk'
+    provider_user_id: str = Field(index=True)  # '12345678', 'ou_xxxx'
+    provider_username: Optional[str] = Field(default=None)  # '@mike'
+
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    last_seen: Optional[datetime] = Field(default=None)
+
+    user: User = Relationship(back_populates="identities")
 
 
 class Context(SQLModel, table=True):

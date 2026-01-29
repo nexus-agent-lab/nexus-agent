@@ -17,6 +17,32 @@ class InterfaceDispatcher:
     _task = None
 
     @classmethod
+    async def get_handler(cls, channel: ChannelType):
+        if channel == ChannelType.TELEGRAM:
+            # Lazy import to avoid circular dependencies
+            from app.interfaces.telegram import send_telegram_message
+
+            return send_telegram_message
+
+        elif channel == ChannelType.FEISHU:
+            from app.interfaces.feishu import send_feishu_message
+
+            return send_feishu_message
+
+        elif channel == ChannelType.DINGTALK:
+            # Placeholder for DingTalk
+            # from app.interfaces.dingtalk import send_dingtalk_message
+            # return send_dingtalk_message
+            pass
+
+        elif channel in cls._send_handlers:  # Corrected from cls._handlers
+            return cls._send_handlers[channel]
+
+        return None
+        # This line is unreachable due to the return None above it.
+        # logger.info(f"Registered Outbound Handler for: {channel.value}")
+
+    @classmethod
     def register_handler(cls, channel: ChannelType, handler: Callable):
         """
         Register a function to handle sending messages for a specific channel.

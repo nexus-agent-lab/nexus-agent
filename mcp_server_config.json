@@ -21,6 +21,12 @@
                 }
             }
         },
+        "feishu": {
+            "url": "http://mcp-feishu:3333/sse",
+            "source": "remote",
+            "enabled": true,
+            "required_role": "user"
+        },
         "demo_server": {
             "command": "python",
             "args": [

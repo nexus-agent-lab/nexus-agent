@@ -57,6 +57,9 @@ async def lifespan(app: FastAPI):
 
     # Start Background Services
     asyncio.create_task(run_telegram_bot())
+    from app.interfaces.feishu import run_feishu_bot
+
+    asyncio.create_task(run_feishu_bot())
     asyncio.create_task(InterfaceDispatcher.start())
     asyncio.create_task(AgentWorker.start())
 
@@ -78,6 +81,10 @@ app = FastAPI(title="Nexus Agent API", version="2.0.0", lifespan=lifespan)
 # Register API routers
 app.include_router(skills_router)
 app.include_router(skills_learning_router)
+
+from app.api.auth import router as auth_router
+
+app.include_router(auth_router)
 
 
 class ChatRequest(BaseModel):

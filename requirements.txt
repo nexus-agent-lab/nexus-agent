@@ -25,3 +25,4 @@ python-telegram-bot
 python-dotenv
 aiosqlite
 
+lark-oapi>=1.0.0

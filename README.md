@@ -25,9 +25,12 @@
 2.  **Enterprise Connector**: Once trusted, deploy the same agent to enterprise environments to bridge internal tools (Feishu/Lark, DingTalk) with local secure reasoning.
 
 ### ⚡ Hardware & Performance
-Optimized for **Mac mini M4 (32GB RAM)**:
--   **Inference**: capable of running **GLM-4.7-Flash** (or Qwen2.5-32B) locally with high token/sec rates.
--   **Memory**: vectorized long-term memory accelerated by Metal (MPS).
+**Flexible Deployment**:
+-   **Cloud LLM Mode**: Supports OpenAI, Anthropic (Claude 3.5), or DeepSeek. Runs on **any hardware** (even a basic MacBook Air or Raspberry Pi).
+-   **Local Privacy Mode**:
+    -   **Recommended (Best Value)**: Optimized for **Mac mini M4 (32GB RAM)**. This is the minimum config for high-quality local inference.
+    -   Inference capability: **GLM-4.7-Flash** or Qwen2.5-32B locally.
+    -   Vectorized long-term memory accelerated by Metal (MPS).
 
 ### 🌟 Key Features
 -   **Autonomous Core**: Self-learning agent that proposes rules to fix its own tool usage errors.
@@ -50,9 +53,12 @@ Optimized for **Mac mini M4 (32GB RAM)**:
 2.  **企业级对接**：经过验证的 Agent 可无缝接入企业环境，作为安全网关连接 Feishu (飞书)、钉钉等办公流与内部业务系统。
 
 ### ⚡ 硬件与性能
-专为 **Mac mini M4 (32GB 内存)** 优化：
--   **本地推理**：在 32GB 统一内存上流畅运行 **GLM-4.7-Flash** 等高性能模型。
--   **硬件加速**：利用 Metal (MPS) 实现向量数据库 (pgvector) 的极速检索。
+**灵活部署方案**：
+-   **云端模型模式 (Cloud)**：支持 OpenAI, Claude, DeepSeek 等云端 API。普通笔记本即可流畅运行。
+-   **本地隐私模式 (Local)**：
+    -   **推荐配置 (最具性价比)**：**Mac mini M4 (32GB 内存)**。这是获得高质量本地体验的最低门槛。
+    -   本地推理：在 32GB 统一内存上流畅运行 **GLM-4.7-Flash** 等高性能模型。
+    -   硬件加速：利用 Metal (MPS) 实现向量数据库 (pgvector) 的极速检索。
 
 ### 🌟 核心特性
 -   **自主进化内核**：Agent 具备自我反思能力，能自动纠正工具调用错误并生成新的技能规则。
@@ -81,6 +87,7 @@ graph TD
 
     subgraph Skills [MCP Servers / 技能层]
         HA[Home Assistant MCP]
+        FeishuMPC[Feishu Office MCP]
         File[FileSystem MCP]
         System[MacOS System Control]
     end
@@ -94,6 +101,7 @@ graph TD
     FS --> Router
     Router --> Planner
     Planner --> HA
+    Planner --> FeishuMPC
     Planner --> Sandbox
     Planner --> System
     HA --> Ollama
@@ -140,9 +148,10 @@ graph TD
 
 - [x] **Core**: Local LLM Support (Ollama/Qwen2.5/GLM), Active Memory (pgvector)
 - [x] **Interfaces**: Telegram Bot, CLI
-- [ ] **Enterprise**: Feishu (Lark) Integration (Coming Soon / 即将推出)
+- [x] **Enterprise**: Feishu (Lark) Integration (Bot + MCP)
+- [ ] **Enterprise**: DingTalk Integration (Next)
 - [ ] **Capabilities**: Computer Use / Desktop Automation (WIP)
-- [ ] **Reliability**: Persistent Telegram Message Queue (Redis/Postgres) / 消息队列持久化
+- [ ] **Reliability**: Persistent Message Queue (Redis/Postgres) / 消息队列持久化
 
 ## 🌍 Remote Access & Security / 远程访问与安全
 

@@ -51,50 +51,87 @@ class AgentWorker:
 
     @classmethod
     async def _resolve_user(cls, msg: UnifiedMessage) -> User:
-        """Resolve Nexus User from UnifiedMessage info."""
-        # This logic mimics get_or_create_telegram_user but generic
+        """Resolve Nexus User from UnifiedMessage using Identity System."""
+        from app.core.auth_service import AuthService
 
-        # 1. Generate API Key based on Channel + Channel ID
-        # e.g. tg_123456, feishu_ou_xxxxx
+        # 1. Try to find existing Identity binding
+        user = await AuthService.get_user_by_identity(msg.channel.value, str(msg.channel_id))
+        if user:
+            return user
+
+        # 2. If not bound, create a temporary/guest user context
+        # This allows UNBOUND users to interact (if allowed) or just to send /bind
+        # We check specific API Key pattern to reuse existing logic if possible,
+        # but ideally we just strictly look up by identity.
+
+        # For backward compatibility / auto-provisioning:
+        # We can still create a "Guest" user.
+        username = f"{msg.channel.value}_{msg.channel_id}"
         pseudo_key = f"{msg.channel.value}_{msg.channel_id}"
-        username = f"{msg.channel.value}_user_{msg.channel_id}"
 
         async for session in get_session():
+            # Check if we already created a guest user for this ID
             result = await session.execute(select(User).where(User.api_key == pseudo_key))
             user = result.scalars().first()
             if user:
                 return user
 
-            # Create new
-            new_user = User(username=username, api_key=pseudo_key, role="user")
+            # Create new Guest User
+            # Role = 'guest' to restrict sensitive tools until bound
+            new_user = User(username=username, api_key=pseudo_key, role="guest")
             session.add(new_user)
             await session.commit()
             return new_user
-        return None  # Should not happen
-
-    @classmethod
-    async def _loop(cls):
-        logger.info("Agent Worker Loop Running...")
-        while cls._running:
-            try:
-                # 1. Pop from Inbox
-                msg = await MQService.pop_inbox()
-
-                if msg:
-                    await cls._process_message(msg)
-                else:
-                    await asyncio.sleep(0.1)
-
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Agent Worker Error: {e}")
-                await asyncio.sleep(1.0)
+        return None
 
     @classmethod
     async def _process_message(cls, msg: UnifiedMessage):
         """Process a message through the Agent with live updates."""
         logger.info(f"Processing Message: {msg.id} [{msg.content}]")
+
+        # 0. Intercept Binding Command
+        # /bind 123456 or 绑定 123456
+        clean_content = msg.content.strip()
+        if clean_content.startswith(("/bind", "绑定")):
+            try:
+                parts = clean_content.split()
+                if len(parts) < 2:
+                    raise ValueError("Missing code")
+                token = parts[1]
+
+                from app.core.auth_service import AuthService
+
+                target_user_id = await AuthService.verify_bind_token(token)
+
+                if target_user_id:
+                    # Bind it!
+                    success = await AuthService.bind_identity(
+                        user_id=target_user_id,
+                        provider=msg.channel.value,
+                        provider_user_id=str(msg.channel_id),
+                        username=msg.meta.get("username") or msg.meta.get("feishu_sender_id"),
+                    )
+                    reply_text = (
+                        "✅ Success! Account linked."
+                        if success
+                        else "⚠️ This account is already linked to another user."
+                    )
+                else:
+                    reply_text = "❌ Invalid or expired token. Generate a new one in Dashboard."
+            except Exception:
+                reply_text = "Usage: /bind <6-digit-code>"
+
+            # Send immediate reply
+            await MQService.push_outbox(
+                UnifiedMessage(
+                    channel=msg.channel,
+                    channel_id=msg.channel_id,
+                    content=reply_text,
+                    msg_type=MessageType.TEXT,
+                    meta={"reply_to": msg.id},
+                )
+            )
+            return
 
         user = await cls._resolve_user(msg)
         if not user:

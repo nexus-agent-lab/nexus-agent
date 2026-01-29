@@ -58,6 +58,14 @@ async def send_telegram_message(msg: UnifiedMessage):
         logger.error(f"Failed to send Telegram message to {chat_id}: {e}")
         # Note: In a production system, we might re-queue this message to a dead-letter queue
 
+    # Handle Unpinning (e.g., after final answer)
+    unpin_id = msg.meta.get("unpin_message_id")
+    if unpin_id:
+        try:
+            await _telegram_app.bot.unpin_chat_message(chat_id=chat_id, message_id=int(unpin_id))
+        except Exception as e:
+            logger.warning(f"Failed to unpin message {unpin_id}: {e}")
+
 
 # ==========================================
 # Inbound Handlers (Producer)
@@ -93,7 +101,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id=chat_id, text="🚀 **Nexus is thinking...**", parse_mode="Markdown"
     )
 
-    # 2. Create UnifiedMessage with target_message_id
+    # 2. Pin the status message
+    try:
+        await context.bot.pin_chat_message(chat_id=chat_id, message_id=status_msg.message_id)
+    except Exception as e:
+        logger.warning(f"Failed to pin status message: {e}")
+
+    # 3. Create UnifiedMessage with target_message_id
     msg = UnifiedMessage(
         channel=ChannelType.TELEGRAM,
         channel_id=chat_id,
@@ -107,7 +121,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         },
     )
 
-    # 3. Push to Inbox
+    # 4. Push to Inbox
     await MQService.push_inbox(msg)
 
 

@@ -2,6 +2,7 @@ import logging
 import os
 import time
 import uuid
+import asyncio
 from enum import Enum
 from typing import Any, Dict, Optional
 
@@ -19,6 +20,8 @@ class ChannelType(str, Enum):
     TELEGRAM = "telegram"
     FEISHU = "feishu"
     DINGTALK = "dingtalk"
+    WECHAT = "wechat"  # Reserved
+    HTTP = "http"  # For direct API calls
     API = "api"
 
 
@@ -57,23 +60,38 @@ class MQService:
     - Outbox: Outgoing messages from Agent (Producer: Agent, Consumer: Dispatcher)
     """
 
-    _redis: Optional[redis.Redis] = None
+    _redis_instances: Dict[int, redis.Redis] = {}
 
     INBOX_KEY = "mq:inbox"
     OUTBOX_KEY = "mq:outbox"
 
     @classmethod
     async def get_redis(cls) -> redis.Redis:
-        if cls._redis is None:
+        try:
+            loop = asyncio.get_running_loop()
+            loop_id = id(loop)
+        except RuntimeError:
+            # Should not happen in async context, but fallback
+            loop_id = 0
+
+        if loop_id not in cls._redis_instances:
             redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
-            cls._redis = redis.from_url(redis_url, decode_responses=True)
-        return cls._redis
+            # Create a new client for this loop
+            client = redis.from_url(redis_url, decode_responses=True)
+            cls._redis_instances[loop_id] = client
+            logger.debug(f"Created new Redis client for loop {loop_id}")
+
+        return cls._redis_instances[loop_id]
 
     @classmethod
     async def close(cls):
-        if cls._redis:
-            await cls._redis.close()
-            cls._redis = None
+        # Close all instances
+        for loop_id, client in list(cls._redis_instances.items()):
+            try:
+                await client.close()
+            except Exception:
+                pass
+            del cls._redis_instances[loop_id]
 
     @classmethod
     async def push_inbox(cls, message: UnifiedMessage):
