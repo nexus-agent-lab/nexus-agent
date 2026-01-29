@@ -10,6 +10,9 @@
 
 </div>
 
+> [!WARNING]
+> **Alpha Preview**: This project is currently in early active development. It requires a basic understanding of Docker, Python, and LLMs to set up. Things might break. PRs and Issues are welcome! 
+
 <a name="english"></a>
 ## 🇬🇧 English
 
