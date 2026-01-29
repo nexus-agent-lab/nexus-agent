@@ -298,7 +298,7 @@ with tab_audit:
 
         # Action Area for Pending
         st.write("### ⚠️ 待审核项 (Pending Review)")
-        pending_logs = [l for l in logs if l["status"] == "pending"]
+        pending_logs = [log for log in logs if log["status"] == "pending"]
 
         if pending_logs:
             for p_log in pending_logs:
