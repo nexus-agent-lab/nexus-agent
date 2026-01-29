@@ -1,70 +1,78 @@
 import logging
 import os
-import time
-import uuid
 
-from langchain_core.messages import HumanMessage
-from sqlmodel import select
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 
-from app.core.agent import stream_agent_events
-from app.core.db import get_session
-from app.models.user import User
+from app.core.dispatcher import InterfaceDispatcher
+from app.core.mq import ChannelType, MessageType, MQService, UnifiedMessage
 
 logger = logging.getLogger("nexus.telegram")
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 ALLOWED_USER_IDS = os.getenv("TELEGRAM_ALLOWED_USERS", "").split(",")
 
-# Reference to the agent graph (injected from main)
-_agent_graph = None
+# Global reference to Telegram Application (for outbound sending)
+_telegram_app = None
 
 
-def set_agent_graph(graph):
-    global _agent_graph
-    _agent_graph = graph
+# ==========================================
+# Outbound Handler (Consumer)
+# ==========================================
 
 
-async def get_or_create_telegram_user(tg_id: str, username: str) -> User:
+async def send_telegram_message(msg: UnifiedMessage):
     """
-    Resolves a Telegram ID to an internal Nexus User.
-    Uses 'tg_{id}' as the API Key for stable mapping.
+    Handler registered with Dispatcher to send messages via Telegram.
+    Supports both sending new messages and editing existing ones.
     """
-    pseudo_api_key = f"tg_{tg_id}"
-    username = username or f"tg_user_{tg_id}"
+    if not _telegram_app:
+        logger.warning("Telegram App not initialized, cannot send message.")
+        return
 
-    # We need a session. Since we are outside FastAPI dependency injection,
-    # we manually invoke the generator.
-    async for session in get_session():
-        # Check existing
-        result = await session.execute(select(User).where(User.api_key == pseudo_api_key))
-        user = result.scalars().first()
+    chat_id = msg.channel_id
+    text = msg.content
+    target_msg_id = msg.meta.get("target_message_id")
 
-        if user:
-            return user
+    try:
+        if msg.msg_type == MessageType.UPDATE and target_msg_id:
+            # Edit existing status message
+            await _telegram_app.bot.edit_message_text(
+                chat_id=chat_id, message_id=int(target_msg_id), text=text, parse_mode="Markdown"
+            )
+        else:
+            # Send new message (or final replacement)
+            if target_msg_id:
+                # If we have a target, try to edit it first for the final response
+                try:
+                    await _telegram_app.bot.edit_message_text(
+                        chat_id=chat_id, message_id=int(target_msg_id), text=text, parse_mode="Markdown"
+                    )
+                    return
+                except Exception:
+                    pass  # Fallback to send_message if edit fails
 
-        # Create new
-        new_user = User(
-            username=username,
-            api_key=pseudo_api_key,
-            role="user",  # Default role
-        )
-        session.add(new_user)
-        await session.commit()
-        await session.refresh(new_user)
-        logger.info(f"Created new DB user for Telegram ID {tg_id} -> User ID {new_user.id}")
-        return new_user
-    return None
+            await _telegram_app.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+
+    except Exception as e:
+        logger.error(f"Failed to send Telegram message to {chat_id}: {e}")
+        # Note: In a production system, we might re-queue this message to a dead-letter queue
+
+
+# ==========================================
+# Inbound Handlers (Producer)
+# ==========================================
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="🚀 Nexus Agent Online. I am ready to serve.")
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id, text="🚀 Nexus Agent Online. I am connected via Universal MQ."
+    )
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
-        chat_id=update.effective_chat.id, text="Send me a voice or text message to interact with your Home."
+        chat_id=update.effective_chat.id, text="Send me a message, and I will queue it for the Agent."
     )
 
 
@@ -77,102 +85,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(chat_id=update.effective_chat.id, text="⛔ Unauthorized access.")
         return
 
-    if not _agent_graph:
-        await context.bot.send_message(chat_id=update.effective_chat.id, text="⚠️ Agent system is not initialized.")
-        return
-
     user_text = update.message.text
+    chat_id = str(update.effective_chat.id)
 
-    # Notify user we are thinking
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    # 1. Send Instant Status Message
+    status_msg = await context.bot.send_message(
+        chat_id=chat_id, text="🚀 **Nexus is thinking...**", parse_mode="Markdown"
+    )
 
-    # Resolve Internal User from DB
-    internal_user = await get_or_create_telegram_user(user_id, update.effective_user.username)
+    # 2. Create UnifiedMessage with target_message_id
+    msg = UnifiedMessage(
+        channel=ChannelType.TELEGRAM,
+        channel_id=chat_id,
+        content=user_text,
+        msg_type=MessageType.TEXT,
+        meta={
+            "telegram_user_id": user_id,
+            "telegram_username": update.effective_user.username,
+            "telegram_message_id": update.message.message_id,
+            "target_message_id": str(status_msg.message_id),  # Critical: Link to status msg
+        },
+    )
 
-    if not internal_user:
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id, text="❌ System Error: Could not resolve user profile."
-        )
-        return
-
-    try:
-        # Initial State
-        initial_state = {
-            "messages": [HumanMessage(content=user_text)],
-            "user": internal_user,
-            "trace_id": str(uuid.uuid4()),
-        }
-
-        # 1. Send Initial Status Message
-        status_msg = await context.bot.send_message(
-            chat_id=update.effective_chat.id, text="🚀 **Nexus is thinking...**", parse_mode="Markdown"
-        )
-
-        current_thought = ""
-        current_status = ""
-        final_answer = ""
-        last_edit_time = time.time()
-
-        # 2. Consume Stream
-        async for event in stream_agent_events(_agent_graph, initial_state):
-            ev_type = event["event"]
-            ev_data = event["data"]
-
-            if ev_type == "thought":
-                current_thought += ev_data
-            elif ev_type == "tool_start":
-                current_status = f"🔧 **Calling Tool**: `{ev_data['name']}`..."
-            elif ev_type == "tool_end":
-                current_status = f"✅ **Tool Finished**: `{ev_data['name']}`"
-            elif ev_type == "final_answer":
-                final_answer = ev_data
-            elif ev_type == "error":
-                current_status = f"❌ **Error**: `{ev_data}`"
-
-            # 3. Throttle Edits (Max 1 per 1.0s to avoid rate limits)
-            now = time.time()
-            if now - last_edit_time > 1.0:
-                # Format: Final thought snippet + current status
-                thought_preview = current_thought[-200:] if len(current_thought) > 200 else current_thought
-                display_text = f"💭 ...{thought_preview}\n\n{current_status}" if thought_preview else current_status
-
-                if not display_text:
-                    display_text = "🚀 Processing..."
-
-                try:
-                    await context.bot.edit_message_text(
-                        chat_id=update.effective_chat.id,
-                        message_id=status_msg.message_id,
-                        text=display_text,
-                        parse_mode="Markdown",
-                    )
-                    last_edit_time = now
-                except Exception:
-                    pass  # Ignore 'Message is not modified' errors
-
-        # 4. Final Update
-        if final_answer:
-            try:
-                await context.bot.edit_message_text(
-                    chat_id=update.effective_chat.id,
-                    message_id=status_msg.message_id,
-                    text=final_answer,
-                    parse_mode="Markdown",
-                )
-            except Exception:
-                await context.bot.send_message(chat_id=update.effective_chat.id, text=final_answer)
-        elif current_thought:
-            # If no final_answer event but we have thoughts
-            await context.bot.edit_message_text(
-                chat_id=update.effective_chat.id,
-                message_id=status_msg.message_id,
-                text=current_thought,
-                parse_mode="Markdown",
-            )
-
-    except Exception as e:
-        logger.error(f"Error processing telegram message: {e}", exc_info=True)
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=f"❌ Error: {str(e)}")
+    # 3. Push to Inbox
+    await MQService.push_inbox(msg)
 
 
 async def run_telegram_bot():
@@ -181,7 +117,9 @@ async def run_telegram_bot():
         logger.warning("TELEGRAM_BOT_TOKEN not set. Telegram Interface disabled.")
         return
 
-    # Build Custom Request object with longer timeouts
+    global _telegram_app
+
+    # Build Custom Request object
     from telegram.request import HTTPXRequest
 
     request = HTTPXRequest(connection_pool_size=8, read_timeout=30.0, write_timeout=30.0, connect_timeout=30.0)
@@ -195,47 +133,41 @@ async def run_telegram_bot():
         builder = builder.proxy_url(proxy_url).get_updates_proxy_url(proxy_url)
 
     application = builder.build()
+    _telegram_app = application
 
-    start_handler = CommandHandler("start", start)
-    help_handler = CommandHandler("help", help_command)
-    message_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message)
+    # Register Handlers
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
 
-    application.add_handler(start_handler)
-    application.add_handler(help_handler)
-    application.add_handler(message_handler)
+    # Register Outbound Handler with Dispatcher
+    InterfaceDispatcher.register_handler(ChannelType.TELEGRAM, send_telegram_message)
 
     logger.info("Starting Telegram Bot Polling...")
     await application.initialize()
     await application.start()
 
-    # Set global app reference for broadcast_message
-    global _global_app
-    _global_app = application
-
-    await application.updater.start_polling()
-
-    # Keep running until cancelled
-    # In a real asyncio app, we might need a better lifecycle management
-    # For now, we rely on the main event loop
-
-
-_global_app = None
+    # Optimized Polling
+    await application.updater.start_polling(poll_interval=2.0, bootstrap_retries=-1, drop_pending_updates=False)
 
 
 async def broadcast_message(text: str):
-    """Broadcasts a message to all allowed Telegram users."""
-    if not _global_app:
-        logger.warning("Telegram Bot not initialized, skipping broadcast.")
-        return
-
+    """
+    Broadcasts a message to all allowed Telegram users via the MQ Outbox.
+    """
     if not ALLOWED_USER_IDS or ALLOWED_USER_IDS == [""]:
         logger.warning("No allowed users configured for broadcast.")
         return
 
     for user_id in ALLOWED_USER_IDS:
-        if user_id.strip() == "*":
-            continue  # Don't broadcast to wildcard effectively (dangerous)
-        try:
-            await _global_app.bot.send_message(chat_id=user_id.strip(), text=text)
-        except Exception as e:
-            logger.error(f"Failed to broadcast to {user_id}: {e}")
+        if not user_id or user_id.strip() == "*":
+            continue
+
+        msg = UnifiedMessage(
+            channel=ChannelType.TELEGRAM,
+            channel_id=user_id.strip(),
+            content=text,
+            msg_type=MessageType.TEXT,
+            meta={"is_broadcast": True},
+        )
+        await MQService.push_outbox(msg)

@@ -19,7 +19,8 @@ $RUFF format .
 echo "--- 🧪 Running Pytest (Local, Mode: $MODE) ---"
 if [[ "$MODE" == "offline" ]]; then
     # Run only unit tests or tests marked as offline
-    $PYTEST -m "not integration" tests/smoke_test.py
+    # Run all non-integration tests
+    $PYTEST -m "not integration" tests/
 else
     # Run all tests
     $PYTEST tests/

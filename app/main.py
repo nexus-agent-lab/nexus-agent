@@ -17,7 +17,7 @@ from app.core.auth import get_current_user
 from app.core.db import init_db
 from app.core.mcp_manager import get_mcp_tools
 from app.core.voice import transcribe_audio
-from app.interfaces.telegram import run_telegram_bot, set_agent_graph
+from app.interfaces.telegram import run_telegram_bot
 from app.models.user import User
 from app.tools.registry import get_static_tools
 
@@ -49,11 +49,16 @@ async def lifespan(app: FastAPI):
     global agent_graph
     agent_graph = create_agent_graph(all_tools)
 
-    # Inject Graph into Telegram Service
-    set_agent_graph(agent_graph)
+    # Inject Graph into Agent Worker (for MQ)
+    from app.core.dispatcher import InterfaceDispatcher
+    from app.core.worker import AgentWorker
 
-    # Start Telegram Bot in Background
+    AgentWorker.set_agent_graph(agent_graph)
+
+    # Start Background Services
     asyncio.create_task(run_telegram_bot())
+    asyncio.create_task(InterfaceDispatcher.start())
+    asyncio.create_task(AgentWorker.start())
 
     tool_names = [t.name for t in all_tools]
     logger.info(f"Agent initialized with {len(all_tools)} tools: {tool_names}")
@@ -63,6 +68,8 @@ async def lifespan(app: FastAPI):
     # Shutdown logic
     from app.core.mcp_manager import stop_mcp
 
+    await AgentWorker.stop()
+    await InterfaceDispatcher.stop()
     await stop_mcp()
 
 
