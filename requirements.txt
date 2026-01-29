@@ -4,6 +4,7 @@ langgraph
 langchain-openai
 langchain-core
 pydantic
+pydantic-settings
 redis
 httpx
 sqlmodel

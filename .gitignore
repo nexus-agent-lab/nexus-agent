@@ -25,6 +25,22 @@ wheels/
 # Virtual Environment
 venv/
 .env
+.env.local
+.env.test
+
+# Logs
+logs/
+*.log
+
+# Caches & Temporary Files
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+test.db
+test.db-shm
+test.db-wal
+.coverage
+htmlcov/
 
 # Docker
 docker-compose.override.yml

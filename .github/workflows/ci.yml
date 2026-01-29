@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    services:
+      # Use a service container for Redis and Postgres if needed for unit tests,
+      # but for now we'll stick to running stateless/mocked tests.
+      redis:
+        image: redis:alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install ruff pytest pytest-asyncio
+        
+    - name: Lint with Ruff
+      run: |
+        ruff check .
+        ruff format --check .
+
+    - name: Run Tests
+      # We skip tests that require heavy external services or local hardware (MPS)
+      # We assume pytest is configured in pyproject.toml to pick up the right tests.
+      # You might want to mark integration tests with @pytest.mark.integration and exclude them here.
+      run: |
+        pytest -m "not integration"
+      env:
+        # Provide dummy env vars for tests that need them
+        LLM_API_KEY: "test"
+        LLM_BASE_URL: "http://localhost:11434"
+        REDIS_URL: "redis://localhost:6379/0"
+        DATABASE_URL: "sqlite+aiosqlite:///test.db" # Use SQLite for CI tests if possible, or spin up Postgres service

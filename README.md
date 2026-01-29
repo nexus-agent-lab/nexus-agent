@@ -1,64 +1,88 @@
-# Nexus Agent
+# Nexus Agent OS
 
-Nexus Agent is a private, multimodal intelligent control center powered by a Local LLM (or API) as its core computing unit. Optimized for **Apple Silicon (M4)**, it ensures maximum privacy and performance by running reasoning and memory entirely on-device.
+Nexus Agent is a **Self-Improving, Multimodal AI Operating System** designed for local capabilities and privacy. It serves as a personal control center that runs entirely on your infrastructure (or hybrid), orchestrating tools, memory, and devices.
 
-## 🚀 Key Features
+> **Status**: Beta (v2.0.0)
 
--   **Privacy-First Reasoning**: Native support for **Ollama (Qwen2.5-14B)** running locally on your Mac.
--   **Active Memory**: Vectorized long-term memory using **pgvector** and a local embedding server (**bge-small-zh**) with **MPS (Metal)** hardware acceleration.
--   **MCP Integration**: Full support for the **Model Context Protocol**, allowing the Agent to interact with local scripts and enterprise tools.
--   **Multimodal**: Voice interaction capabilities (STT/TTS) and sandbox execution for secure code tasks.
--   **Governance**: Built-in Audit Interceptor for tracking every tool call and decision.
+## 🌟 Key Features
 
-## 🛠️ Prerequisites
+### 🧠 Autonomous Core
+- **Self-Generating Skills**: The agent learns from its mistakes. If a tool call fails, it proposes a new rule to fix it in the future, storing this knowledge in its skill registry.
+- **Active Memory**: Vectorized long-term memory (PostgreSQL + pgvector) to recall user preferences and past context.
+- **Privacy-First**: Native support for **Ollama** (e.g., Qwen2.5, DeepSeek) running locally.
 
--   **Hardware**: Mac with Apple Silicon (Recommended: M4 with 32GB+ RAM).
--   **Software**: Docker, Python 3.10+, and Homebrew.
+### 🛠️ Universal Connectivity
+- **MCP Native**: Built on the **Model Context Protocol**, allowing seamless integration with local resources (files, CLI) and remote APIs.
+- **Multimodal**: Voice interaction (STT/TTS) and image generation capabilities.
+- **Smart Home**: Deep integration with **Home Assistant** for device control and state monitoring.
 
-## 📦 Quick Start (Local Deployment)
+### 🛡️ Mission Control
+- **Dashboard**: A Streamlit-based command center to monitor agent health, audit logs, and memory state.
+- **Audit System**: Every decision and tool execution is logged and auditable.
+- **Tailscale Network**: Secure, encrypted remote access via a simplified Docker network mesh.
 
-The easiest way to get started is using the automated deployment script:
+## 🚀 Quick Start
 
-1.  **Clone & Configure**:
+### Prerequisites
+- Docker & Docker Compose
+- Python 3.10+ (for local development)
+- [Optional] Tailscale account for remote access
+
+### Deployment
+
+1.  **Clone the Repository**
+    ```bash
+    git clone https://github.com/o3o3o/nexus-agent.git
+    cd nexus-agent
+    ```
+
+2.  **Configure Environment**
+    Copy the example configuration:
     ```bash
     cp .env.example .env
-    # Edit .env if you want to use cloud providers as fallback
     ```
+    Edit `.env` to set your preferences (LLM model, API keys, etc.).
 
-2.  **Launch All Services**:
-    This script starts Ollama (LLM), the Embedding Server, and the Nexus Agent.
+3.  **Launch Stack**
+    Start the Agent, Database, Dashboard, and local services:
     ```bash
-    ./scripts/deploy_local.sh
+    docker-compose up -d --build
     ```
 
-3.  **Chat with the Agent**:
-    ```bash
-    curl -X POST http://localhost:8000/chat \
-      -H "Content-Type: application/json" \
-      -H "X-API-Key: test-admin-key-123" \
-      -d '{"message": "Remember that I prefer building with Python and Tailwind CSS"}'
-    ```
+4.  **Access Dashboard**
+    Open [http://localhost:8501](http://localhost:8501) to view the Mission Control interface.
 
-## 🏗️ Architecture
+## 📚 Documentation
 
-For a detailed deep-dive into the system components, data flow, and active memory implementation, please read the [Architecture Documentation](ARCHITECTURE.md) (中文版: [架构文档](ARCHITECTURE_zh.md)).
+- [Architecture Overview](ARCHITECTURE.md)
+- [Self-Learning System](skills/README.md) (Coming Soon)
+- [Model Context Protocol (MCP)](https://github.com/modelcontextprotocol)
 
--   **LLM**: Ollama / Qwen2.5-14B (Local) or GLM-4/GPT-4 (Cloud).
--   **Memory**: PostgreSQL + `pgvector` (512-dim).
--   **Embeddings**: `bge-small-zh-v1.5` hosted on a local FastAPI server with Metal acceleration.
--   **Orchestration**: LangGraph for complex agentic workflows and tool-calling loops.
+## 🛠️ Development
 
-## 📂 Project Structure
+We use `uv` or `pip` for dependency management.
 
--   `app/core/`: Application core (Agent State, MemoryManager, MCP client).
--   `app/tools/`: Static tools (Registry) and dynamic tools (Memory, Sandbox).
--   `scripts/`: Deployment and verification utilities.
--   `servers/`: Directory for custom MCP server scripts.
--   `alembic/`: Database migrations.
-
-## 🧪 Verification
-
-To ensure your local memory system is functioning correctly:
 ```bash
-python scripts/verify_memory.py
+# Install dependencies
+pip install -r requirements.txt
+
+# Run Tests
+pytest
+
+# Code Formatting
+ruff check .
 ```
+
+## 🤝 Contributing
+
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+
+1.  Fork the Project
+2.  Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3.  Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4.  Push to the Branch (`git push origin feature/AmazingFeature`)
+5.  Open a Pull Request
+
+## 📄 License
+
+Distributed under the MIT License. See `LICENSE` for more information.

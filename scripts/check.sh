@@ -2,8 +2,8 @@
 # Usage: ./scripts/check.sh [--online]
 set -e
 
-RUFF="/Users/michael/Library/Python/3.9/bin/ruff"
-PYTEST="/Users/michael/Library/Python/3.9/bin/pytest"
+RUFF="ruff"
+PYTEST="pytest"
 
 MODE="offline"
 if [[ "$1" == "--online" ]]; then
