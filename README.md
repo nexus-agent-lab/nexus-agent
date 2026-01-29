@@ -1,88 +1,131 @@
 # Nexus Agent OS
 
-Nexus Agent is a **Self-Improving, Multimodal AI Operating System** designed for local capabilities and privacy. It serves as a personal control center that runs entirely on your infrastructure (or hybrid), orchestrating tools, memory, and devices.
+<div align="center">
 
-> **Status**: Beta (v2.0.0)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Docker](https://img.shields.io/badge/docker-compose-green.svg)](https://www.docker.com/)
 
-## 🌟 Key Features
+[English](#english) | [中文说明](#chinese)
 
-### 🧠 Autonomous Core
-- **Self-Generating Skills**: The agent learns from its mistakes. If a tool call fails, it proposes a new rule to fix it in the future, storing this knowledge in its skill registry.
-- **Active Memory**: Vectorized long-term memory (PostgreSQL + pgvector) to recall user preferences and past context.
-- **Privacy-First**: Native support for **Ollama** (e.g., Qwen2.5, DeepSeek) running locally.
+</div>
 
-### 🛠️ Universal Connectivity
-- **MCP Native**: Built on the **Model Context Protocol**, allowing seamless integration with local resources (files, CLI) and remote APIs.
-- **Multimodal**: Voice interaction (STT/TTS) and image generation capabilities.
-- **Smart Home**: Deep integration with **Home Assistant** for device control and state monitoring.
+<a name="english"></a>
+## 🇬🇧 English
 
-### 🛡️ Mission Control
-- **Dashboard**: A Streamlit-based command center to monitor agent health, audit logs, and memory state.
-- **Audit System**: Every decision and tool execution is logged and auditable.
-- **Tailscale Network**: Secure, encrypted remote access via a simplified Docker network mesh.
+**Nexus Agent** is a private, intelligent control center designed for the **Apple Silicon** era. It starts as your generic **Home AI Center**, running entirely on your local infrastructure to ensure privacy, and scales seamlessly to **Enterprise Integration**.
 
-## 🚀 Quick Start
+### 🚀 Vision
+> **"From Local Privacy to Enterprise Intelligence"**
 
-### Prerequisites
-- Docker & Docker Compose
-- Python 3.10+ (for local development)
-- [Optional] Tailscale account for remote access
+1.  **Home AI Center**: Deploy on a **Mac mini (M4)** to manage your smart home, schedule, and personal knowledge base without data leaving your house.
+2.  **Enterprise Connector**: Once trusted, deploy the same agent to enterprise environments to bridge internal tools (Feishu/Lark, DingTalk) with local secure reasoning.
 
-### Deployment
+### ⚡ Hardware & Performance
+Optimized for **Mac mini M4 (32GB RAM)**:
+-   **Inference**: capable of running **GLM-4.7-Flash** (or Qwen2.5-32B) locally with high token/sec rates.
+-   **Memory**: vectorized long-term memory accelerated by Metal (MPS).
 
-1.  **Clone the Repository**
+### 🌟 Key Features
+-   **Autonomous Core**: Self-learning agent that proposes rules to fix its own tool usage errors.
+-   **Universal Skills**: 
+    -   **MCP Native**: Supports Model Context Protocol for file system and API access.
+    -   **Smart Home**: Deep integration with Home Assistant.
+-   **Mission Control**: Streamlit dashboard for monitoring health, audit logs, and memory state.
+
+---
+
+<a name="chinese"></a>
+## 🇨🇳 中文说明
+
+**Nexus Agent** 是专为 **Apple Silicon** 时代打造的隐私优先、智能控制中心。它的愿景是成为您的 **家庭 AI 中枢**，在保障隐私的前提下运行所有推理与记忆，并具备无缝扩展至 **企业级集成** 的能力。
+
+### 🚀 项目愿景
+> **“从家庭隐私计算到企业智能中枢”**
+
+1.  **家庭 AI 智能中心**：部署在您的 **Mac mini (M4)** 上，全本地管理智能家居、日程安排和个人知识库，数据不出户。
+2.  **企业级对接**：经过验证的 Agent 可无缝接入企业环境，作为安全网关连接 Feishu (飞书)、钉钉等办公流与内部业务系统。
+
+### ⚡ 硬件与性能
+专为 **Mac mini M4 (32GB 内存)** 优化：
+-   **本地推理**：在 32GB 统一内存上流畅运行 **GLM-4.7-Flash** 等高性能模型。
+-   **硬件加速**：利用 Metal (MPS) 实现向量数据库 (pgvector) 的极速检索。
+
+### 🌟 核心特性
+-   **自主进化内核**：Agent 具备自我反思能力，能自动纠正工具调用错误并生成新的技能规则。
+-   **通用技能协议**：
+    -   **MCP 原生支持**：基于 Model Context Protocol 标准，轻松挂载本地文件与 API。
+    -   **深度家居互联**：自带 Home Assistant 完美集成。
+-   **任务指挥台**：提供可视化 Dashboard，实时监控大脑状态、审计自我学习日志。
+
+---
+
+## 🏗️ Architecture / 架构图
+
+```mermaid
+graph TD
+    subgraph Interfaces [Interfaces / 触手层]
+        TG[Telegram Bot]
+        FS[Feishu Bot]
+        CLI[Command Line]
+    end
+
+    subgraph Core [Nexus Core / 大脑层]
+        Router[Router Agent]
+        Planner[LangGraph State Machine]
+        Sandbox[Python Sandbox]
+    end
+
+    subgraph Skills [MCP Servers / 技能层]
+        HA[Home Assistant MCP]
+        File[FileSystem MCP]
+        System[MacOS System Control]
+    end
+
+    subgraph Hardware [Infrastructure / 硬件层]
+        Ollama[Ollama Service]
+        Docker[Docker Containers]
+    end
+
+    TG --> Router
+    FS --> Router
+    Router --> Planner
+    Planner --> HA
+    Planner --> Sandbox
+    Planner --> System
+    HA --> Ollama
+```
+
+## 🚀 Quick Start / 快速开始
+
+1.  **Clone Repository / 克隆仓库**
     ```bash
-    git clone https://github.com/o3o3o/nexus-agent.git
+    git clone https://github.com/nexus-agent-lab/nexus-agent.git
     cd nexus-agent
     ```
 
-2.  **Configure Environment**
-    Copy the example configuration:
+2.  **Configuration / 配置环境**
     ```bash
     cp .env.example .env
+    # Edit .env to set LLM_MODEL (e.g., qwen2.5:14b or glm-4)
+    # 修改 .env 文件配置模型参数
     ```
-    Edit `.env` to set your preferences (LLM model, API keys, etc.).
 
-3.  **Launch Stack**
-    Start the Agent, Database, Dashboard, and local services:
+3.  **Launch / 启动服务**
     ```bash
     docker-compose up -d --build
     ```
 
-4.  **Access Dashboard**
-    Open [http://localhost:8501](http://localhost:8501) to view the Mission Control interface.
+4.  **Dashboard / 访问控制台**
+    Open [http://localhost:8501](http://localhost:8501)
 
-## 📚 Documentation
+## 🗺️ Roadmap / 路线图
 
-- [Architecture Overview](ARCHITECTURE.md)
-- [Self-Learning System](skills/README.md) (Coming Soon)
-- [Model Context Protocol (MCP)](https://github.com/modelcontextprotocol)
-
-## 🛠️ Development
-
-We use `uv` or `pip` for dependency management.
-
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Run Tests
-pytest
-
-# Code Formatting
-ruff check .
-```
-
-## 🤝 Contributing
-
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
-
-1.  Fork the Project
-2.  Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3.  Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4.  Push to the Branch (`git push origin feature/AmazingFeature`)
-5.  Open a Pull Request
+- [x] **Core**: Local LLM Support (Ollama/Qwen2.5/GLM), Active Memory (pgvector)
+- [x] **Interfaces**: Telegram Bot, CLI
+- [ ] **Enterprise**: Feishu (Lark) Integration (Coming Soon / 即将推出)
+- [ ] **Capabilities**: Computer Use / Desktop Automation (WIP)
 
 ## 📄 License
 
-Distributed under the MIT License. See `LICENSE` for more information.
+Distributed under the MIT License.

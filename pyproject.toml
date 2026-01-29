@@ -16,6 +16,10 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
+[project.urls]
+Repository = "https://github.com/nexus-agent-lab/nexus-agent"
+Issues = "https://github.com/nexus-agent-lab/nexus-agent/issues"
+
 dependencies = [
     "fastapi>=0.109.0",
     "uvicorn[standard]>=0.27.0",
