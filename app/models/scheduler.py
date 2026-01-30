@@ -9,15 +9,15 @@ class ScheduledTask(SQLModel, table=True):
     __tablename__ = "scheduled_tasks"
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: int = Field(index=True, foreign_key="users.id")
+    user_id: int = Field(index=True, foreign_key="user.id")
 
     # Target for the notification
     channel: str = Field(index=True)  # 'telegram', 'feishu', 'web'
-    channel_id: str = Field(index=True) # Chat ID or User ID
+    channel_id: str = Field(index=True)  # Chat ID or User ID
 
     # Schedule
-    cron_expr: str = Field() # e.g. "0 9 * * *"
-    description: str = Field() # User-friendly description
+    cron_expr: str = Field()  # e.g. "0 9 * * *"
+    description: str = Field()  # User-friendly description
 
     # Task Details
     # type can be 'prompt' (triggers agent) or 'notification' (just sends text)
