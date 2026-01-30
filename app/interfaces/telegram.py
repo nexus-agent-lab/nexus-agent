@@ -40,7 +40,6 @@ STRINGS = {
         "cmd_help": "Show help and available commands",
         "cmd_bind": "Link your account using a code",
         "cmd_unbind": "Unlink your Telegram account",
-        "cmd_unbind": "Unlink your Telegram account",
         "cmd_reset": "Clear your conversation history",
         "welcome_guest": "👋 **Welcome to Nexus!**\n\nI don't recognize this account yet. To use the agent, please link your account:\n\n1. Contact your Administrator to generate a **Bind Token** from the Dashboard.\n2. Send `/bind <token>` here.",
     },
@@ -65,9 +64,6 @@ STRINGS = {
         "welcome_guest": "👋 **欢迎来到 Nexus!**\n\n我暂时还不认识这个账户。请先绑定您的账户：\n\n1. 联系您的管理员从仪表板生成 **绑定代码**。\n2. 发送 `/bind <代码>` 给我们。",
     },
 }
-
-
-
 
 
 async def get_user_language(user_id: str, effective_lang: str = "en") -> str:
@@ -166,6 +162,7 @@ async def send_telegram_message(msg: UnifiedMessage):
     if commands_meta:
         try:
             from telegram import BotCommand, BotCommandScopeChat
+
             cmds = [BotCommand(command=c["command"], description=c["description"]) for c in commands_meta]
             # Update commands for this specific chat
             await _telegram_app.bot.set_my_commands(commands=cmds, scope=BotCommandScopeChat(chat_id=chat_id))
@@ -184,9 +181,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = await get_user_language(user_id, update.effective_user.language_code)
 
     help_text = get_text("welcome", lang)
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id, text=help_text, parse_mode="Markdown"
-    )
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=help_text, parse_mode="Markdown")
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -201,35 +196,28 @@ async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = await get_user_language(user_id, update.effective_user.language_code)
 
     try:
-
         # Resolve user
         user = await AuthService.get_user_by_identity("telegram", user_id)
 
         if not user:
-            await context.bot.send_message(
-                chat_id=chat_id, text=get_text("reset_need_bind", lang)
-            )
+            await context.bot.send_message(chat_id=chat_id, text=get_text("reset_need_bind", lang))
             return
 
         # Clear session history
         session = await SessionManager.get_or_create_session(user.id)
         await SessionManager.clear_history(session.id)
 
-        await context.bot.send_message(
-            chat_id=chat_id, text=get_text("reset_success", lang), parse_mode="Markdown"
-        )
+        await context.bot.send_message(chat_id=chat_id, text=get_text("reset_success", lang), parse_mode="Markdown")
 
     except Exception as e:
         logger.error(f"Failed to reset session: {e}", exc_info=True)
         # Fallback error message (usually code error, keep EN)
-        await context.bot.send_message(
-            chat_id=chat_id, text="❌ Failed to reset session. Please try again later."
-        )
+        await context.bot.send_message(chat_id=chat_id, text="❌ Failed to reset session. Please try again later.")
 
 
 async def bind_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Link a Telegram identity to an existing Nexus user account."""
-    user_id = str(update.effective_user.id)
+    str(update.effective_user.id)
     chat_id = str(update.effective_chat.id)
     # Don't check DB for lang here to be fast, use telegram pref
     lang = update.effective_user.language_code
@@ -238,8 +226,8 @@ async def bind_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Interactive mode: Ask user for token
         await context.bot.send_message(
             chat_id=chat_id,
-            text=get_text("bind_prompt", lang), # "Please enter code..."
-            parse_mode="Markdown"
+            text=get_text("bind_prompt", lang),  # "Please enter code..."
+            parse_mode="Markdown",
         )
         # Set state in user_data
         context.user_data["awaiting_bind_token"] = True
@@ -248,7 +236,7 @@ async def bind_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     token = context.args[0]
     await process_bind_token(update, context, token, lang)
 
-    
+
 async def process_bind_token(update: Update, context: ContextTypes.DEFAULT_TYPE, token: str, lang: str):
     """Core logic to process the bind token."""
     user_id = str(update.effective_user.id)
@@ -260,10 +248,7 @@ async def process_bind_token(update: Update, context: ContextTypes.DEFAULT_TYPE,
         target_user_id = await AuthService.verify_bind_token(token)
         if not target_user_id:
             logger.warning(f"Invalid or expired bind token {token} for Telegram user {user_id}")
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=get_text("bind_invalid", lang)
-            )
+            await context.bot.send_message(chat_id=chat_id, text=get_text("bind_invalid", lang))
             return
 
         # 2. Perform Binding
@@ -271,10 +256,7 @@ async def process_bind_token(update: Update, context: ContextTypes.DEFAULT_TYPE,
         logger.info(f"Token verified. Binding Telegram ID {user_id} to Nexus User #{target_user_id}")
 
         success = await AuthService.bind_identity(
-            user_id=target_user_id,
-            provider="telegram",
-            provider_user_id=user_id,
-            username=username
+            user_id=target_user_id, provider="telegram", provider_user_id=user_id, username=username
         )
 
         if success:
@@ -284,6 +266,7 @@ async def process_bind_token(update: Update, context: ContextTypes.DEFAULT_TYPE,
             if lang:
                 from app.core.db import AsyncSessionLocal
                 from app.models.user import User
+
                 async with AsyncSessionLocal() as session:
                     u = await session.get(User, target_user_id)
                     if u:
@@ -292,36 +275,32 @@ async def process_bind_token(update: Update, context: ContextTypes.DEFAULT_TYPE,
                         await session.commit()
 
             await context.bot.send_message(
-                chat_id=chat_id,
-                text=get_text("bind_success", lang, user_id=target_user_id),
-                parse_mode="Markdown"
+                chat_id=chat_id, text=get_text("bind_success", lang, user_id=target_user_id), parse_mode="Markdown"
             )
         else:
             logger.warning(f"Account bind failed for {user_id}. Conflict or already linked.")
             from app.core.auth_service import BindResult
             # Check result if possible, assuming success is returned as bool or enum
-            # If changed to Enum, need to handle it. 
-            # Previous changes returned BindResult. 
-            # Let's check the code I recall: 'success = await AuthService.bind_identity...' 
-            # Wait, I previously changed it to return BindResult Enum! 
+            # If changed to Enum, need to handle it.
+            # Previous changes returned BindResult.
+            # Let's check the code I recall: 'success = await AuthService.bind_identity...'
+            # Wait, I previously changed it to return BindResult Enum!
             # I should handle Enum here.
-            
+
             if success == BindResult.PROVIDER_CONFLICT:
-                 text = get_text("bind_conflict_provider", lang)
+                text = get_text("bind_conflict_provider", lang)
             elif success == BindResult.USER_CONFLICT:
-                 text = get_text("bind_conflict_user", lang)
+                text = get_text("bind_conflict_user", lang)
             else:
-                 text = get_text("bind_fail", lang)
-                 
+                text = get_text("bind_fail", lang)
+
             await context.bot.send_message(chat_id=chat_id, text=text)
 
     except Exception as e:
         logger.error(f"Failed to bind account: {e}", exc_info=True)
         await context.bot.send_message(
-            chat_id=chat_id,
-            text="❌ An error occurred during binding. Please try again later."
+            chat_id=chat_id, text="❌ An error occurred during binding. Please try again later."
         )
-
 
 
 async def unbind_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -335,21 +314,13 @@ async def unbind_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if success:
             await context.bot.send_message(
-                chat_id=chat_id,
-                text=get_text("unbind_success", lang),
-                parse_mode="Markdown"
+                chat_id=chat_id, text=get_text("unbind_success", lang), parse_mode="Markdown"
             )
         else:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=get_text("unbind_fail", lang)
-            )
+            await context.bot.send_message(chat_id=chat_id, text=get_text("unbind_fail", lang))
     except Exception as e:
         logger.error(f"Failed to unbind: {e}", exc_info=True)
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="❌ An error occurred during unbinding."
-        )
+        await context.bot.send_message(chat_id=chat_id, text="❌ An error occurred during unbinding.")
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -365,10 +336,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await process_bind_token(update, context, token, lang)
         return
 
-    # Security Check
-    if ALLOWED_USER_IDS and user_id not in ALLOWED_USER_IDS and "*" not in ALLOWED_USER_IDS:
-        logger.warning(f"Unauthorized access attempt from Telegram User: {user_id}")
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=get_text("unauthorized"))
+    # Security / Binding Check
+    # Instead of static whitelist, checks if user is bound to a Nexus account.
+    user = await AuthService.get_user_by_identity("telegram", user_id)
+    if not user:
+        # If ALLOWED_USER_IDS is set (legacy mode), we might still respect it or just use it as admin override?
+        # User requested: "绑定过就可以聊天". So if bound -> allow.
+        # But what if not bound? Should we block or allow guest access?
+        # Current logic: If not bound, show "Welcome Guest" and ask to bind.
+        
+        # Check if user is trying to bind (already handled above in awaiting_bind_token)
+        # Verify if command is /bind (handled by command handler, so we reach here only for TEXT messages)
+        
+        logger.warning(f"Unbound access attempt from Telegram User: {user_id}")
+        lang = await get_user_language(user_id, update.effective_user.language_code)
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=get_text("welcome_guest", lang), parse_mode="Markdown")
         return
 
     user_text = update.message.text
