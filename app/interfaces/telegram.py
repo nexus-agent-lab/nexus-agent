@@ -101,6 +101,32 @@ async def robust_send_message(bot, chat_id: str, text: str, parse_mode: str = "M
                 raise e
 
 
+# Typing Status Management
+import asyncio
+
+TYPING_TASKS = {}  # chat_id -> asyncio.Task
+
+
+async def keep_typing_status(bot, chat_id: str):
+    """
+    Periodically sends a 'typing' action to keep the status alive in Telegram.
+    This loop should be cancelled once a response is sent.
+    """
+    try:
+        while True:
+            await bot.send_chat_action(chat_id=chat_id, action="typing")
+            # Telegram typing status lasts ~5s, refresh every 4s
+            await asyncio.sleep(4.0)
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        logger.warning(f"Typing loop failed for {chat_id}: {e}")
+    finally:
+        # Cleanup task reference if it matches current
+        if chat_id in TYPING_TASKS and TYPING_TASKS[chat_id] == asyncio.current_task():
+            del TYPING_TASKS[chat_id]
+
+
 # ==========================================
 # Outbound Handler (Consumer)
 # ==========================================
@@ -118,6 +144,12 @@ async def send_telegram_message(msg: UnifiedMessage):
     chat_id = msg.channel_id
     text = msg.content
     target_msg_id = msg.meta.get("target_message_id")
+
+    # Stop persistent typing loop if exists for this chat
+    if chat_id in TYPING_TASKS:
+        TYPING_TASKS[chat_id].cancel()
+        # It will clean itself up in finally block, or we can explicit del
+        # del TYPING_TASKS[chat_id] # relying on finally block is safer for race conditions
 
     try:
         if msg.msg_type == MessageType.UPDATE and target_msg_id:
@@ -344,20 +376,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # User requested: "绑定过就可以聊天". So if bound -> allow.
         # But what if not bound? Should we block or allow guest access?
         # Current logic: If not bound, show "Welcome Guest" and ask to bind.
-        
+
         # Check if user is trying to bind (already handled above in awaiting_bind_token)
         # Verify if command is /bind (handled by command handler, so we reach here only for TEXT messages)
-        
+
         logger.warning(f"Unbound access attempt from Telegram User: {user_id}")
         lang = await get_user_language(user_id, update.effective_user.language_code)
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=get_text("welcome_guest", lang), parse_mode="Markdown")
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id, text=get_text("welcome_guest", lang), parse_mode="Markdown"
+        )
         return
 
     user_text = update.message.text
     chat_id = str(update.effective_chat.id)
 
-    # 1. Show Typing Status immediately
-    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+    # 1. Start Persistent Typing Status
+    # await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+    # Cancel any existing typing task for this chat first to be safe
+    if chat_id in TYPING_TASKS:
+        TYPING_TASKS[chat_id].cancel()
+
+    # Start new typing loop
+    TYPING_TASKS[chat_id] = asyncio.create_task(keep_typing_status(context.bot, chat_id))
 
     # 2. Create UnifiedMessage
     msg = UnifiedMessage(

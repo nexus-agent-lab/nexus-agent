@@ -12,6 +12,7 @@ from app.models.scheduler import ScheduledTask
 
 logger = logging.getLogger("nexus.scheduler")
 
+
 class SchedulerService:
     _instance = None
     _scheduler: Optional[AsyncIOScheduler] = None
@@ -68,7 +69,7 @@ class SchedulerService:
                 CronTrigger.from_crontab(task.cron_expr),
                 id=job_id,
                 args=[task.id],
-                replace_existing=True
+                replace_existing=True,
             )
         except Exception as e:
             logger.error(f"Failed to schedule task {task.id}: {e}")
@@ -90,11 +91,7 @@ class SchedulerService:
                 user_id=str(task.user_id),
                 content=task.payload.get("prompt", task.description),
                 msg_type=MessageType.SYSTEM if task.task_type == "notification" else MessageType.TEXT,
-                meta={
-                    "triggered_by": "scheduler",
-                    "task_id": task.id,
-                    "is_automated": True
-                }
+                meta={"triggered_by": "scheduler", "task_id": task.id, "is_automated": True},
             )
 
             # Push to MQ Inbox

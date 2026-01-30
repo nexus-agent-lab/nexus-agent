@@ -209,7 +209,6 @@ def create_agent_graph(tools: list):
         role = user.role if user else "guest"
 
         # 1. Load context-appropriate summaries and registry
-        from app.core.skill_loader import SkillLoader
         skill_summaries = SkillLoader.load_summaries(role=role)
         skill_registry = SkillLoader.load_registry_with_metadata(role=role)
 
@@ -236,7 +235,9 @@ def create_agent_graph(tools: list):
                 keywords = skill["metadata"].get("intent_keywords", [])
                 # Activation Trigger: If any keyword matches the user message
                 if any(kw.lower() in last_human_msg for kw in keywords):
-                    logger.info(f"🚀 [Dynamic Injection] Activating full rules for skill: {skill['name']} for role: {role}")
+                    logger.info(
+                        f"🚀 [Dynamic Injection] Activating full rules for skill: {skill['name']} for role: {role}"
+                    )
                     active_rules.append(f"### FULL RULES: {skill['name']}\n{skill['rules']}")
 
         final_system_prompt = prompt_with_skills
@@ -393,6 +394,18 @@ def create_agent_graph(tools: list):
 
         for tool_call in last_message.tool_calls:
             tool_name = tool_call["name"]
+
+            # 🚑 【Universal Patch】Fix Malformed Tool Names (e.g. "forget_memoryforget_memory")
+            if tool_name not in tools_by_name:
+                half_len = len(tool_name) // 2
+                if len(tool_name) % 2 == 0 and tool_name[:half_len] == tool_name[half_len:]:
+                    candidate = tool_name[:half_len]
+                    if candidate in tools_by_name:
+                        logger.warning(
+                            f"[Agent Patch] Auto-corrected malformed tool name: '{tool_name}' -> '{candidate}'"
+                        )
+                        tool_name = candidate
+
             tool_to_call = tools_by_name.get(tool_name)
             if not tool_to_call:
                 error_msg = f"Error: Tool '{tool_name}' not found."

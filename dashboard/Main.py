@@ -3,10 +3,10 @@ import time
 
 import pandas as pd
 import streamlit as st
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
-# --- Configuration ---
-# --- Configuration ---
+from dashboard.utils import get_engine
+
 st.set_page_config(
     page_title="Nexus 指挥中心",
     page_icon="🛡️",
@@ -14,13 +14,9 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-DB_URL = os.getenv("DATABASE_URL", "postgresql://nexus:nexus_password@localhost:5432/nexus_db")
-
-
-@st.cache_resource
-def get_engine():
-    return create_engine(DB_URL)
-
+# --- Mission Control ---
+st.title("🛡️ Nexus 任务控制台")
+st.markdown("### 系统状态")
 
 engine = get_engine()
 

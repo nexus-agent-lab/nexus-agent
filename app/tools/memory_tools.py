@@ -56,10 +56,10 @@ async def query_memory(query: str = None, memory_type: str = None, user_id: int 
         memories = await memory_manager.search_memory(user_id=user_id, query=query)
         if not memories:
             return f"❓ No memories found matching: {query}"
-        
+
         results = [f"ID:{m.id} [{m.memory_type}] {m.content}" for m in memories]
         return "🧠 **Found the following memories:**\n\n" + "\n".join(results)
-    
+
     # List by type if no query
     memories = await memory_manager.list_memories(user_id=user_id, memory_type=memory_type)
     if not memories:
@@ -87,3 +87,30 @@ async def forget_memory(memory_id: int, user_id: int = None) -> str:
     if success:
         return f"✅ Memory ID:{memory_id} has been forgotten."
     return f"❌ Failed to find memory with ID:{memory_id}."
+
+
+@tool
+@require_role("user")
+async def forget_all_memories(memory_type: str = None, confirm: bool = False, user_id: int = None) -> str:
+    """
+    Delete MULTIPLE memories at once based on type.
+    Use this when the user wants to clear their history, profile, or restart.
+
+    Args:
+        memory_type: Optional. The type of memory to delete ('profile', 'reflexion', 'knowledge').
+                     If not provided, it deletes ALL memories.
+        confirm: You must set this to True to execute the deletion.
+        user_id: User ID (auto-injected)
+    """
+    if not confirm:
+        return "❌ Safety Check: You must set 'confirm=True' to bulk delete memories."
+
+    from app.core.memory import memory_manager
+
+    # We need to access DB directly for bulk delete as memory_manager doesn't support it yet
+    # Or validly extend memory_manager.
+    # Extending memory_manager is cleaner.
+    count = await memory_manager.delete_all_memories(user_id=user_id, memory_type=memory_type)
+
+    type_msg = f"of type '{memory_type}' " if memory_type else ""
+    return f"✅ forgotten {count} memories {type_msg}for user."

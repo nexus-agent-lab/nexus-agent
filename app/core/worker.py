@@ -70,7 +70,9 @@ class AgentWorker:
         user = await AuthService.get_user_by_identity(msg.channel.value, provider_id)
         role = user.role if user else "N/A"
         uid = user.id if user else "N/A"
-        logger.info(f"[DEBUG] _resolve_user: channel={msg.channel.value}, provider_id={provider_id}, user_found={user is not None}, user_id={uid}, role={role}")
+        logger.info(
+            f"[DEBUG] _resolve_user: channel={msg.channel.value}, provider_id={provider_id}, user_found={user is not None}, user_id={uid}, role={role}"
+        )
         if user:
             return user
 
@@ -149,7 +151,9 @@ class AgentWorker:
                         user_id=target_user_id,
                         provider=msg.channel.value,
                         provider_user_id=provider_id,
-                        username=msg.meta.get("username") or msg.meta.get("feishu_sender_id") or msg.meta.get("telegram_username"),
+                        username=msg.meta.get("username")
+                        or msg.meta.get("feishu_sender_id")
+                        or msg.meta.get("telegram_username"),
                     )
 
                     from app.core.auth_service import BindResult
@@ -161,6 +165,7 @@ class AgentWorker:
                     # fetch user again to get lang? or just assume EN or use system.
                     # Ideally we use the user's language if available.
                     from app.core.db import AsyncSessionLocal
+
                     async with AsyncSessionLocal() as session:
                         u = await session.get(User, target_user_id)
                         if u and u.language:
@@ -179,10 +184,9 @@ class AgentWorker:
                         reply_text = get_text("bind_conflict_user", target_lang)
 
                     if result == BindResult.SUCCESS:
-
-
                         # Fetch Allowed Tools to update Menu
                         from app.core.db import AsyncSessionLocal
+
                         async with AsyncSessionLocal() as session:
                             u = await session.get(User, target_user_id)
                             if u:
@@ -228,7 +232,7 @@ class AgentWorker:
         # 1. Onboarding Check for Guest Users
         if user.role == "guest":
             from app.core.i18n import get_text, resolve_language
-            
+
             # Resolve language: User preference (if any) -> Message Content -> Default
             guest_lang = resolve_language(user, msg.content)
             onboarding_text = get_text("welcome_guest", guest_lang)
@@ -244,13 +248,12 @@ class AgentWorker:
             )
             return
 
-
         # Target message ID for editing (if provided by interface)
         target_msg_id = msg.meta.get("target_message_id")
 
         initial_state = {
             "messages": [HumanMessage(content=msg.content)],
-            "user": user, # Enforce policies
+            "user": user,  # Enforce policies
             "session_id": None,
         }
 
@@ -298,7 +301,7 @@ class AgentWorker:
                     current_thought += ev_data
                 elif ev_type == "tool_start":
                     # Extract and format arguments for preview
-                    args = ev_data.get('args', {})
+                    args = ev_data.get("args", {})
                     args_preview = ""
                     if args:
                         # Show first few args concisely
@@ -322,7 +325,7 @@ class AgentWorker:
                     )
 
                 elif ev_type == "tool_end":
-                    result_preview = ev_data.get('result', '')[:100]
+                    result_preview = ev_data.get("result", "")[:100]
                     current_status = f"✅ **Completed**: `{ev_data['name']}`"
                     if result_preview:
                         current_status += f"\n   └─ _{result_preview}_"
@@ -347,7 +350,7 @@ class AgentWorker:
 
                 # Throttle intermediate updates
                 now = time.time()
-                if (now - last_outbox_time > 3.0):
+                if now - last_outbox_time > 3.0:
                     # Always send typing status periodically (Telegram)
                     if msg.channel == ChannelType.TELEGRAM:
                         await MQService.push_outbox(

@@ -1,8 +1,6 @@
-import asyncio
 import os
 import sys
 
-import pandas as pd
 import streamlit as st
 
 # Add project root to sys.path to allow imports from app
@@ -10,30 +8,17 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")
 
 import os
 
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import NullPool
 from sqlmodel import select
 
 from app.core.auth_service import AuthService
 from app.models.user import User, UserIdentity
+from dashboard.utils import get_async_session_maker, run_async
 
 st.set_page_config(page_title="User Management", page_icon="👥", layout="wide")
-
 st.title("👥 User & Identity Management")
 
-# Fix for "Transport closed" / Event Loop issues in Streamlit
-# We must use NullPool because asyncio.run() creates a new loop each time,
-# preventing us from reusing connections from a global pool tied to an old loop.
-DB_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://nexus:nexus_password@postgres:5432/nexus_db")
-# Using NullPool ensures we get a fresh connection every time (expensive but safe for this UI)
-engine = create_async_engine(DB_URL, echo=False, poolclass=NullPool)
-DashboardSession = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-
-
-# Helper to run async in Streamlit
-def run_async(coro):
-    return asyncio.run(coro)
+# Setup session maker
+DashboardSession = get_async_session_maker()
 
 
 async def get_users():

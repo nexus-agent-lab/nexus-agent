@@ -11,10 +11,12 @@ from app.models.user import User
 
 logger = logging.getLogger("nexus.tools.scheduler")
 
+
 class ScheduleTaskArgs(BaseModel):
     cron_expr: str = Field(description="Cron expression (e.g. '0 9 * * *' for daily at 9am)")
     prompt: str = Field(description="The prompt or action to trigger when the time comes")
     description: str = Field(description="A short, human-readable description of this task")
+
 
 async def schedule_task(cron_expr: str, prompt: str, description: str, **kwargs) -> str:
     """
@@ -37,7 +39,7 @@ async def schedule_task(cron_expr: str, prompt: str, description: str, **kwargs)
             description=description,
             task_type="prompt",
             payload={"prompt": prompt},
-            enabled=True
+            enabled=True,
         )
 
         await scheduler.add_task(new_task)
@@ -45,6 +47,7 @@ async def schedule_task(cron_expr: str, prompt: str, description: str, **kwargs)
     except Exception as e:
         logger.error(f"Failed to schedule task: {e}")
         return f"❌ Failed to schedule task: {str(e)}"
+
 
 async def list_tasks(**kwargs) -> str:
     """
@@ -55,9 +58,7 @@ async def list_tasks(**kwargs) -> str:
         return "Error: User context not found."
 
     async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(ScheduledTask).where(ScheduledTask.user_id == user.id)
-        )
+        result = await session.execute(select(ScheduledTask).where(ScheduledTask.user_id == user.id))
         tasks = result.scalars().all()
 
         if not tasks:
@@ -71,6 +72,7 @@ async def list_tasks(**kwargs) -> str:
                 output.append(f"  └ Last run: {t.last_run.strftime('%Y-%m-%d %H:%M:%S')}")
 
         return "\n".join(output)
+
 
 async def delete_task(task_id: int, **kwargs) -> str:
     """

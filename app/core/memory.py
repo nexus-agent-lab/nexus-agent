@@ -41,7 +41,9 @@ class MemoryManager:
                 dimensions=dimension if dimension == 1536 else None,
             )
 
-    async def add_memory(self, user_id: int, content: str, memory_type: str = "knowledge", dedup_threshold: float = 0.90):
+    async def add_memory(
+        self, user_id: int, content: str, memory_type: str = "knowledge", dedup_threshold: float = 0.90
+    ):
         """
         Embeds content and stores it in the database.
         Includes semantic deduplication: if a memory with > 0.90 similarity exists, return that instead.
@@ -53,7 +55,7 @@ class MemoryManager:
             # Using vector_cosine_ops (<=> is cosine distance in pgvector)
             # Distance = 1 - Similarity. So Similarity > 0.92 means Distance < 0.08
             distance_threshold = 1.0 - dedup_threshold
-            
+
             stmt = (
                 select(Memory)
                 .where(Memory.user_id == user_id)
@@ -63,7 +65,7 @@ class MemoryManager:
             )
             existing = await session.execute(stmt)
             duplicate = existing.scalar_one_or_none()
-            
+
             if duplicate:
                 # Retrieve the actual distance for logging (if needed, or just return)
                 # Ideally we log this "cache hit"
@@ -124,6 +126,25 @@ class MemoryManager:
                 await session.commit()
                 return True
             return False
+
+    async def delete_all_memories(self, user_id: int, memory_type: str = None) -> int:
+        """
+        Delete all memories for a user, optionally filtered by type.
+        Returns the count of deleted items.
+        """
+        from sqlmodel import delete
+
+        async with AsyncSessionLocal() as session:
+            statement = delete(Memory).where(Memory.user_id == user_id)
+            if memory_type:
+                statement = statement.where(Memory.memory_type == memory_type)
+
+            # Note: delete() with execution doesn't return count directly in all drivers easily
+            # We can select count first or use RETURNING.
+            # Simpler: just execute. Actually expected rowcount is available.
+            result = await session.execute(statement)
+            await session.commit()
+            return result.rowcount
 
 
 # Singleton instance

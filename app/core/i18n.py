@@ -46,11 +46,13 @@ STRINGS = {
     },
 }
 
+
 def get_text(key: str, lang: str = "en", **kwargs) -> str:
     """Retrieve localized string."""
     lang_code = "zh" if lang and lang.startswith("zh") else "en"
     text = STRINGS.get(lang_code, STRINGS["en"]).get(key, "")
     return text.format(**kwargs) if text else key
+
 
 def detect_language(text: str) -> str:
     """
@@ -62,6 +64,7 @@ def detect_language(text: str) -> str:
     if any("\u4e00" <= char <= "\u9fff" for char in text):
         return "zh"
     return "en"
+
 
 def resolve_language(user: Optional[object], message_content: str = "") -> str:
     """

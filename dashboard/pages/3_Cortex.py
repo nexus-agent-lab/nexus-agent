@@ -1,13 +1,12 @@
-import os
-
 import pandas as pd
 import streamlit as st
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
 st.set_page_config(page_title="记忆皮层", page_icon="🧠", layout="wide")
 
-DB_URL = os.getenv("DATABASE_URL", "postgresql://nexus:nexus_password@localhost:5432/nexus_db")
-engine = create_engine(DB_URL)
+from dashboard.utils import get_engine
+
+engine = get_engine()
 
 st.title("🧠 记忆皮层 (Memory Manager)")
 

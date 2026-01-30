@@ -121,6 +121,7 @@ class AuditInterceptor:
 
             # Proactive Admin Notification
             from app.core.auth_service import AuthService
+
             asyncio.create_task(
                 AuthService.notify_admins(
                     f"🚨 **Tool Error Alert**\n"

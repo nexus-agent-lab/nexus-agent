@@ -30,7 +30,7 @@ class SkillLoader:
             try:
                 content = skill_file.read_text(encoding="utf-8")
                 metadata = cls._extract_metadata(content)
-                
+
                 # Role Check
                 req_role = metadata.get("required_role", "user")
                 if req_role == "admin" and role != "admin":
@@ -60,7 +60,7 @@ class SkillLoader:
             try:
                 content = skill_file.read_text(encoding="utf-8")
                 metadata = cls._extract_metadata(content)
-                
+
                 # Role Check
                 req_role = metadata.get("required_role", "user")
                 if req_role == "admin" and role != "admin":

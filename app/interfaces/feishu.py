@@ -1,4 +1,3 @@
-
 import asyncio
 import json
 import logging
@@ -103,8 +102,6 @@ async def send_feishu_message(msg: UnifiedMessage):
 # ==========================================
 
 
-
-
 def do_process_message(data: Any) -> None:
     """
     Sync wrapper to bridge Lark's sync callback to our async MQ.
@@ -121,8 +118,6 @@ def do_process_message(data: Any) -> None:
     # Note: Lark WS Client call back is standard threading.
     # We will use a helper to fire-and-forget to MQ.
     asyncio.run(_push_to_mq(data.event))
-
-
 
 
 async def _push_to_mq(event: Any):

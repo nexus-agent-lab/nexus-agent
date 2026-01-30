@@ -96,9 +96,7 @@ class SessionManager:
         """
         async with AsyncSessionLocal() as db:
             # Delete all messages in this session
-            result = await db.execute(
-                select(SessionMessage).where(SessionMessage.session_id == session_id)
-            )
+            result = await db.execute(select(SessionMessage).where(SessionMessage.session_id == session_id))
             messages = result.scalars().all()
             for msg in messages:
                 await db.delete(msg)

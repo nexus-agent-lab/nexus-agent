@@ -17,10 +17,13 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 
 from enum import Enum
 
+
 class BindResult(str, Enum):
     SUCCESS = "success"
-    PROVIDER_CONFLICT = "provider_conflict" # Social ID already linked to another user
-    USER_CONFLICT = "user_conflict"     # User already linked to another Social ID of this type
+    PROVIDER_CONFLICT = "provider_conflict"  # Social ID already linked to another user
+    USER_CONFLICT = "user_conflict"  # User already linked to another Social ID of this type
+
+
 class AuthService:
     @staticmethod
     def _get_redis():
@@ -71,14 +74,14 @@ class AuthService:
                     return BindResult.PROVIDER_CONFLICT  # Conflict: One social ID -> One Nexus User
 
             # Check if this User already has an identity for this provider
-            stmt_user = select(UserIdentity).where(
-                UserIdentity.user_id == user_id, UserIdentity.provider == provider
-            )
+            stmt_user = select(UserIdentity).where(UserIdentity.user_id == user_id, UserIdentity.provider == provider)
             result_user = await session.execute(stmt_user)
             existing_user = result_user.scalar_one_or_none()
             if existing_user:
-                logger.warning(f"User {user_id} already has a {provider} identity linked ({existing_user.provider_user_id}).")
-                return BindResult.USER_CONFLICT # Conflict: One Nexus User -> One Social ID per provider
+                logger.warning(
+                    f"User {user_id} already has a {provider} identity linked ({existing_user.provider_user_id})."
+                )
+                return BindResult.USER_CONFLICT  # Conflict: One Nexus User -> One Social ID per provider
 
             # Create new identity
             new_id = UserIdentity(
@@ -92,6 +95,7 @@ class AuthService:
 
             # Role Promotion: If target user is a 'guest', promote to 'user'
             from app.models.user import User
+
             user = await session.get(User, user_id)
             if user and user.role == "guest":
                 logger.info(f"Promoting User {user_id} from guest to user upon binding.")
