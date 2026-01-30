@@ -185,6 +185,7 @@ class MCPManager:
             name=tool.name,
             description=f"[{server_name}] {tool.description or tool.name}",
             args_schema=args_schema,
+            metadata={"category": server_name},
         )
 
     def _create_args_schema(self, tool_name: str, schema: Dict[str, Any]) -> Type[BaseModel]:

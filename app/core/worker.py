@@ -32,6 +32,10 @@ class AgentWorker:
         cls._tools = tools
 
     @classmethod
+    def get_tools(cls) -> list:
+        return cls._tools
+
+    @classmethod
     async def start(cls):
         if cls._running:
             return

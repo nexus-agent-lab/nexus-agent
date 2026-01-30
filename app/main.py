@@ -69,8 +69,20 @@ async def lifespan(app: FastAPI):
     # Start Scheduler
     await SchedulerService.get_instance().start()
 
-    tool_names = [t.name for t in all_tools]
-    logger.info(f"Agent initialized with {len(all_tools)} tools: {tool_names}")
+    # Group tools by category for structured logging
+    tool_map = {}
+    for tool in all_tools:
+        category = "Core/Internal"
+        if hasattr(tool, "metadata") and tool.metadata and "category" in tool.metadata:
+            category = tool.metadata["category"]
+        
+        if category not in tool_map:
+            tool_map[category] = []
+        tool_map[category].append(tool.name)
+
+    logger.info(f"Agent initialized with {len(all_tools)} tools across {len(tool_map)} categories:")
+    for cat, t_names in tool_map.items():
+        logger.info(f"  - [{cat.upper()}]: {', '.join(t_names)}")
 
     yield
 
