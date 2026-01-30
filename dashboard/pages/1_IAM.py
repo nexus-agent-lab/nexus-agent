@@ -2,9 +2,10 @@ import pandas as pd
 import streamlit as st
 from sqlalchemy import text
 
+from dashboard.utils import get_engine
+
 st.set_page_config(page_title="身份与权限", page_icon="🛡️", layout="wide")
 
-from dashboard.utils import get_engine
 
 engine = get_engine()
 

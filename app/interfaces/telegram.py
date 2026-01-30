@@ -1,5 +1,6 @@
 import logging
 import os
+import asyncio
 
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
@@ -100,9 +101,6 @@ async def robust_send_message(bot, chat_id: str, text: str, parse_mode: str = "M
             else:
                 raise e
 
-
-# Typing Status Management
-import asyncio
 
 TYPING_TASKS = {}  # chat_id -> asyncio.Task
 
