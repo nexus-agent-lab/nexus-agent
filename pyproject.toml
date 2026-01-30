@@ -73,7 +73,7 @@ exclude = [
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
-ignore = ["E402", "E501"]
+ignore = ["E501"]
 fixable = ["ALL"]
 unfixable = []
 
@@ -82,3 +82,4 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 addopts = "-v"
+pythonpath = "."

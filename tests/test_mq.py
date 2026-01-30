@@ -13,7 +13,7 @@ async def test_mq_operation(mocker):
     mocker.patch("app.core.mq.redis.from_url", return_value=mock_redis)
 
     # Reset internal redis reference to ensure our mock is used
-    MQService._redis = None
+    MQService._redis_instances = {}
 
     # 2. Create Message
     msg = UnifiedMessage(
@@ -39,7 +39,7 @@ async def test_queue_empty(mocker):
     """Test popping from an empty queue."""
     mock_redis = AsyncMock()
     mocker.patch("app.core.mq.redis.from_url", return_value=mock_redis)
-    MQService._redis = None
+    MQService._redis_instances = {}
 
     mock_redis.rpop.return_value = None
     popped = await MQService.pop_inbox()

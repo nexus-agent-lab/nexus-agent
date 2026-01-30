@@ -75,7 +75,7 @@ async def lifespan(app: FastAPI):
         category = "Core/Internal"
         if hasattr(tool, "metadata") and tool.metadata and "category" in tool.metadata:
             category = tool.metadata["category"]
-        
+
         if category not in tool_map:
             tool_map[category] = []
         tool_map[category].append(tool.name)

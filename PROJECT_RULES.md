@@ -33,8 +33,9 @@ This document establishes the coding standards, architectural patterns, and best
 - **Docker**: improvements must be compatible with `docker-compose.yml`.
 
 ## 6. Testing
-- **Unit Tests**: New logic requires `pytest` coverage.
+- **Unit Tests**: New logic requires `pytest` coverage. Run with `uv run pytest`.
 - **Integration**: Verification scripts in `scripts/debug/` are encouraged for complex flows.
+- **Git Hooks**: **NEVER** skip pre-commit hooks (e.g. `git commit --no-verify`). Fix the underlying issue (linting/tests) instead.
 
 ---
 *This file is the source of truth for project standards. Update it as patterns evolve.*
