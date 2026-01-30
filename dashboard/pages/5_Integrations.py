@@ -42,7 +42,6 @@ servers = config.get("mcpServers", {})
 tab_mcp, tab_skills, tab_audit = st.tabs(["🧩 MCP 服务", "🧠 技能卡 (Skill Cards)", "🛡️ 学习审计 (Audit)"])
 
 
-
 API_BASE = get_api_url()
 
 # ============================================================================
