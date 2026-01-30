@@ -51,6 +51,11 @@ async def send_feishu_message(msg: UnifiedMessage):
     receive_id_type = msg.meta.get("feishu_receive_id_type", "open_id")
 
     try:
+        if msg.msg_type == MessageType.ACTION:
+            # Feishu might not support 'typing' actions easily via this API.
+            # For now, we silently ignore to prevent "typing" text spam.
+            return
+
         if msg.msg_type == MessageType.UPDATE and target_msg_id:
             # Edit existing message (Message Card only?)
             # Standard Text messages in Feishu might NOT be editable via API easily unless sent as cards?

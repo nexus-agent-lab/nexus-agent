@@ -150,15 +150,19 @@ async def send_telegram_message(msg: UnifiedMessage):
         # del TYPING_TASKS[chat_id] # relying on finally block is safer for race conditions
 
     try:
+        if msg.msg_type == MessageType.ACTION:
+            # Explicit Action (typing, upload_photo, etc.)
+            action = msg.content if msg.content else "typing"
+            await _telegram_app.bot.send_chat_action(chat_id=chat_id, action=action)
+            return
+
         if msg.msg_type == MessageType.UPDATE and target_msg_id:
             # Edit existing status message
             await _telegram_app.bot.edit_message_text(
                 chat_id=chat_id, message_id=int(target_msg_id), text=text, parse_mode="Markdown"
             )
-            # Handle chat actions like 'typing'
-            # We don't have user context here easily to determine language, default to EN or use provided content
-            # If content is empty, use default "typing"
-            action = msg.content if msg.content else "typing"
+            # Also send typing to keep it alive during updates
+            action = "typing"
             await _telegram_app.bot.send_chat_action(chat_id=chat_id, action=action)
         else:
             # Send new message (or final replacement)
