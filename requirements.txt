@@ -27,3 +27,4 @@ aiosqlite
 
 apscheduler
 croniter
+lark-oapi

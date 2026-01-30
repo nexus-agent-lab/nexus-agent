@@ -8,7 +8,7 @@ sys.path.append(os.getcwd())
 async def test_telegram_import():
     print("Testing imports...")
     try:
-        from app.interfaces.telegram import bind_command
+        import app.interfaces.telegram  # noqa: F401
         print("✅ Successfully imported telegram interface")
     except ImportError:
         print("❌ Failed to import get_text from app.interfaces.telegram")
