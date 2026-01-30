@@ -1,9 +1,6 @@
-import logging
+import asyncio
 import os
-import secrets
 import sys
-import uuid
-import uuid as uuid_lib
 
 from sqlmodel import select
 
@@ -16,13 +13,13 @@ if os.getenv("DOCKER_ENV"):
 else:
     REDIS_URL = "redis://localhost:6379/0"
 
+# Monkeypatch AuthService
+import app.core.auth_service
 from app.core.auth_service import AuthService
 from app.core.db import get_session
 from app.core.mq import ChannelType, MessageType, UnifiedMessage
 from app.models.user import User, UserIdentity
 
-# Monkeypatch AuthService
-import app.core.auth_service
 app.core.auth_service.REDIS_URL = REDIS_URL
 
 

@@ -25,8 +25,8 @@ def upgrade() -> None:
 
     # Recreate HNSW index with new dimension
     op.execute("""
-        CREATE INDEX memory_embedding_hnsw_idx 
-        ON memory 
+        CREATE INDEX memory_embedding_hnsw_idx
+        ON memory
         USING hnsw (embedding vector_cosine_ops)
         WITH (m = 16, ef_construction = 64)
     """)
@@ -41,8 +41,8 @@ def downgrade() -> None:
 
     # Recreate index with old dimension
     op.execute("""
-        CREATE INDEX memory_embedding_hnsw_idx 
-        ON memory 
+        CREATE INDEX memory_embedding_hnsw_idx
+        ON memory
         USING hnsw (embedding vector_cosine_ops)
         WITH (m = 16, ef_construction = 64)
     """)

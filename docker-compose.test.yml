@@ -1,0 +1,25 @@
+version: '3.8'
+services:
+  nexus-test:
+    build: .
+    volumes:
+      - .:/app
+    command: >
+      /bin/sh -c "pip install pytest pytest-asyncio pytest-mock && python -m pytest tests/ -v"
+    environment:
+      DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+      REDIS_URL: "redis://redis:6379/0"
+      TEST_MODE: "true"
+      TELEGRAM_BOT_TOKEN: "dummy"
+    depends_on:
+      - redis
+    networks:
+      - test-net
+
+  redis:
+    image: redis:alpine
+    networks:
+      - test-net
+
+networks:
+  test-net:

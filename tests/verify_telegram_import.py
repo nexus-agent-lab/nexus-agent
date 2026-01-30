@@ -9,6 +9,7 @@ async def test_telegram_import():
     print("Testing imports...")
     try:
         import app.interfaces.telegram  # noqa: F401
+
         print("✅ Successfully imported telegram interface")
     except ImportError:
         print("❌ Failed to import get_text from app.interfaces.telegram")
