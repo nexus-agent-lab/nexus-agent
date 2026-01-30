@@ -40,47 +40,39 @@ def run_async(coro):
 # --- Helper Functions ---
 async def update_status(item_id, new_status):
     async with AsyncSessionLocal() as session:
-        try:
-            item = await session.get(ProductSuggestion, item_id)
-            if item:
-                item.status = new_status
-                item.updated_at = datetime.utcnow()
-                session.add(item)
-                await session.commit()
-        finally:
-            await session.close()
+        item = await session.get(ProductSuggestion, item_id)
+        if item:
+            item.status = new_status
+            item.updated_at = datetime.utcnow()
+            session.add(item)
+            await session.commit()
 
 
 async def delete_suggestion(item_id):
     async with AsyncSessionLocal() as session:
-        try:
-            item = await session.get(ProductSuggestion, item_id)
-            if item:
-                await session.delete(item)
-                await session.commit()
-        finally:
-            await session.close()
+        item = await session.get(ProductSuggestion, item_id)
+        if item:
+            await session.delete(item)
+            await session.commit()
 
 
 # --- Data Loading ---
 @st.cache_data(ttl=60)
 def get_roadmap_suggestions(status_filter, cat_filter):
     """Fetch suggestions with caching to avoid redundant DB calls."""
+
     async def _fetch():
         async with AsyncSessionLocal() as session:
-            try:
-                query = select(ProductSuggestion)
-                if status_filter != "All":
-                    query = query.where(ProductSuggestion.status == status_filter.lower())
-                if cat_filter != "All":
-                    query = query.where(ProductSuggestion.category == cat_filter.lower())
+            query = select(ProductSuggestion)
+            if status_filter != "All":
+                query = query.where(ProductSuggestion.status == status_filter.lower())
+            if cat_filter != "All":
+                query = query.where(ProductSuggestion.category == cat_filter.lower())
 
-                query = query.order_by(ProductSuggestion.created_at.desc())
-                result = await session.execute(query)
-                return result.scalars().all()
-            finally:
-                await session.close()
-    
+            query = query.order_by(ProductSuggestion.created_at.desc())
+            result = await session.execute(query)
+            return result.scalars().all()
+
     return run_async(_fetch())
 
 
