@@ -197,46 +197,49 @@ def create_agent_graph(tools: list):
     from app.core.skill_loader import SkillLoader
 
     mcp_instructions = MCPManager.get_system_instructions()
-
-    # NEW: Load both summaries and full registry for two-stage loading
-    skill_summaries = SkillLoader.load_summaries()
-    skill_registry = SkillLoader.load_registry_with_metadata()
-
     dynamic_system_prompt = BASE_SYSTEM_PROMPT
 
     # Layer 1: MCP-specific rules (legacy)
     if mcp_instructions:
         dynamic_system_prompt += f"\n## SPECIFIC DOMAIN RULES\n{mcp_instructions}\n"
 
-    # Layer 2: Skill Index (Summaries) - ALWAYS present so Agent knows what it CAN do
-    if skill_summaries:
-        dynamic_system_prompt += (
-            f"\n## AVAILABLE SKILLS (Overview)\n"
-            f"You have the following skills available. Detailed rules for a skill will be activated when relevant.\n"
-            f"{skill_summaries}\n"
-        )
-
     async def call_model(state: AgentState):
         messages = list(state["messages"])
+        user = state.get("user")
+        role = user.role if user else "guest"
 
-        # 1. Capture User Intent for Dynamic Injection
+        # 1. Load context-appropriate summaries and registry
+        from app.core.skill_loader import SkillLoader
+        skill_summaries = SkillLoader.load_summaries(role=role)
+        skill_registry = SkillLoader.load_registry_with_metadata(role=role)
+
+        prompt_with_skills = dynamic_system_prompt
+        # Layer 2: Skill Index (Summaries) - ALWAYS present so Agent knows what it CAN do (Role-specific)
+        if skill_summaries:
+            prompt_with_skills += (
+                f"\n## AVAILABLE SKILLS (Overview)\n"
+                f"You have the following skills available to your role ({role}). Detailed rules for a skill will be activated when relevant.\n"
+                f"{skill_summaries}\n"
+            )
+
+        # 2. Capture User Intent for Dynamic Injection
         last_human_msg = ""
         for msg in reversed(messages):
             if isinstance(msg, HumanMessage):
                 last_human_msg = str(msg.content).lower()
                 break
 
-        # 2. Dynamic Rule Activation
+        # 3. Dynamic Rule Activation (Role-aware)
         active_rules = []
         if last_human_msg:
             for skill in skill_registry:
                 keywords = skill["metadata"].get("intent_keywords", [])
                 # Activation Trigger: If any keyword matches the user message
                 if any(kw.lower() in last_human_msg for kw in keywords):
-                    logger.info(f"🚀 [Dynamic Injection] Activating full rules for skill: {skill['name']}")
+                    logger.info(f"🚀 [Dynamic Injection] Activating full rules for skill: {skill['name']} for role: {role}")
                     active_rules.append(f"### FULL RULES: {skill['name']}\n{skill['rules']}")
 
-        final_system_prompt = dynamic_system_prompt
+        final_system_prompt = prompt_with_skills
         if active_rules:
             final_system_prompt += "\n## ACTIVE SKILL RULES (CONTEXTUAL)\n" + "\n\n".join(active_rules) + "\n"
 

@@ -4,9 +4,11 @@ from typing import Callable, List
 from langchain_core.tools import tool
 
 from app.core.decorators import require_role
+from app.tools.admin_tools import broadcast_notification, restart_system
 from app.tools.learning_tools import learn_skill_rule
-from app.tools.memory_tools import save_insight, store_preference
+from app.tools.memory_tools import forget_memory, query_memory, save_insight, store_preference
 from app.tools.sandbox import get_sandbox_tool
+from app.tools.scheduler import delete_task, list_tasks, schedule_task
 
 
 @tool
@@ -17,38 +19,44 @@ def get_current_time() -> str:
 
 
 @tool
-@require_role("user")  # Basic calculation is allowed for everyone
-def calculate_number(a: int, b: int, operation: str) -> str:
-    """Performs a calculation on two numbers. Operation can be 'add', 'subtract', 'multiply', 'divide'."""
-    if operation == "add":
-        return str(a + b)
-    elif operation == "subtract":
-        return str(a - b)
-    elif operation == "multiply":
-        return str(a * b)
-    elif operation == "divide":
-        if b == 0:
-            return "Error: Division by zero"
-        return str(a / b)
-    else:
-        return f"Error: Unknown operation {operation}"
+@require_role("user")
+async def schedule_cron_task(cron_expr: str, prompt: str, description: str, **kwargs) -> str:
+    """
+    Schedules a new recurring task.
+    - cron_expr: Standard cron (e.g. '0 9 * * *' for 9am daily)
+    - prompt: The text/command to trigger
+    - description: Human readable name
+    """
+    return await schedule_task(cron_expr, prompt, description, **kwargs)
 
 
 @tool
-@require_role("admin")
-def dangerous_operation() -> str:
-    """A tool only admins can use."""
-    return "Performed dangerous operation!"
+@require_role("user")
+async def list_scheduled_tasks(**kwargs) -> str:
+    """Lists all scheduled tasks for the current user."""
+    return await list_tasks(**kwargs)
+
+
+@tool
+@require_role("user")
+async def remove_scheduled_task(task_id: int, **kwargs) -> str:
+    """Deletes a scheduled task by ID."""
+    return await delete_task(task_id, **kwargs)
 
 
 def get_static_tools() -> List[Callable]:
     """Returns the list of static tools."""
     return [
         get_current_time,
-        calculate_number,
-        dangerous_operation,
         get_sandbox_tool(),
         store_preference,
         save_insight,
+        query_memory,
+        forget_memory,
         learn_skill_rule,
+        schedule_cron_task,
+        list_scheduled_tasks,
+        remove_scheduled_task,
+        restart_system,
+        broadcast_notification,
     ]

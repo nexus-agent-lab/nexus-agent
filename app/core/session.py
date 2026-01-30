@@ -90,6 +90,22 @@ class SessionManager:
             return list(reversed(messages))  # Return oldest -> newest
 
     @classmethod
+    async def clear_history(cls, session_id: int):
+        """
+        Clear all message history for a session (soft delete or full deletion).
+        """
+        async with AsyncSessionLocal() as db:
+            # Delete all messages in this session
+            result = await db.execute(
+                select(SessionMessage).where(SessionMessage.session_id == session_id)
+            )
+            messages = result.scalars().all()
+            for msg in messages:
+                await db.delete(msg)
+            await db.commit()
+            logger.info(f"Cleared history for session {session_id}, deleted {len(messages)} messages.")
+
+    @classmethod
     async def prune_tool_output(cls, content: str, tool_name: str) -> tuple[str, bool, Optional[str]]:
         """
         Deterministic pruning rule.

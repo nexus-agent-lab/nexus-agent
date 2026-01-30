@@ -1,16 +1,16 @@
+
 import asyncio
 import json
 import logging
 import os
+from typing import Any
 
 import lark_oapi as lark
-
 from lark_oapi.api.im.v1 import (
-    UpdateMessageRequest,
-    UpdateMessageRequestBody,
     CreateMessageRequest,
     CreateMessageRequestBody,
-    MessageReceiveEventData,
+    UpdateMessageRequest,
+    UpdateMessageRequestBody,
 )
 from lark_oapi.ws import Client as WSClient
 
@@ -103,7 +103,9 @@ async def send_feishu_message(msg: UnifiedMessage):
 # ==========================================
 
 
-def do_process_message(data: lark.im.v1.P2MessageReceiveV1) -> None:
+
+
+def do_process_message(data: Any) -> None:
     """
     Sync wrapper to bridge Lark's sync callback to our async MQ.
     Ideally we want an async callback, but let's check what Lark WS client supports.
@@ -121,7 +123,9 @@ def do_process_message(data: lark.im.v1.P2MessageReceiveV1) -> None:
     asyncio.run(_push_to_mq(data.event))
 
 
-async def _push_to_mq(event: MessageReceiveEventData):
+
+
+async def _push_to_mq(event: Any):
     content_dict = json.loads(event.message.content)
     text = content_dict.get("text", "")
 

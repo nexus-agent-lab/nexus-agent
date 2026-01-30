@@ -96,17 +96,22 @@ else:
                 identities = run_async(get_identities(user.id))
                 if identities:
                     st.markdown("**Linked Accounts:**")
-                    data = []
                     for identity in identities:
-                        data.append(
-                            {
-                                "Provider": identity.provider,
-                                "ID": identity.provider_user_id,
-                                "Username": identity.provider_username,
-                                "Last Seen": identity.last_seen,
-                            }
-                        )
-                    st.table(pd.DataFrame(data))
+                        ic1, ic2, ic3 = st.columns([2, 2, 1])
+                        with ic1:
+                            st.caption(f"{identity.provider}")
+                            st.write(f"**{identity.provider_username or 'N/A'}**")
+                        with ic2:
+                            st.code(identity.provider_user_id)
+                            st.caption(f"Last Seen: {identity.last_seen}")
+                        with ic3:
+                            if st.button("❌ Unbind", key=f"unbind_{identity.provider}_{identity.provider_user_id}"):
+                                if run_async(AuthService.unbind_identity(identity.provider, identity.provider_user_id)):
+                                    st.success(f"Unbound {identity.provider}!")
+                                    st.rerun()
+                                else:
+                                    st.error("Failed to unbind.")
+                    # st.table(pd.DataFrame(data)) # Removed static table
                 else:
                     st.warning("No linked accounts.")
 

@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel
 
+from app.api.auth import router as auth_router
 from app.api.skill_learning import router as skills_learning_router
 from app.api.skills import router as skills_router
 from app.core.agent import create_agent_graph, stream_agent_events
@@ -54,14 +55,19 @@ async def lifespan(app: FastAPI):
     from app.core.worker import AgentWorker
 
     AgentWorker.set_agent_graph(agent_graph)
+    AgentWorker.set_tools(all_tools)
 
     # Start Background Services
     asyncio.create_task(run_telegram_bot())
+    from app.core.scheduler import SchedulerService
     from app.interfaces.feishu import run_feishu_bot
 
     asyncio.create_task(run_feishu_bot())
     asyncio.create_task(InterfaceDispatcher.start())
     asyncio.create_task(AgentWorker.start())
+
+    # Start Scheduler
+    await SchedulerService.get_instance().start()
 
     tool_names = [t.name for t in all_tools]
     logger.info(f"Agent initialized with {len(all_tools)} tools: {tool_names}")
@@ -70,7 +76,9 @@ async def lifespan(app: FastAPI):
 
     # Shutdown logic
     from app.core.mcp_manager import stop_mcp
+    from app.core.scheduler import SchedulerService
 
+    await SchedulerService.get_instance().stop()
     await AgentWorker.stop()
     await InterfaceDispatcher.stop()
     await stop_mcp()
@@ -81,8 +89,6 @@ app = FastAPI(title="Nexus Agent API", version="2.0.0", lifespan=lifespan)
 # Register API routers
 app.include_router(skills_router)
 app.include_router(skills_learning_router)
-
-from app.api.auth import router as auth_router
 
 app.include_router(auth_router)
 

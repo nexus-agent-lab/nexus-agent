@@ -9,7 +9,7 @@ class AuditLog(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     trace_id: uuid.UUID = Field(index=True)  # Correlates multiple steps in one request
     user_id: Optional[int] = Field(
-        default=None, foreign_key="user.id", nullable=True
+        default=None, foreign_key="users.id", nullable=True
     )  # Nullable for unauthorized attempts
 
     action: str = Field(index=True)  # e.g., 'tool_execution', 'unauthorized_access'

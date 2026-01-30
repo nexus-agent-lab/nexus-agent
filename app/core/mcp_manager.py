@@ -54,11 +54,22 @@ class MCPManager:
 
         try:
             with open(CONFIG_PATH, "r") as f:
-                self._config = json.load(f)
+                raw_config = json.load(f)
+                self._config = self._expand_env_vars(raw_config)
             logger.info(f"Loaded MCP config with {len(self._config.get('mcpServers', {}))} servers.")
         except Exception as e:
             logger.error(f"Failed to load MCP config: {e}")
             self._config = {"mcpServers": {}}
+
+    def _expand_env_vars(self, obj):
+        """Recursively expand environment variables in configuration values."""
+        if isinstance(obj, dict):
+            return {k: self._expand_env_vars(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self._expand_env_vars(v) for v in obj]
+        elif isinstance(obj, str):
+            return os.path.expandvars(obj)
+        return obj
 
     async def initialize(self):
         """Connects to servers and caches tools."""

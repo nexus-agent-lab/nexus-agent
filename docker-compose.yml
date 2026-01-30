@@ -109,21 +109,21 @@ services:
       - FASTMCP_TRANSPORT_SECURITY__ENABLE_DNS_REBINDING_PROTECTION=false
     restart: unless-stopped
 
-  mcp-feishu:
-    build:
-      context: ./servers/external/Feishu-MCP
-      dockerfile: Dockerfile
-    image: nexus-mcp-feishu
+  lark-mcp:
+    image: node:20-slim
+    working_dir: /app
     ports:
-      - "3333:3333"
+      - "3000:3000"
     environment:
-      - FEISHU_APP_ID=${FEISHU_APP_ID}
-      - FEISHU_APP_SECRET=${FEISHU_APP_SECRET}
-      # The repo seems to use dotenv or config file. 
-      # Since we don't know the exact ENV VAR names from README, I assume standard or check src.
-      # To be safe, I'm passing them. Code inspection (if possible) would confirm.
-      # But based on typical practices, let's inject them.
-      - PORT=3333 
+      - LARK_APP_ID=${FEISHU_APP_ID}
+      - LARK_APP_SECRET=${FEISHU_APP_SECRET}
+    command: >
+      npx -y @larksuiteoapi/lark-mcp mcp 
+      -a ${FEISHU_APP_ID} 
+      -s ${FEISHU_APP_SECRET} 
+      -m streamable 
+      --host 0.0.0.0 
+      -p 3000
     restart: unless-stopped
 
 networks:

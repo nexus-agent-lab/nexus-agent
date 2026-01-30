@@ -1,40 +1,25 @@
 """
 Shared test fixtures and configuration for the Nexus Agent test suite.
 """
-
+# noqa: E402 (Standard for test configuration)
 import asyncio
 import os
-import sys
+import shutil
 from typing import AsyncGenerator, Generator
 
-# Ensure project root is in path
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
+from sqlmodel import SQLModel
 
-# Set up test environment variables BEFORE importing app
-os.environ["LLM_MODEL"] = "gpt-4o-mini"
-os.environ["LLM_BASE_URL"] = "http://localhost:8000"
-os.environ["LLM_API_KEY"] = "sk-dummy"
-os.environ["OPENAI_API_KEY"] = "sk-dummy"
-# Use file-based sqlite for sharing between app and test fixtures
-import tempfile
-
-TEST_DB_DIR = tempfile.mkdtemp()
-TEST_DB_PATH = os.path.join(TEST_DB_DIR, "test.db")
-os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{TEST_DB_PATH}"
-
-import pytest  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine  # noqa: E402
-from sqlalchemy.orm import sessionmaker  # noqa: E402
-from sqlmodel import SQLModel  # noqa: E402
-
-import app.core.db  # Import module for patching
-import app.core.session  # Import module for patching
-from app.core.db import get_session  # noqa: E402
-from app.main import app as fastapi_app  # noqa: E402
-from app.models.user import User  # noqa: E402
+import app.core.db
+import app.core.session
+import tests.test_env_setup as env_setup  # noqa: F401
+from app.core.db import get_session
+from app.main import app as fastapi_app
+from app.models.user import User
+from tests.test_env_setup import TEST_DB_DIR, TEST_DB_PATH
 
 # ============================================================================
 # Database Fixtures
@@ -68,6 +53,8 @@ async def test_db() -> AsyncGenerator[AsyncSession, None]:
 
     # PATCH app.core.db.AsyncSessionLocal to use our test engine
     # This ensures background tasks (SessionManager) use the same DB
+    original_engine = app.core.db.engine
+    app.core.db.engine = engine
     original_sessionmaker = app.core.db.AsyncSessionLocal
     app.core.db.AsyncSessionLocal = async_session
 
@@ -79,6 +66,7 @@ async def test_db() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
     # Restore
+    app.core.db.engine = original_engine
     app.core.db.AsyncSessionLocal = original_sessionmaker
     if original_session_sessionmaker:
         app.core.session.AsyncSessionLocal = original_session_sessionmaker
@@ -125,7 +113,6 @@ def api_client(test_db: AsyncSession, mocker) -> TestClient:
     fastapi_app.dependency_overrides.clear()
 
     # Cleanup database file after test
-    # Cleanup database file after test
     if os.path.exists(TEST_DB_PATH):
         try:
             os.remove(TEST_DB_PATH)
@@ -171,11 +158,20 @@ def mock_llm():
 
 @pytest.fixture(scope="session", autouse=True)
 def test_env():
-    """Environment is already set at module level."""
-    os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{TEST_DB_PATH}"
+    """Cleanup test directories after session."""
     yield
-    # Cleanup directory
-    import shutil
-
     if os.path.exists(TEST_DB_DIR):
         shutil.rmtree(TEST_DB_DIR, ignore_errors=True)
+
+
+@pytest.fixture(autouse=True)
+def mock_background_services(mocker):
+    """Prevent background services from starting during tests."""
+    mocker.patch("app.interfaces.telegram.run_telegram_bot", return_value=None)
+    mocker.patch("app.interfaces.feishu.run_feishu_bot", return_value=None)
+    mocker.patch("app.core.scheduler.SchedulerService.start", return_value=None)
+    mocker.patch("app.core.scheduler.SchedulerService.stop", return_value=None)
+    mocker.patch("app.core.worker.AgentWorker.start", return_value=None)
+    mocker.patch("app.core.worker.AgentWorker.stop", return_value=None)
+    mocker.patch("app.core.dispatcher.InterfaceDispatcher.start", return_value=None)
+    mocker.patch("app.core.dispatcher.InterfaceDispatcher.stop", return_value=None)

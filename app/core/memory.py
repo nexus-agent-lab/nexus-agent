@@ -75,6 +75,34 @@ class MemoryManager:
             results = await session.execute(statement)
             return results.scalars().all()
 
+    async def list_memories(self, user_id: int, memory_type: str = None, limit: int = 10):
+        """
+        List memories by type without vector search.
+        """
+        async with AsyncSessionLocal() as session:
+            statement = select(Memory).where(Memory.user_id == user_id)
+            if memory_type:
+                statement = statement.where(Memory.memory_type == memory_type)
+            
+            statement = statement.order_by(Memory.created_at.desc()).limit(limit)
+            
+            results = await session.execute(statement)
+            return results.scalars().all()
+
+    async def delete_memory(self, user_id: int, memory_id: int):
+        """
+        Delete a specific memory by ID.
+        """
+        async with AsyncSessionLocal() as session:
+            statement = select(Memory).where(Memory.user_id == user_id, Memory.id == memory_id)
+            result = await session.execute(statement)
+            memory = result.scalar_one_or_none()
+            if memory:
+                await session.delete(memory)
+                await session.commit()
+                return True
+            return False
+
 
 # Singleton instance
 memory_manager = MemoryManager()

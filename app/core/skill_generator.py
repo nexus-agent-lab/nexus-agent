@@ -28,7 +28,7 @@ class SkillGenerator:
 Given the following MCP server tools, generate a comprehensive Skill Card in Markdown format.
 
 **MCP Server**: {mcp_name}
-**Tools**: 
+**Tools**:
 {tools_json}
 
 **Requirements**:

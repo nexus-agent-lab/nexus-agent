@@ -119,6 +119,17 @@ class AuditInterceptor:
             status = "FAILURE"
             error_msg = str(exc_val)
 
+            # Proactive Admin Notification
+            from app.core.auth_service import AuthService
+            asyncio.create_task(
+                AuthService.notify_admins(
+                    f"🚨 **Tool Error Alert**\n"
+                    f"Tool: `{self.tool_name}`\n"
+                    f"User ID: `{self.user_id}`\n"
+                    f"Error: `{error_msg}`"
+                )
+            )
+
         # Update record
         # We use asyncio.create_task to make it non-blocking if desired,
         # but for data integrity ensuring it writes before returning is safer.

@@ -15,10 +15,9 @@ class SkillLoader:
     SKILLS_DIR = Path(__file__).parent.parent.parent / "skills"
 
     @classmethod
-    def load_summaries(cls) -> str:
+    def load_summaries(cls, role: str = "user") -> str:
         """
-        Load a very lightweight summary of all skills for the default system prompt.
-        Format: - [Name] (Domain: [Domain]): [Description]
+        Load a very lightweight summary of all skills appropriate for the role.
         """
         if not cls.SKILLS_DIR.exists():
             return ""
@@ -31,18 +30,24 @@ class SkillLoader:
             try:
                 content = skill_file.read_text(encoding="utf-8")
                 metadata = cls._extract_metadata(content)
-                desc = metadata.get("description", "No description available.")
+                
+                # Role Check
+                req_role = metadata.get("required_role", "user")
+                if req_role == "admin" and role != "admin":
+                    continue
 
-                summaries.append(f"- **{skill_file.stem}** (Domain: {metadata.get('domain', 'general')}): {desc}")
+                desc = metadata.get("description", "No description available.")
+                display_name = metadata.get("name", skill_file.stem)
+                summaries.append(f"- **{display_name}** (Domain: {metadata.get('domain', 'general')}): {desc}")
             except Exception as e:
                 logger.error(f"Failed to load summary for {skill_file.name}: {e}")
 
         return "\n".join(summaries)
 
     @classmethod
-    def load_registry_with_metadata(cls) -> List[Dict]:
+    def load_registry_with_metadata(cls, role: str = "user") -> List[Dict]:
         """
-        Load all skills with their full rules and metadata for dynamic injection.
+        Load all skills with their full rules and metadata for dynamic injection, filtered by role.
         """
         if not cls.SKILLS_DIR.exists():
             return []
@@ -55,8 +60,13 @@ class SkillLoader:
             try:
                 content = skill_file.read_text(encoding="utf-8")
                 metadata = cls._extract_metadata(content)
-                critical_rules = cls._extract_section(content, "Critical Rules") or "No critical rules defined."
+                
+                # Role Check
+                req_role = metadata.get("required_role", "user")
+                if req_role == "admin" and role != "admin":
+                    continue
 
+                critical_rules = cls._extract_section(content, "Critical Rules") or "No critical rules defined."
                 registry.append({"name": skill_file.stem, "metadata": metadata, "rules": critical_rules})
             except Exception as e:
                 logger.error(f"Failed to load skill for registry: {skill_file.name}: {e}")

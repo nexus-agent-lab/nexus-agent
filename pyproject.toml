@@ -72,7 +72,7 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["E", "F", "I"]
+select = ["E", "F", "W", "I"]
 ignore = ["E402", "E501"]
 fixable = ["ALL"]
 unfixable = []

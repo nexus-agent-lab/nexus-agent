@@ -1,8 +1,8 @@
+import asyncio
 import logging
 import os
 import time
 import uuid
-import asyncio
 from enum import Enum
 from typing import Any, Dict, Optional
 
@@ -31,6 +31,7 @@ class MessageType(str, Enum):
     IMAGE = "image"
     SYSTEM = "system"  # For internal notifications
     UPDATE = "update"  # For modifying existing messages
+    ACTION = "action"  # For chat actions like 'typing'
 
 
 class UnifiedMessage(BaseModel):

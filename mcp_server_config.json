@@ -21,8 +21,8 @@
                 }
             }
         },
-        "feishu": {
-            "url": "http://mcp-feishu:3333/sse",
+        "lark-mcp": {
+            "url": "http://lark-mcp:3000/mcp",
             "source": "remote",
             "enabled": true,
             "required_role": "user"

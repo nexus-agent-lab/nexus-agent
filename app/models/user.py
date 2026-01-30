@@ -12,6 +12,7 @@ class User(SQLModel, table=True):
     username: str = Field(index=True)
     api_key: str = Field(unique=True, index=True)
     role: str = Field(default="user")  # 'admin', 'user', 'guest'
+    language: str = Field(default="en")  # 'en', 'zh'
 
     # Granular Permission Policy
     # Example: {"allow_domains": ["clock"], "deny_tools": ["system_shell"]}

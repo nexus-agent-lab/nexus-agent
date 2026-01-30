@@ -12,7 +12,7 @@ class Session(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     session_uuid: str = Field(index=True, unique=True)
-    user_id: int = Field(foreign_key="user.id", index=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
     title: Optional[str] = Field(default=None)
 
     # Status flags
