@@ -1,4 +1,3 @@
-
 from langchain_core.tools import tool
 from sqlmodel import select
 
@@ -20,12 +19,7 @@ async def submit_suggestion(content: str, category: str = "feature", user: User 
         return "Error: User context required."
 
     async with AsyncSessionLocal() as session:
-        suggestion = ProductSuggestion(
-            user_id=user.id,
-            content=content,
-            category=category,
-            status="pending"
-        )
+        suggestion = ProductSuggestion(user_id=user.id, content=content, category=category, status="pending")
         session.add(suggestion)
         await session.commit()
         await session.refresh(suggestion)
@@ -40,7 +34,12 @@ async def list_suggestions(status: str = "pending", limit: int = 10, **kwargs) -
     (Admin Only) Lists product suggestions filtered by status.
     """
     async with AsyncSessionLocal() as session:
-        stmt = select(ProductSuggestion).where(ProductSuggestion.status == status).order_by(ProductSuggestion.created_at.desc()).limit(limit)
+        stmt = (
+            select(ProductSuggestion)
+            .where(ProductSuggestion.status == status)
+            .order_by(ProductSuggestion.created_at.desc())
+            .limit(limit)
+        )
         result = await session.execute(stmt)
         suggestions = result.scalars().all()
 

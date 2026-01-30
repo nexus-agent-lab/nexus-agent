@@ -204,10 +204,18 @@ class AgentWorker:
                                     desc = t_desc[:100] if t_desc else "Execute tool"
                                     commands.append({"command": cmd, "description": desc})
 
-                                commands.insert(0, {"command": "start", "description": get_text("cmd_help", target_lang)}) # Start usually shows help
-                                commands.insert(1, {"command": "help", "description": get_text("cmd_help", target_lang)})
-                                commands.insert(2, {"command": "bind", "description": get_text("cmd_bind", target_lang)})
-                                commands.insert(3, {"command": "reset", "description": get_text("cmd_reset", target_lang)})
+                                commands.insert(
+                                    0, {"command": "start", "description": get_text("cmd_help", target_lang)}
+                                )  # Start usually shows help
+                                commands.insert(
+                                    1, {"command": "help", "description": get_text("cmd_help", target_lang)}
+                                )
+                                commands.insert(
+                                    2, {"command": "bind", "description": get_text("cmd_bind", target_lang)}
+                                )
+                                commands.insert(
+                                    3, {"command": "reset", "description": get_text("cmd_reset", target_lang)}
+                                )
                                 meta_extras["telegram_commands"] = commands
 
                 else:
