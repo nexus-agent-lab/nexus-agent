@@ -6,7 +6,7 @@ from sqlmodel import Field, Relationship, SQLModel
 
 
 class User(SQLModel, table=True):
-    __tablename__ = "users"
+    __tablename__ = "user"
 
     id: Optional[int] = Field(default=None, primary_key=True)
     username: str = Field(index=True)
@@ -26,7 +26,7 @@ class UserIdentity(SQLModel, table=True):
     __tablename__ = "user_identities"
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: int = Field(foreign_key="users.id")
+    user_id: int = Field(foreign_key="user.id")
 
     provider: str = Field(index=True)  # 'telegram', 'feishu', 'dingtalk'
     provider_user_id: str = Field(index=True)  # '12345678', 'ou_xxxx'

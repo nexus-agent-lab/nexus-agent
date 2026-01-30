@@ -11,7 +11,7 @@ EMBEDDING_DIMENSION = int(os.getenv("EMBEDDING_DIMENSION", "512"))
 
 class Memory(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: int = Field(index=True, foreign_key="users.id")
+    user_id: int = Field(index=True, foreign_key="user.id")
     content: str = Field(sa_column=Column(Text, nullable=False))
 
     # Dimension controlled by EMBEDDING_DIMENSION env var (default: 512 for bge-small-zh)

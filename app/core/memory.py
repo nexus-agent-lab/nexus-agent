@@ -41,13 +41,35 @@ class MemoryManager:
                 dimensions=dimension if dimension == 1536 else None,
             )
 
-    async def add_memory(self, user_id: int, content: str, memory_type: str = "knowledge"):
+    async def add_memory(self, user_id: int, content: str, memory_type: str = "knowledge", dedup_threshold: float = 0.90):
         """
         Embeds content and stores it in the database.
+        Includes semantic deduplication: if a memory with > 0.90 similarity exists, return that instead.
         """
         vector = await self.embeddings.aembed_query(content)
 
         async with AsyncSessionLocal() as session:
+            # 1. Deduplication Check
+            # Using vector_cosine_ops (<=> is cosine distance in pgvector)
+            # Distance = 1 - Similarity. So Similarity > 0.92 means Distance < 0.08
+            distance_threshold = 1.0 - dedup_threshold
+            
+            stmt = (
+                select(Memory)
+                .where(Memory.user_id == user_id)
+                .where(Memory.embedding.cosine_distance(vector) < distance_threshold)
+                .order_by(Memory.embedding.cosine_distance(vector))
+                .limit(1)
+            )
+            existing = await session.execute(stmt)
+            duplicate = existing.scalar_one_or_none()
+            
+            if duplicate:
+                # Retrieve the actual distance for logging (if needed, or just return)
+                # Ideally we log this "cache hit"
+                return duplicate
+
+            # 2. Add New Memory
             new_memory = Memory(user_id=user_id, content=content, embedding=vector, memory_type=memory_type)
             session.add(new_memory)
             await session.commit()
@@ -83,9 +105,9 @@ class MemoryManager:
             statement = select(Memory).where(Memory.user_id == user_id)
             if memory_type:
                 statement = statement.where(Memory.memory_type == memory_type)
-            
+
             statement = statement.order_by(Memory.created_at.desc()).limit(limit)
-            
+
             results = await session.execute(statement)
             return results.scalars().all()
 
