@@ -36,6 +36,7 @@ This document establishes the coding standards, architectural patterns, and best
 - **Unit Tests**: New logic requires `pytest` coverage. Run with `uv run pytest`.
 - **Integration**: Verification scripts in `scripts/debug/` are encouraged for complex flows.
 - **Git Hooks**: **NEVER** skip pre-commit hooks (e.g. `git commit --no-verify`). Fix the underlying issue (linting/tests) instead.
+- **Verification**: Always run `bash scripts/dev_check.sh` after making changes to ensure code quality.
 
 ---
 *This file is the source of truth for project standards. Update it as patterns evolve.*

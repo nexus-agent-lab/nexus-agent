@@ -280,6 +280,10 @@ def create_agent_graph(tools: list):
             msgs_dicts = [message_to_dict(m) for m in messages]
             logger.info(f"LLM INPUT MESSAGES:\n{json.dumps(msgs_dicts, ensure_ascii=False, indent=2)}")
 
+            # DEBUG: Show what tools are in the "Tool Belt"
+            tool_names = [t.name for t in tools]
+            logger.info(f"LLM TOOL BELT ({len(tool_names)} tools): {tool_names}")
+
             response = await llm_with_tools.ainvoke(messages)
 
             # Debug: Log full output JSON

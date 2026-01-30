@@ -10,6 +10,7 @@ from app.tools.memory_tools import forget_all_memories, forget_memory, query_mem
 from app.tools.meta_tools import get_tool_details, list_available_tools
 from app.tools.sandbox import get_sandbox_tool
 from app.tools.scheduler import delete_task, list_tasks, schedule_task
+from app.tools.suggestion_tools import list_suggestions, submit_suggestion, update_suggestion_status
 
 
 @tool
@@ -63,4 +64,7 @@ def get_static_tools() -> List[Callable]:
         broadcast_notification,
         list_available_tools,
         get_tool_details,
+        submit_suggestion,
+        list_suggestions,
+        update_suggestion_status,
     ]

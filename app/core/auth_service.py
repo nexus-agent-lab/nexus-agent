@@ -3,6 +3,7 @@ import os
 import random
 import string
 from datetime import datetime
+from enum import Enum
 
 import redis.asyncio as redis
 from sqlalchemy.future import select
@@ -14,8 +15,6 @@ logger = logging.getLogger("nexus.auth")
 
 # Redis for temporary tokens
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
-
-from enum import Enum
 
 
 class BindResult(str, Enum):

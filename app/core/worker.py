@@ -204,10 +204,10 @@ class AgentWorker:
                                     desc = t_desc[:100] if t_desc else "Execute tool"
                                     commands.append({"command": cmd, "description": desc})
 
-                                commands.insert(0, {"command": "start", "description": "Start Nexus"})
-                                commands.insert(1, {"command": "help", "description": "Show Help"})
-                                commands.insert(2, {"command": "bind", "description": "Link Account"})
-                                commands.insert(3, {"command": "reset", "description": "Reset Session"})
+                                commands.insert(0, {"command": "start", "description": get_text("cmd_help", target_lang)}) # Start usually shows help
+                                commands.insert(1, {"command": "help", "description": get_text("cmd_help", target_lang)})
+                                commands.insert(2, {"command": "bind", "description": get_text("cmd_bind", target_lang)})
+                                commands.insert(3, {"command": "reset", "description": get_text("cmd_reset", target_lang)})
                                 meta_extras["telegram_commands"] = commands
 
                 else:
@@ -350,6 +350,27 @@ class AgentWorker:
                         reply.meta["unpin_message_id"] = target_msg_id
 
                     await MQService.push_outbox(reply)
+                    return
+
+                elif ev_type == "error":
+                    # Handle graceful failure
+                    error_msg = str(ev_data)
+                    logger.error(f"Received error event from Agent Stream: {error_msg}")
+                    # If it's a recursion error, give a friendly message
+                    if "Recursion limit" in error_msg:
+                        friendly_text = "⚠️ **Task Stopped**: I thought for too long (recursion limit reached) without a final answer. Please try refining your request."
+                    else:
+                        friendly_text = f"❌ **Error**: {error_msg}"
+
+                    await MQService.push_outbox(
+                        UnifiedMessage(
+                            channel=msg.channel,
+                            channel_id=msg.channel_id,
+                            content=friendly_text,
+                            msg_type=MessageType.TEXT,
+                            meta={"reply_to": msg.id, "target_message_id": target_msg_id},
+                        )
+                    )
                     return
 
                 # Throttle intermediate updates
