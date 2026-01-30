@@ -26,7 +26,6 @@ with col_f2:
     filter_cat = st.selectbox("分类筛选", ["All", "Feature", "Bug", "Improvement"], index=0)
 
 
-
 # --- Helper Functions (Defined before usage) ---
 async def update_status(item_id, new_status):
     async with AsyncSessionLocal() as session:
@@ -114,5 +113,3 @@ else:
                 if st.button("🗑️ 删除", key=f"del_{s.id}"):
                     asyncio.run(delete_suggestion(s.id))
                     st.rerun()
-
-

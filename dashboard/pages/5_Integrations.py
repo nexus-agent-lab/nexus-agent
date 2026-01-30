@@ -14,6 +14,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")
 from app.core.mcp_manager import get_mcp_tools
 from app.core.skill_generator import SkillGenerator
 from app.core.skill_loader import SkillLoader
+from dashboard.utils import get_api_url
 
 st.set_page_config(page_title="集成与技能", page_icon="🧩", layout="wide")
 
@@ -37,9 +38,6 @@ def save_config(config):
 
 config = load_config()
 servers = config.get("mcpServers", {})
-
-# --- Tabs ---
-from dashboard.utils import get_api_url
 
 tab_mcp, tab_skills, tab_audit = st.tabs(["🧩 MCP 服务", "🧠 技能卡 (Skill Cards)", "🛡️ 学习审计 (Audit)"])
 
