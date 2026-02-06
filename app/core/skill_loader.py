@@ -340,3 +340,133 @@ class SkillLoader:
             new_content = content.strip() + f"\n\n{learned_header}\n\n- {rule_content}\n"
 
         return cls.save_skill(skill_name, new_content)
+
+    # =========================================
+    # SKILL MARKETPLACE (P2)
+    # =========================================
+
+    REGISTRY_FILE = SKILLS_DIR / "skill_registry.json"
+
+    @classmethod
+    def load_marketplace_registry(cls) -> List[Dict]:
+        """
+        Load the skill marketplace registry JSON.
+        """
+        if not cls.REGISTRY_FILE.exists():
+            logger.warning(f"Skill registry not found: {cls.REGISTRY_FILE}")
+            return []
+
+        try:
+            import json
+
+            content = cls.REGISTRY_FILE.read_text(encoding="utf-8")
+            return json.loads(content)
+        except Exception as e:
+            logger.error(f"Failed to load skill registry: {e}")
+            return []
+
+    @classmethod
+    def get_installed_skills(cls) -> List[str]:
+        """
+        Get list of installed skill IDs (stem names of .md files).
+        """
+        if not cls.SKILLS_DIR.exists():
+            return []
+        return [f.stem for f in cls.SKILLS_DIR.glob("*.md") if not f.name.startswith("_")]
+
+    @classmethod
+    async def download_skill(cls, skill_id: str) -> bool:
+        """
+        Download a skill from its registered URL and save it locally.
+        """
+        registry = cls.load_marketplace_registry()
+        skill_entry = next((s for s in registry if s.get("id") == skill_id), None)
+
+        if not skill_entry:
+            logger.error(f"Skill '{skill_id}' not found in registry.")
+            return False
+
+        source = skill_entry.get("source", "bundled")
+        if source == "bundled":
+            logger.info(f"Skill '{skill_id}' is bundled, no download needed.")
+            return True
+
+        url = skill_entry.get("url")
+        if not url:
+            logger.error(f"Skill '{skill_id}' has no URL configured.")
+            return False
+
+        try:
+            import httpx
+
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, timeout=30.0)
+                response.raise_for_status()
+                content = response.text
+
+                # Save to skills dir
+                skill_file = cls.SKILLS_DIR / f"{skill_id}.md"
+                skill_file.write_text(content, encoding="utf-8")
+                logger.info(f"Downloaded and saved skill: {skill_id}")
+                return True
+
+        except Exception as e:
+            logger.error(f"Failed to download skill '{skill_id}': {e}")
+            return False
+
+    @classmethod
+    async def install_skill(cls, skill_id: str) -> str:
+        """
+        Install a skill from the marketplace.
+        Returns a status message.
+        """
+        installed = cls.get_installed_skills()
+        if skill_id in installed:
+            return f"✅ Skill `{skill_id}` is already installed."
+
+        success = await cls.download_skill(skill_id)
+        if success:
+            return f"✅ Skill `{skill_id}` installed successfully! It will be available on next session."
+        else:
+            return f"❌ Failed to install skill `{skill_id}`. Check logs for details."
+
+    @classmethod
+    def uninstall_skill(cls, skill_id: str) -> str:
+        """
+        Remove a skill from the local skills directory.
+        """
+        skill_file = cls.SKILLS_DIR / f"{skill_id}.md"
+        if not skill_file.exists():
+            return f"⚠️ Skill `{skill_id}` is not installed."
+
+        try:
+            skill_file.unlink()
+            logger.info(f"Uninstalled skill: {skill_id}")
+            return f"✅ Skill `{skill_id}` uninstalled."
+        except Exception as e:
+            logger.error(f"Failed to uninstall skill '{skill_id}': {e}")
+            return f"❌ Failed to uninstall skill `{skill_id}`: {e}"
+
+    @classmethod
+    def delete_skill(cls, skill_name: str) -> bool:
+        """
+        Delete a skill file from the skills directory.
+
+        Args:
+            skill_name: Name of the skill (without .md extension)
+
+        Returns:
+            True if deleted successfully
+        """
+        skill_file = cls.SKILLS_DIR / f"{skill_name}.md"
+        if not skill_file.exists():
+            logger.warning(f"Skill not found for deletion: {skill_name}")
+            return False
+
+        try:
+            skill_file.unlink()
+            logger.info(f"Deleted skill: {skill_name}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete skill {skill_name}: {e}")
+            return False

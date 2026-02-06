@@ -1,0 +1,11 @@
+[
+    {
+        "id": "dice_roller",
+        "name": "Dice Roller",
+        "description": "A simple skill for rolling dice (d4, d6, d20, etc.)",
+        "source": "bundled",
+        "version": "1.0.0",
+        "auto_load": true,
+        "required_role": "user"
+    }
+]

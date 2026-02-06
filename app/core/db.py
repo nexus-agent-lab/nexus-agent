@@ -29,6 +29,7 @@ async def init_db():
                 # Ensure pgvector extension exists only on PostgreSQL
                 if engine.dialect.name == "postgresql":
                     from sqlalchemy import text
+
                     await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
 
                 # await conn.run_sync(SQLModel.metadata.drop_all)

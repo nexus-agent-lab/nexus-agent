@@ -306,17 +306,8 @@ class AgentWorker:
             from app.core.agent import stream_agent_events
 
             # === THINKING VISIBILITY ===
-            # Send initial "Thinking..." status for Telegram
-            if msg.channel == ChannelType.TELEGRAM:
-                await MQService.push_outbox(
-                    UnifiedMessage(
-                        channel=msg.channel,
-                        channel_id=msg.channel_id,
-                        content="🧠 Thinking...",
-                        msg_type=MessageType.TEXT,
-                        meta={"reply_to": msg.id, "is_intermediate": True},
-                    )
-                )
+            # Initial status is covered by Telegram "typing" action.
+            # We only send updates for concrete actions (tools).
 
             async for event in stream_agent_events(cls._agent_graph, initial_state):
                 ev_type = event["event"]

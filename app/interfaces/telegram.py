@@ -218,17 +218,73 @@ async def send_telegram_message(msg: UnifiedMessage):
 # ==========================================
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    lang = await get_user_language(user_id, update.effective_user.language_code)
+# Helper: Dynamic Menu Sync
+async def refresh_user_commands(bot, chat_id: str, user=None, lang: str = "en"):
+    """
+    Dynamically update the command menu for a specific user based on their role and language.
+    """
+    try:
+        # Base commands for everyone (Guest)
+        commands = [
+            BotCommand("start", get_text("cmd_start", lang)),
+            BotCommand("help", get_text("cmd_help", lang)),
+        ]
 
-    help_text = get_text("welcome", lang)
-    await context.bot.send_message(chat_id=update.effective_chat.id, text=help_text, parse_mode="Markdown")
+        if not user:
+            # Guest Mode
+            commands.append(BotCommand("bind", get_text("cmd_bind", lang)))
+        else:
+            # Authenticated User Mode
+            # Actually let's just use the strict key
+            commands = [
+                BotCommand("new", get_text("cmd_reset", lang)), # /new is alias for reset
+                BotCommand("help", get_text("cmd_help", lang)),
+                BotCommand("unbind", get_text("cmd_unbind", lang)),
+            ]
+            
+            # Admin Extras
+            if user.role == "admin":
+                commands.append(BotCommand("admin", get_text("cmd_admin", lang)))
+                commands.append(BotCommand("sys", get_text("cmd_sys", lang)))
+
+        await bot.set_my_commands(commands, scope=BotCommandScopeChat(chat_id=chat_id))
+        logger.info(f"Refreshed commands for {chat_id} (Role: {user.role if user else 'guest'}, Lang: {lang})")
+
+    except Exception as e:
+        logger.warning(f"Failed to refresh commands for {chat_id}: {e}")
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Send a message when the command /start is issued."""
+    user = update.effective_user
+    chat_id = str(update.effective_chat.id)
+    
+    # Identify user for auto-login or guest welcome
+    nexus_user = await AuthService.get_user_by_identity("telegram", str(user.id))
+    lang = resolve_language(nexus_user, update.message.text)
+    
+    # Auto-refresh menu
+    await refresh_user_commands(context.bot, chat_id, nexus_user, lang)
+
+    if nexus_user:
+        welcome_text = get_text("welcome", lang)
+        await update.message.reply_markdown(welcome_text)
+    else:
+        # Guest Welcome
+        await update.message.reply_markdown(get_text("welcome_guest", lang))
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Reuse start command for consistency
-    await start(update, context)
+    """Send a message when the command /help is issued."""
+    chat_id = str(update.effective_chat.id)
+    nexus_user = await AuthService.get_user_by_identity("telegram", str(update.effective_user.id))
+    lang = resolve_language(nexus_user, update.message.text)
+    
+    # Refresh menu to be safe
+    await refresh_user_commands(context.bot, chat_id, nexus_user, lang)
+    
+    text = get_text("welcome", lang) if nexus_user else get_text("welcome_guest", lang)
+    await update.message.reply_markdown(text)
 
 
 async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -259,7 +315,7 @@ async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def bind_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Link a Telegram identity to an existing Nexus user account."""
-    str(update.effective_user.id)
+    user = update.effective_user
     chat_id = str(update.effective_chat.id)
     # Don't check DB for lang here to be fast, use telegram pref
     lang = update.effective_user.language_code
@@ -365,6 +421,57 @@ async def unbind_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(chat_id=chat_id, text="❌ An error occurred during unbinding.")
 
 
+async def skill_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Manage skills from the marketplace. Admin only.
+    Usage: /skill list | /skill install <id> | /skill uninstall <id>
+    """
+    user_id = str(update.effective_user.id)
+    chat_id = str(update.effective_chat.id)
+    lang = await get_user_language(user_id, update.effective_user.language_code)
+
+    # Admin Check
+    nexus_user = await AuthService.get_user_by_identity("telegram", user_id)
+    if not nexus_user or nexus_user.role != "admin":
+        await context.bot.send_message(chat_id=chat_id, text="⛔ This command is for admins only.")
+        return
+
+    from app.core.skill_loader import SkillLoader
+
+    args = context.args or []
+    subcommand = args[0].lower() if args else "list"
+
+    if subcommand == "list":
+        # List installed and available skills
+        installed = SkillLoader.get_installed_skills()
+        registry = SkillLoader.load_marketplace_registry()
+
+        installed_str = ", ".join(f"`{s}`" for s in installed) if installed else "None"
+        registry_str = "\n".join(
+            f"  - `{s['id']}`: {s.get('description', 'No desc')}" for s in registry
+        ) if registry else "  (Registry empty)"
+
+        text = f"**📦 Skill Manager**\n\n**Installed:** {installed_str}\n\n**Available in Registry:**\n{registry_str}"
+        await context.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+
+    elif subcommand == "install" and len(args) > 1:
+        skill_id = args[1]
+        result = await SkillLoader.install_skill(skill_id)
+        await context.bot.send_message(chat_id=chat_id, text=result, parse_mode="Markdown")
+
+    elif subcommand == "uninstall" and len(args) > 1:
+        skill_id = args[1]
+        result = SkillLoader.uninstall_skill(skill_id)
+        await context.bot.send_message(chat_id=chat_id, text=result, parse_mode="Markdown")
+
+    else:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="**Usage:**\n`/skill list`\n`/skill install <id>`\n`/skill uninstall <id>`",
+            parse_mode="Markdown",
+        )
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
 
@@ -456,6 +563,7 @@ async def run_telegram_bot():
     application.add_handler(CommandHandler("reset", reset_command))
     application.add_handler(CommandHandler("bind", bind_command))
     application.add_handler(CommandHandler("unbind", unbind_command))
+    application.add_handler(CommandHandler("skill", skill_command))
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
 
     # Register Outbound Handler with Dispatcher
