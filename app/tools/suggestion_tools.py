@@ -15,6 +15,8 @@ async def submit_suggestion(content: str, category: str = "feature", user: User 
     - content: The details of the suggestion
     - category: 'feature', 'bug', or 'improvement'
     """
+    # Decorator injects 'user_object' into kwargs
+    user = user or kwargs.get("user_object")
     if not user:
         return "Error: User context required."
 

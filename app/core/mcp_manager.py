@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -29,15 +30,14 @@ CONFIG_PATH = os.getenv("MCP_CONFIG_PATH", "/app/mcp_server_config.json")
 
 class MCPManager:
     _instance = None
+    _lock = asyncio.Lock()  # Protect initialization
 
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(MCPManager, cls).__new__(cls)
-            cls._instance.exit_stack = AsyncExitStack()
-            cls._instance.sessions: Dict[str, ClientSession] = {}  # server_name -> session
-            cls._instance.tools: List[StructuredTool] = []
-            cls._instance._config: Dict = {}
-        return cls._instance
+    def __init__(self):
+        self.exit_stack = AsyncExitStack()
+        self.sessions: Dict[str, ClientSession] = {}  # server_name -> session
+        self.tools: List[StructuredTool] = []
+        self._config: Dict = {}
+        self._initialized = False
 
     @classmethod
     def get_instance(cls):
@@ -73,65 +73,73 @@ class MCPManager:
 
     async def initialize(self):
         """Connects to servers and caches tools."""
-        self._load_config()
-        servers = self._config.get("mcpServers", {})
+        async with self._lock:
+            if self._initialized:
+                return
 
-        for name, server_conf in servers.items():
-            if not server_conf.get("enabled", True):
-                continue
+            self._load_config()
+            servers = self._config.get("mcpServers", {})
 
-            try:
-                command = server_conf.get("command")
-                args = server_conf.get("args", [])
-                env = server_conf.get("env", None)
-                required_role = server_conf.get("required_role", "user")
-
-                # Check for SSE (URL) configuration first
-                url = server_conf.get("url")
-
-                read, write = None, None
-
-                if url:
-                    logger.info(f"Connecting to Remote MCP: {name} ({url}) [Role: {required_role}]...")
-                    try:
-                        # Headers to bypass local testing validation if needed
-                        # Note: Server-side fix via MCP_TRANSPORT_SECURITY__ENABLE_DNS_REBINDING_PROTECTION is preferred
-                        read, write = await self.exit_stack.enter_async_context(sse_client(url))
-                    except Exception as e:
-                        logger.error(f"Failed to connect to SSE MCP {name}: {e}")
-                        continue
-
-                elif command:
-                    logger.info(f"Connecting to Local MCP: {name} ({command} {args}) [Role: {required_role}]...")
-                    try:
-                        server_params = StdioServerParameters(
-                            command=command, args=args, env={**os.environ, **(env or {})}
-                        )
-                        read, write = await self.exit_stack.enter_async_context(stdio_client(server_params))
-                    except Exception as e:
-                        logger.error(f"Failed to connect to Stdio MCP {name}: {e}")
-                        continue
-
-                if not read or not write:
+            for name, server_conf in servers.items():
+                if not server_conf.get("enabled", True):
                     continue
 
-                # Create session (Common for both Stdio and SSE)
-                session = await self.exit_stack.enter_async_context(ClientSession(read, write))
-                await session.initialize()
-                self.sessions[name] = session
+                try:
+                    command = server_conf.get("command")
+                    args = server_conf.get("args", [])
+                    env = server_conf.get("env", None)
+                    required_role = server_conf.get("required_role", "user")
 
-                # Fetch available tools
-                mcp_tools_response = await session.list_tools()
-                server_tool_config = server_conf.get("tool_config", {})
+                    # Check for SSE (URL) configuration first
+                    url = server_conf.get("url")
 
-                for tool in mcp_tools_response.tools:
-                    lc_tool = self._convert_to_langchain_tool(name, session, tool, required_role, server_tool_config)
-                    self.tools.append(lc_tool)
+                    read, write = None, None
 
-                logger.info(f"Connected to {name}. Loaded {len(mcp_tools_response.tools)} tools.")
+                    if url:
+                        logger.info(f"Connecting to Remote MCP: {name} ({url}) [Role: {required_role}]...")
+                        try:
+                            # Headers to bypass local testing validation if needed
+                            # Note: Server-side fix via MCP_TRANSPORT_SECURITY__ENABLE_DNS_REBINDING_PROTECTION is preferred
+                            read, write = await self.exit_stack.enter_async_context(sse_client(url))
+                        except Exception as e:
+                            logger.error(f"Failed to connect to SSE MCP {name}: {e}")
+                            continue
 
-            except Exception as e:
-                logger.error(f"Failed to connect to MCP server {name}: {e}")
+                    elif command:
+                        logger.info(f"Connecting to Local MCP: {name} ({command} {args}) [Role: {required_role}]...")
+                        try:
+                            server_params = StdioServerParameters(
+                                command=command, args=args, env={**os.environ, **(env or {})}
+                            )
+                            read, write = await self.exit_stack.enter_async_context(stdio_client(server_params))
+                        except Exception as e:
+                            logger.error(f"Failed to connect to Stdio MCP {name}: {e}")
+                            continue
+
+                    if not read or not write:
+                        continue
+
+                    # Create session (Common for both Stdio and SSE)
+                    session = await self.exit_stack.enter_async_context(ClientSession(read, write))
+                    await session.initialize()
+                    self.sessions[name] = session
+
+                    # Fetch available tools
+                    mcp_tools_response = await session.list_tools()
+                    server_tool_config = server_conf.get("tool_config", {})
+
+                    for tool in mcp_tools_response.tools:
+                        lc_tool = self._convert_to_langchain_tool(
+                            name, session, tool, required_role, server_tool_config
+                        )
+                        self.tools.append(lc_tool)
+
+                    logger.info(f"Connected to {name}. Loaded {len(mcp_tools_response.tools)} tools.")
+
+                except Exception as e:
+                    logger.error(f"Failed to connect to MCP server {name}: {e}")
+
+            self._initialized = True
 
     def _convert_to_langchain_tool(
         self,
@@ -241,7 +249,11 @@ class MCPManager:
         return "\n\n".join(instructions)
 
     async def cleanup(self):
-        await self.exit_stack.aclose()
+        async with self._lock:
+            await self.exit_stack.aclose()
+            self.sessions.clear()
+            self.tools.clear()
+            self._initialized = False
 
 
 # Global accessor
@@ -249,7 +261,7 @@ _mcp_manager = MCPManager.get_instance()
 
 
 async def get_mcp_tools() -> List[StructuredTool]:
-    if not _mcp_manager.sessions:
+    if not _mcp_manager._initialized:
         await _mcp_manager.initialize()
     return _mcp_manager.get_tools()
 

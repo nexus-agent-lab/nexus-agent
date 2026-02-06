@@ -176,3 +176,6 @@ def mock_background_services(mocker):
     mocker.patch("app.core.worker.AgentWorker.stop", return_value=None)
     mocker.patch("app.core.dispatcher.InterfaceDispatcher.start", return_value=None)
     mocker.patch("app.core.dispatcher.InterfaceDispatcher.stop", return_value=None)
+    # Mock MCP to avoid loop conflicts and network calls
+    mocker.patch("app.core.mcp_manager.get_mcp_tools", return_value=[])
+    mocker.patch("app.core.mcp_manager.stop_mcp", return_value=None)

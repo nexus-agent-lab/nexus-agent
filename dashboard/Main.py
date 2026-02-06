@@ -4,8 +4,7 @@ import time
 import pandas as pd
 import streamlit as st
 from sqlalchemy import text
-
-from dashboard.utils import get_engine
+from utils import get_engine
 
 st.set_page_config(
     page_title="Nexus 指挥中心",

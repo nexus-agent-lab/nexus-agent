@@ -9,32 +9,31 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")
 import os
 
 from sqlmodel import select
+from utils import get_async_session_maker, run_async
 
 from app.core.auth_service import AuthService
 from app.models.user import User, UserIdentity
-from dashboard.utils import get_async_session_maker, run_async
 
 st.set_page_config(page_title="User Management", page_icon="👥", layout="wide")
 st.title("👥 User & Identity Management")
 
-# Setup session maker
-DashboardSession = get_async_session_maker()
+# Avoid global session maker for async loop safety
 
 
 async def get_users():
-    async with DashboardSession() as session:
+    async with get_async_session_maker()() as session:
         result = await session.execute(select(User))
         return result.scalars().all()
 
 
 async def get_identities(user_id):
-    async with DashboardSession() as session:
+    async with get_async_session_maker()() as session:
         result = await session.execute(select(UserIdentity).where(UserIdentity.user_id == user_id))
         return result.scalars().all()
 
 
 async def update_user_role(user_id, role, policy):
-    async with DashboardSession() as session:
+    async with get_async_session_maker()() as session:
         user = await session.get(User, user_id)
         if user:
             user.role = role
@@ -136,7 +135,7 @@ with st.sidebar:
         if st.form_submit_button("Create"):
 
             async def create_new(u, r):
-                async with DashboardSession() as session:
+                async with get_async_session_maker()() as session:
                     import uuid
 
                     user = User(username=u, role=r, api_key=f"manual_{uuid.uuid4().hex[:8]}")

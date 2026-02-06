@@ -13,6 +13,8 @@ class User(SQLModel, table=True):
     api_key: str = Field(unique=True, index=True)
     role: str = Field(default="user")  # 'admin', 'user', 'guest'
     language: str = Field(default="en")  # 'en', 'zh'
+    timezone: Optional[str] = Field(default=None)  # e.g. 'Asia/Shanghai'
+    notes: Optional[str] = Field(default=None)  # Personal notes/context
 
     # Granular Permission Policy
     # Example: {"allow_domains": ["clock"], "deny_tools": ["system_shell"]}

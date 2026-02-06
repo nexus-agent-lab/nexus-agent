@@ -11,10 +11,10 @@ import streamlit as st
 # Add project root to sys.path to allow imports from app
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from app.core.mcp_manager import get_mcp_tools
+from utils import get_api_url
+
 from app.core.skill_generator import SkillGenerator
 from app.core.skill_loader import SkillLoader
-from dashboard.utils import get_api_url
 
 st.set_page_config(page_title="集成与技能", page_icon="🧩", layout="wide")
 
@@ -136,8 +136,17 @@ with tab_skills:
             with st.spinner(f"正在分析 {gen_mcp} 工具并生成技能卡..."):
                 try:
                     # 1. Fetch tools (mock for now if not initialized, but we can try)
-                    # For simplicity in dashboard, we use get_mcp_tools which handles init
-                    all_mcp_tools = asyncio.run(get_mcp_tools())
+                    async def get_tools_safe():
+                        from app.core.mcp_manager import MCPManager
+
+                        mcp = MCPManager()
+                        try:
+                            await mcp.initialize()
+                            return mcp.get_tools()
+                        finally:
+                            await mcp.cleanup()
+
+                    all_mcp_tools = asyncio.run(get_tools_safe())
                     # Filter tools for this specific server
                     # Combined description in StructuredTool is "[server_name] description"
                     target_tools = []

@@ -1,4 +1,3 @@
-import asyncio
 import os
 import sys
 from datetime import datetime
@@ -9,8 +8,8 @@ import streamlit as st
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from sqlmodel import select
+from utils import get_async_session_maker, run_async
 
-from app.core.db import AsyncSessionLocal
 from app.models.product import ProductSuggestion
 
 st.set_page_config(page_title="产品路线图 (Roadmap)", page_icon="🗺️", layout="wide")
@@ -26,20 +25,13 @@ with col_f2:
     filter_cat = st.selectbox("分类筛选", ["All", "Feature", "Bug", "Improvement"], index=0)
 
 
-# --- Event Loop Helper ---
-def run_async(coro):
-    """Run an async coroutine in a thread-safe way for Streamlit."""
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    return loop.run_until_complete(coro)
+# Async operations helper
+# No global session maker to avoid loop affinity issues
 
 
 # --- Helper Functions ---
 async def update_status(item_id, new_status):
-    async with AsyncSessionLocal() as session:
+    async with get_async_session_maker()() as session:
         item = await session.get(ProductSuggestion, item_id)
         if item:
             item.status = new_status
@@ -49,7 +41,7 @@ async def update_status(item_id, new_status):
 
 
 async def delete_suggestion(item_id):
-    async with AsyncSessionLocal() as session:
+    async with get_async_session_maker()() as session:
         item = await session.get(ProductSuggestion, item_id)
         if item:
             await session.delete(item)
@@ -62,7 +54,7 @@ def get_roadmap_suggestions(status_filter, cat_filter):
     """Fetch suggestions with caching to avoid redundant DB calls."""
 
     async def _fetch():
-        async with AsyncSessionLocal() as session:
+        async with get_async_session_maker()() as session:
             query = select(ProductSuggestion)
             if status_filter != "All":
                 query = query.where(ProductSuggestion.status == status_filter.lower())

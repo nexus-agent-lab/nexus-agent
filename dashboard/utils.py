@@ -24,25 +24,36 @@ def get_db_url(sync: bool = True) -> str:
 
 
 @st.cache_resource
-def get_engine(sync: bool = True):
-    """
-    Returns a cached SQLAlchemy engine.
-    """
-    url = get_db_url(sync=sync)
-    if sync:
-        return create_engine(url)
-    else:
-        # Async engine usually doesn't need st.cache_resource if handled by sessionmaker,
-        # but for consistency we can cache the engine instance.
-        return create_async_engine(url, poolclass=NullPool)
+def get_sync_engine():
+    """Returns a cached sync engine."""
+    url = get_db_url(sync=True)
+    return create_engine(url)
 
 
 def get_async_session_maker():
     """
     Returns an async sessionmaker.
+    We do NOT cache the async engine/sessionmaker to avoid event loop affinity issues
+    (e.g., 'Future attached to a different loop').
+    We use NullPool to ensure connections are closed promptly and don't leak across loops.
     """
-    engine = get_engine(sync=False)
+    url = get_db_url(sync=False)
+    engine = create_async_engine(url, poolclass=NullPool)
     return sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+
+@st.cache_resource
+def get_engine(sync: bool = True):
+    """
+    Deprecated for async: use get_async_session_maker instead.
+    Still works for sync legacy calls.
+    """
+    if sync:
+        return get_sync_engine()
+    else:
+        # Fallback for old calls, but not recommended
+        url = get_db_url(sync=False)
+        return create_async_engine(url, poolclass=NullPool)
 
 
 def run_async(coro):

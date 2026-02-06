@@ -14,26 +14,37 @@ class MemoryManager:
         api_key = os.getenv("EMBEDDING_API_KEY") or os.getenv("LLM_API_KEY")
 
         # Default to embedding-3 (GLM/v4) if base_url contains bigmodel, else openai default
-        # If it's a local server at 9292, we'll assume a local model name
         default_model = "embedding-3" if "bigmodel" in base_url else "text-embedding-3-small"
-        if "9292" in base_url:
-            default_model = "local-model"
-
         model_name = os.getenv("EMBEDDING_MODEL", default_model)
 
-        # Get dimension from env (512 for local bge-small, 1536 for OpenAI)
-        dimension = int(os.getenv("EMBEDDING_DIMENSION", "512"))
+        # Get dimension from env (1024 for bge-m3, 1536 for OpenAI)
+        dimension = int(os.getenv("EMBEDDING_DIMENSION", "1024"))
 
-        if "9292" in base_url:
-            # Use a simpler approach for local server to avoid OpenAI-specific tokenization
-            # Actually, let's just use a custom simple wrapper or ensure OpenAIEmbeddings doesn't tokenize
+        from app.core.agent import logger  # Use existing logger
+
+        logger.info(f"MemoryManager Init: base_url='{base_url}', model='{model_name}'")
+
+        # Use OllamaEmbeddings for Ollama backend (port 11434)
+        if "11434" in base_url:
+            from langchain_ollama import OllamaEmbeddings
+
+            # OllamaEmbeddings expects base_url without /v1 suffix
+            ollama_base = base_url.replace("/v1", "")
+            self.embeddings = OllamaEmbeddings(
+                model=model_name.replace(":latest", ""),  # Ollama models don't need :latest
+                base_url=ollama_base,
+            )
+            logger.info(f"Using OllamaEmbeddings with base_url='{ollama_base}'")
+        elif "9292" in base_url:
+            # Local custom embedding server
             self.embeddings = OpenAIEmbeddings(
                 model=model_name,
                 api_key=api_key,
                 base_url=base_url,
-                check_embedding_ctx_length=False,  # Disable internal tokenization checks
+                check_embedding_ctx_length=False,
             )
         else:
+            # OpenAI or other OpenAI-compatible providers
             self.embeddings = OpenAIEmbeddings(
                 model=model_name,
                 api_key=api_key,
@@ -48,7 +59,15 @@ class MemoryManager:
         Embeds content and stores it in the database.
         Includes semantic deduplication: if a memory with > 0.90 similarity exists, return that instead.
         """
-        vector = await self.embeddings.aembed_query(content)
+        if os.getenv("EMBEDDING_PROXY_URL"):
+            # Optional: Allow specific proxy for embeddings if needed, otherwise default
+            pass
+
+        # Switch to synchronous call in threadpool to avoid async httpx connection issues
+        # vector = await self.embeddings.aembed_query(content)
+        import asyncio
+
+        vector = await asyncio.to_thread(self.embeddings.embed_query, content)
 
         async with AsyncSessionLocal() as session:
             # 1. Deduplication Check
@@ -81,7 +100,11 @@ class MemoryManager:
         """
         Performs vector similarity search.
         """
-        query_vector = await self.embeddings.aembed_query(query)
+        # Switch to synchronous call in threadpool
+        # query_vector = await self.embeddings.aembed_query(query)
+        import asyncio
+
+        query_vector = await asyncio.to_thread(self.embeddings.embed_query, query)
 
         async with AsyncSessionLocal() as session:
             # Using vector_cosine_ops (<=> is cosine distance in pgvector)

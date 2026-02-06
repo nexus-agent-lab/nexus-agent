@@ -1,30 +1,32 @@
 
 
 services:
-  ts-nexus:
-    image: tailscale/tailscale:latest
-    hostname: nexus-agent-server
-    environment:
-      - TS_AUTHKEY=${TAILSCALE_AUTH_KEY}
-      - TS_STATE_DIR=/var/lib/tailscale
-      - TS_USERSPACE=false
-      - TS_EXTRA_ARGS=--advertise-tags=tag:nexus-agent
-      - TS_NO_LOGS_NO_SUPPORT=true
-    volumes:
-      - ts_state:/var/lib/tailscale
-      - /dev/net/tun:/dev/net/tun
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
-    restart: unless-stopped
-    ports:
-      - "8000:8000"
-      - "8501:8501"
+#   ts-nexus:
+#     image: tailscale/tailscale:latest
+#     hostname: nexus-agent-server
+#     environment:
+#       - TS_AUTHKEY=${TAILSCALE_AUTH_KEY}
+#       - TS_STATE_DIR=/var/lib/tailscale
+#       - TS_USERSPACE=false
+#       - TS_EXTRA_ARGS=--advertise-tags=tag:nexus-agent
+#       - TS_NO_LOGS_NO_SUPPORT=true
+#     volumes:
+#       - ts_state:/var/lib/tailscale
+#       - /dev/net/tun:/dev/net/tun
+#     cap_add:
+#       - NET_ADMIN
+#       - NET_RAW
+#     restart: unless-stopped
+#     ports:
+#       - "8000:8000"
+#       - "8501:8501"
 
   nexus-app:
     build: .
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-    network_mode: service:ts-nexus
+    # network_mode: service:ts-nexus # Disabled Tailscale
+    ports:
+      - "8000:8000" # Expose directly for local dev
     volumes:
       - .:/app
       - /var/run/docker.sock:/var/run/docker.sock
@@ -40,10 +42,10 @@ services:
       - LLM_MODEL=${LLM_MODEL:-qwen2.5:14b}
       
       # Embedding Configuration (Local by default)
-      - EMBEDDING_API_KEY=${EMBEDDING_API_KEY:-local}
-      - EMBEDDING_BASE_URL=${EMBEDDING_BASE_URL:-http://host.docker.internal:9292/v1}
-      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-bge-small-zh-v1.5}
-      - EMBEDDING_DIMENSION=${EMBEDDING_DIMENSION:-512}
+      - EMBEDDING_API_KEY=${EMBEDDING_API_KEY:-ollama}
+      - EMBEDDING_BASE_URL=${EMBEDDING_BASE_URL:-http://host.docker.internal:11434/v1}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-bge-m3:latest}
+      - EMBEDDING_DIMENSION=${EMBEDDING_DIMENSION:-1024}
       
       # Voice Configuration
       - STT_BASE_URL=${STT_BASE_URL:-http://host.docker.internal:9191/v1}
@@ -64,11 +66,13 @@ services:
   dashboard:
     build: .
     command: streamlit run dashboard/Main.py --server.port 8501 --server.address 0.0.0.0
-    network_mode: service:ts-nexus
+    # network_mode: service:ts-nexus # Disabled Tailscale
+    ports:
+      - "8501:8501" # Expose directly
     volumes:
       - .:/app
     environment:
-      - API_URL=http://localhost:8000
+      - API_URL=http://nexus-app:8000 # Changed from localhost because networks are decoupled
       - DATABASE_URL=postgresql+asyncpg://nexus:nexus_password@postgres:5432/nexus_db
       
       # LLM Configuration (For Skill Generation & Local Tools)

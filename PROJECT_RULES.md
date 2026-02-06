@@ -8,6 +8,7 @@ This document establishes the coding standards, architectural patterns, and best
   - Use `@require_role` for RBAC.
 - **Utilities**: Place common logic in `app/core/utils.py` or specific helpers (e.g., `app/core/i18n.py`).
 - **Avoid Copy-Paste**: If you find yourself copying logic (especially auth checks or DB session management), refactor it into a shared function or decorator immediately.
+- **LLM/Embeddings Clients**: ALWAYS use centralized utilities in `app/core/llm_utils.py` (e.g., `get_httpx_client`) to ensure standardized timeouts, proxy support (trust_env), and logging.
 
 ## 2. Architecture & Patterns
 - **Service Layer**: Business logic resides in `app/core/{service}.py` (e.g., `auth_service.py`, `memory.py`).

@@ -305,70 +305,111 @@ class AgentWorker:
         try:
             from app.core.agent import stream_agent_events
 
+            # === THINKING VISIBILITY ===
+            # Send initial "Thinking..." status for Telegram
+            if msg.channel == ChannelType.TELEGRAM:
+                await MQService.push_outbox(
+                    UnifiedMessage(
+                        channel=msg.channel,
+                        channel_id=msg.channel_id,
+                        content="🧠 Thinking...",
+                        msg_type=MessageType.TEXT,
+                        meta={"reply_to": msg.id, "is_intermediate": True},
+                    )
+                )
+
             async for event in stream_agent_events(cls._agent_graph, initial_state):
                 ev_type = event["event"]
                 ev_data = event["data"]
 
                 if ev_type == "thought":
                     current_thought += ev_data
+                    # Telegram: We don't stream thoughts as separate messages (too noisy)
+                    # For other platforms with target_msg_id, it will be handled in board update
+
                 elif ev_type == "tool_start":
                     # Extract and format arguments for preview
                     args = ev_data.get("args", {})
                     args_preview = ""
                     if args:
-                        # Show first few args concisely
-                        arg_items = list(args.items())[:2]  # First 2 args
+                        arg_items = list(args.items())[:2]
                         args_str = ", ".join([f"{k}={str(v)[:30]}" for k, v in arg_items])
                         if len(args) > 2:
                             args_str += "..."
                         args_preview = f" ({args_str})"
 
-                    current_status = f"🔧 **Running**: `{ev_data['name']}`{args_preview}"
+                    current_status = f"🔧 **正在执行**: `{ev_data['name']}`{args_preview}"
                     tool_history.append(f"⚙️ {ev_data['name']}")
 
-                    # Proactively send typing status on tool start
-                    await MQService.push_outbox(
-                        UnifiedMessage(
-                            channel=msg.channel,
-                            channel_id=msg.channel_id,
-                            content="typing",
-                            msg_type=MessageType.ACTION,
+                    # TELEGRAM: Send discrete progress message
+                    if msg.channel == ChannelType.TELEGRAM:
+                        await MQService.push_outbox(
+                            UnifiedMessage(
+                                channel=msg.channel,
+                                channel_id=msg.channel_id,
+                                content=current_status,
+                                msg_type=MessageType.TEXT,
+                                meta={"reply_to": msg.id, "is_intermediate": True},
+                            )
                         )
-                    )
 
                 elif ev_type == "tool_end":
                     result_preview = ev_data.get("result", "")[:100]
-                    current_status = f"✅ **Completed**: `{ev_data['name']}`"
+                    current_status = f"✅ **执行完成**: `{ev_data['name']}`"
                     if result_preview:
-                        current_status += f"\n   └─ _{result_preview}_"
+                        current_status += f"\n反馈: _{result_preview}_"
+
+                    # TELEGRAM: Send discrete progress message
+                    if msg.channel == ChannelType.TELEGRAM:
+                        await MQService.push_outbox(
+                            UnifiedMessage(
+                                channel=msg.channel,
+                                channel_id=msg.channel_id,
+                                content=current_status,
+                                msg_type=MessageType.TEXT,
+                                meta={"reply_to": msg.id, "is_intermediate": True},
+                            )
+                        )
 
                 elif ev_type == "final_answer":
-                    # Final answer completes the cycle
+                    final_content = ev_data
+
+                    # === SILENT PROTOCOL ===
+                    # If Agent decided not to reply, honor that decision
+                    SILENT_TOKEN = "<NO_REPLY>"
+                    if isinstance(final_content, str) and SILENT_TOKEN in final_content:
+                        logger.info(f"Silent Protocol triggered for msg {msg.id} - suppressing reply")
+                        # Save to session but don't send to user
+                        await SessionManager.save_message(
+                            session_id=session.id,
+                            role="assistant",
+                            type="ai",
+                            content="[Silent - No Reply Sent]",
+                        )
+                        return
+
+                    # Normal reply
                     reply = UnifiedMessage(
                         channel=msg.channel,
                         channel_id=msg.channel_id,
-                        content=ev_data,
+                        content=final_content,
                         msg_type=MessageType.TEXT,
                         meta={
                             "reply_to": msg.id,
                         },
                     )
-                    # If we had a pinned message (other platforms), unpin it
                     if target_msg_id:
+                        reply.meta["target_message_id"] = target_msg_id
                         reply.meta["unpin_message_id"] = target_msg_id
 
                     await MQService.push_outbox(reply)
                     return
 
                 elif ev_type == "error":
-                    # Handle graceful failure
+                    # ... Error handling ...
                     error_msg = str(ev_data)
                     logger.error(f"Received error event from Agent Stream: {error_msg}")
-                    # If it's a recursion error, give a friendly message
-                    if "Recursion limit" in error_msg:
-                        friendly_text = "⚠️ **Task Stopped**: I thought for too long (recursion limit reached) without a final answer. Please try refining your request."
-                    else:
-                        friendly_text = f"❌ **Error**: {error_msg}"
+                    friendly_text = f"❌ **Error**: {error_msg}"
 
                     await MQService.push_outbox(
                         UnifiedMessage(
@@ -381,10 +422,35 @@ class AgentWorker:
                     )
                     return
 
-                # Throttle intermediate updates
+                # Throttle intermediate updates (Board only)
                 now = time.time()
                 if now - last_outbox_time > 3.0:
-                    # Always send typing status periodically (Telegram)
+                    # Update status board if target_msg_id present (Feishu/Web)
+                    if target_msg_id and msg.channel != ChannelType.TELEGRAM:
+                        sections = []
+                        sections.append("🤖 **Nexus Agent Working...**")
+                        if tool_history:
+                            sections.append("\n**Recent Activity:**")
+                            sections.append("\n".join(tool_history[-3:]))
+                        if current_status:
+                            sections.append(f"\n{current_status}")
+                        if current_thought:
+                            thought_preview = current_thought[-200:].strip()
+                            if thought_preview:
+                                sections.append(f"\n💭 _{thought_preview}..._")
+
+                        display_text = "\n".join(sections)
+                        await MQService.push_outbox(
+                            UnifiedMessage(
+                                channel=msg.channel,
+                                channel_id=msg.channel_id,
+                                content=display_text,
+                                msg_type=MessageType.UPDATE,
+                                meta={"target_message_id": target_msg_id},
+                            )
+                        )
+
+                    # For Telegram, we keep typing status alive
                     if msg.channel == ChannelType.TELEGRAM:
                         await MQService.push_outbox(
                             UnifiedMessage(
@@ -394,36 +460,6 @@ class AgentWorker:
                                 msg_type=MessageType.ACTION,
                             )
                         )
-
-                    # Update board if target_msg_id present (for Feishu/Web if they use board)
-                    elif target_msg_id:
-                        # Prepare enhanced status board
-                        sections = []
-                        sections.append("🤖 **Nexus Agent Working...**")
-
-                        if tool_history:
-                            recent_tools = tool_history[-3:]
-                            sections.append("\\n**Recent Activity:**")
-                            sections.append("\\n".join(recent_tools))
-
-                        if current_status:
-                            sections.append(f"\\n{current_status}")
-
-                        if current_thought and len(current_thought) > 50:
-                            thought_preview = current_thought[-150:].strip()
-                            sections.append(f"\\n💭 _{thought_preview}_")
-
-                        display_text = "\\n".join(sections)
-
-                        if display_text:
-                            update_msg = UnifiedMessage(
-                                channel=msg.channel,
-                                channel_id=msg.channel_id,
-                                content=display_text,
-                                msg_type=MessageType.UPDATE,
-                                meta={"target_message_id": target_msg_id},
-                            )
-                            await MQService.push_outbox(update_msg)
 
                     last_outbox_time = now
 

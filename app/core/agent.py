@@ -55,21 +55,59 @@ def get_llm():
     if not api_key:
         print("Warning: LLM_API_KEY is not set.")
 
+    # 真实请求/响应劫持 (True Wire Logging)
+    async def log_request(request):
+        if "chat/completions" in str(request.url):
+            try:
+                body = request.read().decode("utf-8")
+                print("\n" + "🚀" * 15 + " [WIRE] LLM REQUEST BODY " + "🚀" * 15)
+                print(body)
+                print("=" * 100 + "\n")
+            except Exception as e:
+                print(f"Logging Error: {e}")
+
+    async def log_response(response):
+        if "chat/completions" in str(response.url):
+            print("\n" + "📥" * 15 + f" [WIRE] LLM RESPONSE HEADERS ({response.status_code}) " + "📥" * 15)
+            print(f"Status: {response.status_code}")
+            print("=" * 100 + "\n")
+
+    # Sync Hooks
+    def log_request_sync(request):
+        if "chat/completions" in str(request.url):
+            try:
+                body = request.read().decode("utf-8")
+                print("\n" + "🚀" * 15 + " [WIRE-SYNC] LLM REQUEST BODY " + "🚀" * 15)
+                print(body)
+                print("=" * 100 + "\n")
+            except Exception as e:
+                print(f"Logging Error: {e}")
+
+    def log_response_sync(response):
+        if "chat/completions" in str(response.url):
+            print("\n" + "📥" * 15 + f" [WIRE-SYNC] LLM RESPONSE HEADERS ({response.status_code}) " + "📥" * 15)
+            print(f"Status: {response.status_code}")
+            print("=" * 100 + "\n")
+
     # 针对 GLM-4.7-Flash 的特殊配置
     if "glm-4" in model_name.lower() and "flash" in model_name.lower():
         logger.info("Using optimized config for GLM-4.7-Flash")
-        # 注意: num_ctx 应该在 Ollama 的 Modelfile 或启动时配置
-        # OpenAI 兼容接口不支持通过 API 动态传递 num_ctx
         return ChatOpenAI(
             model=model_name,
             api_key=api_key,
             base_url=base_url,
-            temperature=0.1,  # Flash 模型建议值
-            streaming=True,
+            temperature=0.1,
+            streaming=False,
         )
 
     # 其他模型使用默认配置
-    return ChatOpenAI(model=model_name, api_key=api_key, base_url=base_url, temperature=0, streaming=True)
+    return ChatOpenAI(
+        model=model_name,
+        api_key=api_key,
+        base_url=base_url,
+        temperature=0,
+        streaming=False,
+    )
 
 
 async def retrieve_memories(state: AgentState):
@@ -213,11 +251,17 @@ def create_agent_graph(tools: list):
         user = state.get("user")
         role = user.role if user else "guest"
 
+        # 0. Build Base System Prompt with User Context
+        from app.core.prompt_builder import PromptBuilder
+
+        # We use BASE_SYSTEM_PROMPT as the "Soul"
+        base_prompt_with_context = PromptBuilder.build_system_prompt(user=user, soul_content=BASE_SYSTEM_PROMPT)
+
         # 1. Load context-appropriate summaries and registry
         skill_summaries = SkillLoader.load_summaries(role=role)
         skill_registry = SkillLoader.load_registry_with_metadata(role=role)
 
-        prompt_with_skills = dynamic_system_prompt
+        prompt_with_skills = base_prompt_with_context
         # Layer 2: Skill Index (Summaries) - ALWAYS present so Agent knows what it CAN do (Role-specific)
         if skill_summaries:
             prompt_with_skills += (
@@ -278,7 +322,10 @@ def create_agent_graph(tools: list):
             from langchain_core.messages import message_to_dict
 
             msgs_dicts = [message_to_dict(m) for m in messages]
-            logger.info(f"LLM INPUT MESSAGES:\n{json.dumps(msgs_dicts, ensure_ascii=False, indent=2)}")
+            # 这里也保留 print，确保用户能看到结构化的消息内容
+            print("\n" + "📤" * 15 + " [STRUCTURED] LLM INPUT " + "📤" * 15)
+            print(json.dumps(msgs_dicts, ensure_ascii=False, indent=2))
+            print("=" * 100 + "\n")
 
             # DEBUG: Show what tools are in the "Tool Belt"
             tool_names = [t.name for t in tools]
@@ -288,7 +335,9 @@ def create_agent_graph(tools: list):
 
             # Debug: Log full output JSON
             resp_dict = message_to_dict(response)
-            logger.info(f"LLM OUTPUT RAW JSON:\n{json.dumps(resp_dict, ensure_ascii=False, indent=2)}")
+            print("\n" + "✅" * 15 + " [STRUCTURED] LLM RESPONSE BODY " + "✅" * 15)
+            print(json.dumps(resp_dict, ensure_ascii=False, indent=2))
+            print("=" * 100 + "\n")
 
             # ======================================================
             # 🚑 【Universal Patch】Recover tool calls from plain text

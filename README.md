@@ -116,6 +116,10 @@ graph TD
       # Mac mini M4 (32GB) Requirement
       # Create custom model with 32k context
       ollama create glm4.7-flash-32k -f ./scripts/glm4-flash-32k.Modelfile
+      
+      # Pull Embedding Model (Required for RAG)
+      ollama pull bge-m3
+      # or for lower resource: ollama pull nomic-embed-text
       ```
 
 2.  **Environment Setup** / **环境配置**
@@ -150,7 +154,8 @@ graph TD
 - [x] **Interfaces**: Telegram Bot, CLI
 - [x] **Enterprise**: Feishu (Lark) Integration (Bot + MCP)
 - [ ] **Enterprise**: DingTalk Integration (Next)
-- [ ] **Capabilities**: Computer Use / Desktop Automation (WIP)
+- [ ] **Capabilities**: Android Device Control via ADB (Planned) / 安卓设备控制
+- [ ] **Capabilities**: Desktop Automation - Mac/Windows (Planned) / 桌面自动化
 - [ ] **Reliability**: Persistent Message Queue (Redis/Postgres) / 消息队列持久化
 
 ## 🌍 Remote Access & Security / 远程访问与安全
