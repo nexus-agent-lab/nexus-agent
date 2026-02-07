@@ -346,6 +346,10 @@ class SkillLoader:
     # =========================================
 
     REGISTRY_FILE = SKILLS_DIR / "skill_registry.json"
+    
+    # ClawHub Integration
+    CLAWHUB_API_BASE = "https://clawhub.convex.site"  # ClawHub API endpoint
+    CLAWHUB_RAW_BASE = "https://raw.githubusercontent.com/openclaw/clawhub/main"
 
     @classmethod
     def load_marketplace_registry(cls) -> List[Dict]:
@@ -412,6 +416,43 @@ class SkillLoader:
 
         except Exception as e:
             logger.error(f"Failed to download skill '{skill_id}': {e}")
+            return False
+
+    @classmethod
+    async def download_from_clawhub(cls, skill_name: str) -> bool:
+        """
+        Download a skill directly from ClawHub (https://github.com/openclaw/clawhub).
+        Fetches the SKILL.md from the skills/ directory.
+        """
+        try:
+            import httpx
+
+            # Try multiple possible locations
+            urls = [
+                f"{cls.CLAWHUB_RAW_BASE}/skills/{skill_name}/SKILL.md",
+                f"{cls.CLAWHUB_RAW_BASE}/skills/{skill_name}.md",
+            ]
+
+            async with httpx.AsyncClient() as client:
+                for url in urls:
+                    try:
+                        response = await client.get(url, timeout=30.0, follow_redirects=True)
+                        if response.status_code == 200:
+                            content = response.text
+                            # Save to skills dir
+                            cls.SKILLS_DIR.mkdir(parents=True, exist_ok=True)
+                            skill_file = cls.SKILLS_DIR / f"{skill_name}.md"
+                            skill_file.write_text(content, encoding="utf-8")
+                            logger.info(f"Downloaded skill from ClawHub: {skill_name}")
+                            return True
+                    except Exception:
+                        continue
+
+            logger.error(f"Skill '{skill_name}' not found on ClawHub")
+            return False
+
+        except Exception as e:
+            logger.error(f"Failed to download from ClawHub: {e}")
             return False
 
     @classmethod

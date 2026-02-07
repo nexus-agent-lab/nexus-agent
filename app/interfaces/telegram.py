@@ -2,12 +2,12 @@ import asyncio
 import logging
 import os
 
-from telegram import Update
+from telegram import BotCommand, BotCommandScopeChat, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 
 from app.core.auth_service import AuthService
 from app.core.dispatcher import InterfaceDispatcher
-from app.core.i18n import get_text
+from app.core.i18n import get_text, resolve_language
 from app.core.mq import ChannelType, MessageType, MQService, UnifiedMessage
 from app.core.session import SessionManager
 
@@ -237,11 +237,11 @@ async def refresh_user_commands(bot, chat_id: str, user=None, lang: str = "en"):
             # Authenticated User Mode
             # Actually let's just use the strict key
             commands = [
-                BotCommand("new", get_text("cmd_reset", lang)), # /new is alias for reset
+                BotCommand("new", get_text("cmd_reset", lang)),  # /new is alias for reset
                 BotCommand("help", get_text("cmd_help", lang)),
                 BotCommand("unbind", get_text("cmd_unbind", lang)),
             ]
-            
+
             # Admin Extras
             if user.role == "admin":
                 commands.append(BotCommand("admin", get_text("cmd_admin", lang)))
@@ -258,11 +258,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a message when the command /start is issued."""
     user = update.effective_user
     chat_id = str(update.effective_chat.id)
-    
+
     # Identify user for auto-login or guest welcome
     nexus_user = await AuthService.get_user_by_identity("telegram", str(user.id))
     lang = resolve_language(nexus_user, update.message.text)
-    
+
     # Auto-refresh menu
     await refresh_user_commands(context.bot, chat_id, nexus_user, lang)
 
@@ -279,10 +279,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.effective_chat.id)
     nexus_user = await AuthService.get_user_by_identity("telegram", str(update.effective_user.id))
     lang = resolve_language(nexus_user, update.message.text)
-    
+
     # Refresh menu to be safe
     await refresh_user_commands(context.bot, chat_id, nexus_user, lang)
-    
+
     text = get_text("welcome", lang) if nexus_user else get_text("welcome_guest", lang)
     await update.message.reply_markdown(text)
 
@@ -315,7 +315,6 @@ async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def bind_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Link a Telegram identity to an existing Nexus user account."""
-    user = update.effective_user
     chat_id = str(update.effective_chat.id)
     # Don't check DB for lang here to be fast, use telegram pref
     lang = update.effective_user.language_code
@@ -428,7 +427,7 @@ async def skill_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     user_id = str(update.effective_user.id)
     chat_id = str(update.effective_chat.id)
-    lang = await get_user_language(user_id, update.effective_user.language_code)
+    await get_user_language(user_id, update.effective_user.language_code)
 
     # Admin Check
     nexus_user = await AuthService.get_user_by_identity("telegram", user_id)
@@ -447,16 +446,30 @@ async def skill_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         registry = SkillLoader.load_marketplace_registry()
 
         installed_str = ", ".join(f"`{s}`" for s in installed) if installed else "None"
-        registry_str = "\n".join(
-            f"  - `{s['id']}`: {s.get('description', 'No desc')}" for s in registry
-        ) if registry else "  (Registry empty)"
+        registry_str = (
+            "\n".join(f"  - `{s['id']}`: {s.get('description', 'No desc')}" for s in registry)
+            if registry
+            else "  (Registry empty)"
+        )
 
         text = f"**📦 Skill Manager**\n\n**Installed:** {installed_str}\n\n**Available in Registry:**\n{registry_str}"
         await context.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
 
     elif subcommand == "install" and len(args) > 1:
         skill_id = args[1]
-        result = await SkillLoader.install_skill(skill_id)
+        
+        # ClawHub support: /skill install clawhub:skill-name
+        if skill_id.startswith("clawhub:"):
+            skill_name = skill_id.replace("clawhub:", "")
+            await context.bot.send_message(chat_id=chat_id, text=f"⏳ Fetching `{skill_name}` from ClawHub...", parse_mode="Markdown")
+            success = await SkillLoader.download_from_clawhub(skill_name)
+            if success:
+                result = f"✅ Skill `{skill_name}` installed from ClawHub!"
+            else:
+                result = f"❌ Failed to fetch `{skill_name}` from ClawHub. Check skill name."
+        else:
+            result = await SkillLoader.install_skill(skill_id)
+        
         await context.bot.send_message(chat_id=chat_id, text=result, parse_mode="Markdown")
 
     elif subcommand == "uninstall" and len(args) > 1:
@@ -467,7 +480,7 @@ async def skill_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await context.bot.send_message(
             chat_id=chat_id,
-            text="**Usage:**\n`/skill list`\n`/skill install <id>`\n`/skill uninstall <id>`",
+            text="**Usage:**\n`/skill list`\n`/skill install <id>`\n`/skill install clawhub:<name>`\n`/skill uninstall <id>`",
             parse_mode="Markdown",
         )
 
