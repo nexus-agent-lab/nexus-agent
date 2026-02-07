@@ -105,20 +105,36 @@ async def robust_send_message(bot, chat_id: str, text: str, parse_mode: str = "M
 TYPING_TASKS = {}  # chat_id -> asyncio.Task
 
 
-async def keep_typing_status(bot, chat_id: str):
+async def keep_typing_status(bot, chat_id: str, max_retries: int = 5):
     """
     Periodically sends a 'typing' action to keep the status alive in Telegram.
     This loop should be cancelled once a response is sent.
+    Includes retry logic for network interruptions (e.g., proxy node switching).
     """
+    retry_count = 0
+    backoff = 1.0  # Start with 1 second backoff
+
     try:
         while True:
-            await bot.send_chat_action(chat_id=chat_id, action="typing")
-            # Telegram typing status lasts ~5s, refresh every 4s
-            await asyncio.sleep(4.0)
+            try:
+                await bot.send_chat_action(chat_id=chat_id, action="typing")
+                # Telegram typing status lasts ~5s, refresh every 4s
+                await asyncio.sleep(4.0)
+                # Reset retry state on success
+                retry_count = 0
+                backoff = 1.0
+            except asyncio.CancelledError:
+                raise  # Re-raise to exit cleanly
+            except Exception as e:
+                retry_count += 1
+                if retry_count > max_retries:
+                    logger.warning(f"Typing loop for {chat_id} failed after {max_retries} retries: {e}")
+                    break
+                logger.debug(f"Typing loop retry {retry_count}/{max_retries} for {chat_id}: {e}")
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 16.0)  # Max 16s backoff
     except asyncio.CancelledError:
         pass
-    except Exception as e:
-        logger.warning(f"Typing loop failed for {chat_id}: {e}")
     finally:
         # Cleanup task reference if it matches current
         if chat_id in TYPING_TASKS and TYPING_TASKS[chat_id] == asyncio.current_task():
@@ -457,11 +473,13 @@ async def skill_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif subcommand == "install" and len(args) > 1:
         skill_id = args[1]
-        
+
         # ClawHub support: /skill install clawhub:skill-name
         if skill_id.startswith("clawhub:"):
             skill_name = skill_id.replace("clawhub:", "")
-            await context.bot.send_message(chat_id=chat_id, text=f"⏳ Fetching `{skill_name}` from ClawHub...", parse_mode="Markdown")
+            await context.bot.send_message(
+                chat_id=chat_id, text=f"⏳ Fetching `{skill_name}` from ClawHub...", parse_mode="Markdown"
+            )
             success = await SkillLoader.download_from_clawhub(skill_name)
             if success:
                 result = f"✅ Skill `{skill_name}` installed from ClawHub!"
@@ -469,7 +487,7 @@ async def skill_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 result = f"❌ Failed to fetch `{skill_name}` from ClawHub. Check skill name."
         else:
             result = await SkillLoader.install_skill(skill_id)
-        
+
         await context.bot.send_message(chat_id=chat_id, text=result, parse_mode="Markdown")
 
     elif subcommand == "uninstall" and len(args) > 1:

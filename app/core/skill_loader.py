@@ -346,7 +346,7 @@ class SkillLoader:
     # =========================================
 
     REGISTRY_FILE = SKILLS_DIR / "skill_registry.json"
-    
+
     # ClawHub Integration
     CLAWHUB_API_BASE = "https://clawhub.convex.site"  # ClawHub API endpoint
     CLAWHUB_RAW_BASE = "https://raw.githubusercontent.com/openclaw/clawhub/main"
