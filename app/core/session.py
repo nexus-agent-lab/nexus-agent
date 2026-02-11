@@ -124,7 +124,6 @@ class SessionManager:
 
             if isinstance(data, list):
                 summary += f"Type: List, Count: {len(data)} items.\n"
-                # Extract first 3 items IDs if possible
                 ids = []
                 for item in data[:3]:
                     if isinstance(item, dict):
@@ -145,3 +144,124 @@ class SessionManager:
         summary += "Use `python_sandbox` to process the full data if needed."
 
         return summary, True, original
+
+    # =========================================
+    # AUTO-COMPACTING (P0.5)
+    # =========================================
+
+    @classmethod
+    async def compact_session(cls, session_id: int, keep_last: int = 15):
+        """
+        Background task: Compact old messages into a summary.
+        Keeps the last `keep_last` messages raw, archives the rest.
+        """
+        try:
+            from sqlalchemy import func
+
+            from app.models.session import SessionSummary
+
+            async with AsyncSessionLocal() as db:
+                # 1. Count unarchived messages
+                count_stmt = select(func.count()).where(
+                    SessionMessage.session_id == session_id, SessionMessage.is_archived == False
+                )
+                result = await db.execute(count_stmt)
+                count = result.scalar()
+
+                if count <= keep_last:
+                    return  # No need to compact
+
+                # 2. Fetch older messages to archive
+                # We want to archive: all unarchived messages EXCEPT the last `keep_last`
+                # So we order by CreatedAt ASC and take (count - keep_last)
+                limit = count - keep_last
+                msgs_stmt = (
+                    select(SessionMessage)
+                    .where(SessionMessage.session_id == session_id, SessionMessage.is_archived == False)
+                    .order_by(SessionMessage.created_at.asc())
+                    .limit(limit)
+                )
+                result = await db.execute(msgs_stmt)
+                to_archive = result.scalars().all()
+
+                if not to_archive:
+                    return
+
+                # 3. Generate Summary using LLM
+                # We do this inside the method for now. In prod, maybe a separate worker.
+                from app.core.llm_utils import get_llm_client
+
+                llm = get_llm_client()
+                
+                # Format context for summarization
+                context_lines = []
+                for m in to_archive:
+                    role_str = m.role.upper()
+                    if m.role == "tool":
+                        role_str = f"TOOL ({m.tool_name})"
+                    content_snippet = m.content[:500] + "..." if len(m.content) > 500 else m.content
+                    context_lines.append(f"{role_str}: {content_snippet}")
+                
+                context_text = "\n".join(context_lines)
+                
+                prompt = (
+                    f"Summarize the following conversation history into a concise, factual paragraph. "
+                    f"Focus on key decisions, facts, user preferences, and outcomes. "
+                    f"Ignore improved greetings or small talk.\n\n"
+                    f"History:\n{context_text}\n\n"
+                    f"Summary:"
+                )
+
+                response = await llm.ainvoke(prompt)
+                summary_text = response.content.strip()
+
+                # 4. Save SessionSummary
+                start_msg_id = to_archive[0].id
+                end_msg_id = to_archive[-1].id
+                
+                new_summary = SessionSummary(
+                    session_id=session_id,
+                    summary=summary_text,
+                    start_msg_id=start_msg_id,
+                    end_msg_id=end_msg_id,
+                    msg_count=len(to_archive)
+                )
+                db.add(new_summary)
+
+                # 5. Mark messages as archived
+                for msg in to_archive:
+                    msg.is_archived = True
+                
+                await db.commit()
+                logger.info(f" compacted {len(to_archive)} messages into summary for session {session_id}")
+
+        except Exception as e:
+            logger.error(f"Failed to compact session {session_id}: {e}")
+
+    @classmethod
+    async def get_history_with_summary(cls, session_id: int, limit: int = 15) -> tuple[str, List[SessionMessage]]:
+        """
+        Retrieve context: (Summary of old messages, List of recent raw messages).
+        """
+        from app.models.session import SessionSummary
+
+        async with AsyncSessionLocal() as db:
+            # 1. Get all summaries (oldest to newest)
+            result = await db.execute(
+                select(SessionSummary.summary)
+                .where(SessionSummary.session_id == session_id)
+                .order_by(SessionSummary.created_at.asc())
+            )
+            summaries = result.scalars().all()
+            full_summary = "\n\n".join(summaries) if summaries else ""
+
+            # 2. Get recent unarchived messages
+            result = await db.execute(
+                select(SessionMessage)
+                .where(SessionMessage.session_id == session_id, SessionMessage.is_archived == False)
+                .order_by(SessionMessage.created_at.desc())  # Newest first
+                .limit(limit)
+            )
+            messages = list(reversed(result.scalars().all()))  # Return oldest -> newest
+            
+            return full_summary, messages

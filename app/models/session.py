@@ -52,4 +52,27 @@ class SessionMessage(SQLModel, table=True):
     # We might not store this for very large blobs to save space, but useful for now.
     original_content: Optional[str] = Field(sa_column=Column(Text, nullable=True))
 
+    # Compacting: If True, this message has been summarized into a SessionSummary
+    is_archived: bool = Field(default=False)
+
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class SessionSummary(SQLModel, table=True):
+    """
+    Represents a summarized block of session history.
+    Used to compact long-term context while keeping recent messages.
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: int = Field(foreign_key="session.id", index=True)
+
+    # The generated summary content
+    summary: str = Field(sa_column=Column(Text, nullable=False))
+
+    # Metadata for the range of messages covered
+    start_msg_id: int
+    end_msg_id: int
+    msg_count: int
+
     created_at: datetime = Field(default_factory=datetime.utcnow)

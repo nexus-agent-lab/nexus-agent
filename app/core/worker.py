@@ -274,11 +274,13 @@ class AgentWorker:
         from app.core.session import SessionManager
 
         session = await SessionManager.get_or_create_session(user.id)
-        history = await SessionManager.get_history(session.id, limit=10)
+        
+        # AUTO-COMPACTING: Load Summary + Recent History
+        history_summary, history_msgs_raw = await SessionManager.get_history_with_summary(session.id, limit=10)
 
         # 2. Convert history to LangChain messages
         history_msgs = []
-        for h_msg in history:
+        for h_msg in history_msgs_raw:
             if h_msg.type == "human":
                 history_msgs.append(HumanMessage(content=h_msg.content))
             elif h_msg.type == "ai":
@@ -292,9 +294,16 @@ class AgentWorker:
                     )
                 )
 
-        # 3. Construct Initial State: [History] + [Current Message]
-        # This ensures the Agent sees the full context immediately
-        initial_state["messages"] = history_msgs + initial_state["messages"]
+        # 3. Construct Initial State: [System(Summary)] + [History] + [Current Message]
+        initial_messages = history_msgs + initial_state["messages"]
+        
+        if history_summary:
+            summary_sys_msg = SystemMessage(
+                content=f"## PREVIOUS CONTEXT SUMMARY\n{history_summary}\n\nThe above is a summary of earlier conversation. Use it to maintain context."
+            )
+            initial_messages.insert(0, summary_sys_msg)
+
+        initial_state["messages"] = initial_messages
         initial_state["session_id"] = session.id
 
         current_thought = ""
