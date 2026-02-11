@@ -2,9 +2,9 @@
 Memory Controller - Skill selection logic for MemSkill system.
 Uses the Executor LLM to select appropriate Memory Skills based on context.
 """
+
 import logging
 import os
-import re
 from typing import Dict, List, Optional
 
 logger = logging.getLogger("nexus.memory_controller")

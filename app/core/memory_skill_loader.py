@@ -1,6 +1,7 @@
 """
 Memory Skill Loader - Load and manage Memory Skills from files and database.
 """
+
 import logging
 import re
 from pathlib import Path
@@ -65,9 +66,7 @@ class MemorySkillLoader:
         body = content[frontmatter_match.end() :]
 
         # Find the Prompt Template section
-        prompt_match = re.search(
-            r"##\s*Prompt\s*Template\s*\n(.*?)(?=\n##|\Z)", body, re.DOTALL | re.IGNORECASE
-        )
+        prompt_match = re.search(r"##\s*Prompt\s*Template\s*\n(.*?)(?=\n##|\Z)", body, re.DOTALL | re.IGNORECASE)
         prompt_template = prompt_match.group(1).strip() if prompt_match else body.strip()
 
         return {
