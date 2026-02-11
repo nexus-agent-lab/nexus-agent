@@ -182,6 +182,7 @@ async def save_interaction_node(state: AgentState):
     # AUTO-COMPACTING: Trigger background compaction
     # Use create_task so we don't block the agent
     import asyncio
+
     asyncio.create_task(SessionManager.compact_session(session_id))
 
     return {}

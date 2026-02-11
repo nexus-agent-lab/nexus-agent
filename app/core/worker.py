@@ -2,7 +2,7 @@ import asyncio
 import logging
 import time
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage, SystemMessage
 from sqlmodel import select
 
 from app.core.db import get_session
@@ -274,7 +274,7 @@ class AgentWorker:
         from app.core.session import SessionManager
 
         session = await SessionManager.get_or_create_session(user.id)
-        
+
         # AUTO-COMPACTING: Load Summary + Recent History
         history_summary, history_msgs_raw = await SessionManager.get_history_with_summary(session.id, limit=10)
 
@@ -296,7 +296,7 @@ class AgentWorker:
 
         # 3. Construct Initial State: [System(Summary)] + [History] + [Current Message]
         initial_messages = history_msgs + initial_state["messages"]
-        
+
         if history_summary:
             summary_sys_msg = SystemMessage(
                 content=f"## PREVIOUS CONTEXT SUMMARY\n{history_summary}\n\nThe above is a summary of earlier conversation. Use it to maintain context."

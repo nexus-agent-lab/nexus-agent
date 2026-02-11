@@ -163,7 +163,7 @@ class SessionManager:
             async with AsyncSessionLocal() as db:
                 # 1. Count unarchived messages
                 count_stmt = select(func.count()).where(
-                    SessionMessage.session_id == session_id, SessionMessage.is_archived == False
+                    SessionMessage.session_id == session_id, not SessionMessage.is_archived
                 )
                 result = await db.execute(count_stmt)
                 count = result.scalar()
@@ -177,7 +177,7 @@ class SessionManager:
                 limit = count - keep_last
                 msgs_stmt = (
                     select(SessionMessage)
-                    .where(SessionMessage.session_id == session_id, SessionMessage.is_archived == False)
+                    .where(SessionMessage.session_id == session_id, not SessionMessage.is_archived)
                     .order_by(SessionMessage.created_at.asc())
                     .limit(limit)
                 )
@@ -192,7 +192,7 @@ class SessionManager:
                 from app.core.llm_utils import get_llm_client
 
                 llm = get_llm_client()
-                
+
                 # Format context for summarization
                 context_lines = []
                 for m in to_archive:
@@ -201,9 +201,9 @@ class SessionManager:
                         role_str = f"TOOL ({m.tool_name})"
                     content_snippet = m.content[:500] + "..." if len(m.content) > 500 else m.content
                     context_lines.append(f"{role_str}: {content_snippet}")
-                
+
                 context_text = "\n".join(context_lines)
-                
+
                 prompt = (
                     f"Summarize the following conversation history into a concise, factual paragraph. "
                     f"Focus on key decisions, facts, user preferences, and outcomes. "
@@ -218,20 +218,20 @@ class SessionManager:
                 # 4. Save SessionSummary
                 start_msg_id = to_archive[0].id
                 end_msg_id = to_archive[-1].id
-                
+
                 new_summary = SessionSummary(
                     session_id=session_id,
                     summary=summary_text,
                     start_msg_id=start_msg_id,
                     end_msg_id=end_msg_id,
-                    msg_count=len(to_archive)
+                    msg_count=len(to_archive),
                 )
                 db.add(new_summary)
 
                 # 5. Mark messages as archived
                 for msg in to_archive:
                     msg.is_archived = True
-                
+
                 await db.commit()
                 logger.info(f" compacted {len(to_archive)} messages into summary for session {session_id}")
 
@@ -258,10 +258,10 @@ class SessionManager:
             # 2. Get recent unarchived messages
             result = await db.execute(
                 select(SessionMessage)
-                .where(SessionMessage.session_id == session_id, SessionMessage.is_archived == False)
+                .where(SessionMessage.session_id == session_id, not SessionMessage.is_archived)
                 .order_by(SessionMessage.created_at.desc())  # Newest first
                 .limit(limit)
             )
             messages = list(reversed(result.scalars().all()))  # Return oldest -> newest
-            
+
             return full_summary, messages
