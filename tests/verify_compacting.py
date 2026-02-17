@@ -92,9 +92,9 @@ async def verify_auto_compacting():
         assert count == 20
 
     # 2. Trigger Compacting
-    # We keep last 5 for this test to force compaction
-    logger.info("Triggering compact_session(keep_last=5)...")
-    await SessionManager.compact_session(session.id, keep_last=5)
+    # We use maybe_compact with threshold=0 to FORCE consistent compaction for testing
+    logger.info("Triggering maybe_compact(threshold=0, keep_last=5)...")
+    await SessionManager.maybe_compact(session.id, threshold=0, keep_last=5)
 
     # 3. Verify Results
     async with TestSessionLocal() as db:
@@ -121,7 +121,7 @@ async def verify_auto_compacting():
         # Check Unarchived (Recent) Messages
         unarchived_count = (
             await db.execute(
-                select(func.count()).where(SessionMessage.session_id == session.id, not SessionMessage.is_archived)
+                select(func.count()).where(SessionMessage.session_id == session.id, SessionMessage.is_archived == False)  # noqa: E712
             )
         ).scalar()
         logger.info(f"Unarchived (Recent) Messages: {unarchived_count}")

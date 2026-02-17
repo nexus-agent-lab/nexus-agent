@@ -3,7 +3,7 @@ import logging
 import uuid
 from typing import List, Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.db import AsyncSessionLocal
 from app.models.session import Session, SessionMessage
@@ -109,8 +109,8 @@ class SessionManager:
         Deterministic pruning rule.
         Returns: (pruned_content, is_pruned, original_content)
         """
-        # Threshold: 500 chars
-        if len(content) <= 500:
+        # Threshold: 2000 chars (Raised from 500 to allow small structured data like HA sensor lists)
+        if len(content) <= 2000:
             return content, False, None
 
         logger.info(f"Pruning output for tool {tool_name} (size: {len(content)})")
@@ -150,20 +150,49 @@ class SessionManager:
     # =========================================
 
     @classmethod
+    async def maybe_compact(cls, session_id: int, threshold: int = 20, keep_last: int = 15):
+        """
+        Conditionally trigger compaction only if meaningful history has accumulated.
+        Reduces unnecessary LLM calls (Optimization for GLM Flash).
+        """
+        from sqlalchemy import func
+
+        from app.core.db import AsyncSessionLocal
+
+        try:
+            async with AsyncSessionLocal() as db:
+                # Count unarchived messages
+                stmt = select(func.count(SessionMessage.id)).where(
+                    SessionMessage.session_id == session_id, SessionMessage.is_archived == False  # noqa: E712
+                )
+                result = await db.execute(stmt)
+                count = result.scalar_one()
+
+                if count > threshold:
+                    logger.info(
+                        f"Session {session_id} has {count} unarchived messages (threshold {threshold}). Triggering compaction."
+                    )
+                    await cls.compact_session(session_id, keep_last=keep_last)
+                else:
+                    # debugging noise reduction
+                    # logger.debug(f"Session {session_id} count {count} < {threshold}. Skipping compaction.")
+                    pass
+        except Exception as e:
+            logger.error(f"Error in maybe_compact for session {session_id}: {e}")
+
+    @classmethod
     async def compact_session(cls, session_id: int, keep_last: int = 15):
         """
         Background task: Compact old messages into a summary.
         Keeps the last `keep_last` messages raw, archives the rest.
         """
         try:
-            from sqlalchemy import func
-
             from app.models.session import SessionSummary
 
             async with AsyncSessionLocal() as db:
                 # 1. Count unarchived messages
                 count_stmt = select(func.count()).where(
-                    SessionMessage.session_id == session_id, not SessionMessage.is_archived
+                    SessionMessage.session_id == session_id, SessionMessage.is_archived == False  # noqa: E712
                 )
                 result = await db.execute(count_stmt)
                 count = result.scalar()
@@ -172,12 +201,10 @@ class SessionManager:
                     return  # No need to compact
 
                 # 2. Fetch older messages to archive
-                # We want to archive: all unarchived messages EXCEPT the last `keep_last`
-                # So we order by CreatedAt ASC and take (count - keep_last)
                 limit = count - keep_last
                 msgs_stmt = (
                     select(SessionMessage)
-                    .where(SessionMessage.session_id == session_id, not SessionMessage.is_archived)
+                    .where(SessionMessage.session_id == session_id, SessionMessage.is_archived == False)  # noqa: E712
                     .order_by(SessionMessage.created_at.asc())
                     .limit(limit)
                 )
@@ -188,7 +215,6 @@ class SessionManager:
                     return
 
                 # 3. Generate Summary using LLM
-                # We do this inside the method for now. In prod, maybe a separate worker.
                 from app.core.llm_utils import get_llm_client
 
                 llm = get_llm_client()
@@ -258,7 +284,7 @@ class SessionManager:
             # 2. Get recent unarchived messages
             result = await db.execute(
                 select(SessionMessage)
-                .where(SessionMessage.session_id == session_id, not SessionMessage.is_archived)
+                .where(SessionMessage.session_id == session_id, SessionMessage.is_archived == False)  # noqa: E712
                 .order_by(SessionMessage.created_at.desc())  # Newest first
                 .limit(limit)
             )

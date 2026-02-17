@@ -6,7 +6,16 @@ from langchain_core.tools import tool
 from app.core.decorators import require_role
 from app.tools.admin_tools import broadcast_notification, restart_system
 from app.tools.learning_tools import learn_skill_rule
-from app.tools.memory_tools import forget_all_memories, forget_memory, query_memory, save_insight, store_preference
+from app.tools.memory_tools import (
+    approve_skill_evolution,
+    evolve_memory_skills,
+    forget_all_memories,
+    forget_memory,
+    list_skill_changelog,
+    query_memory,
+    save_insight,
+    store_preference,
+)
 from app.tools.meta_tools import get_tool_details, list_available_tools
 from app.tools.sandbox import get_sandbox_tool
 from app.tools.scheduler import delete_task, list_tasks, schedule_task
@@ -67,4 +76,7 @@ def get_static_tools() -> List[Callable]:
         submit_suggestion,
         list_suggestions,
         update_suggestion_status,
+        evolve_memory_skills,
+        list_skill_changelog,
+        approve_skill_evolution,
     ]

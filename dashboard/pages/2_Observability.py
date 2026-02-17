@@ -10,7 +10,7 @@ engine = get_engine()
 
 st.title("👁️ 可观测性与追踪")
 
-tab1, tab2 = st.tabs(["📜 实时审计日志", "🔍 链路追踪"])
+tab1, tab2, tab3 = st.tabs(["📜 实时审计日志", "🔍 链路追踪", "🔬 LLM 调试"])
 
 with tab1:
     col1, col2 = st.columns(2)
@@ -56,3 +56,50 @@ with tab1:
 with tab2:
     st.subheader("链路回放 (开发中)")
     st.markdown("可视化展示具体的 LangGraph 执行路径。")
+
+with tab3:
+    st.subheader("🔬 LLM 调试")
+    st.caption("开启后，所有 LLM 请求和响应将打印到容器日志中。")
+
+    import os
+    import requests
+
+    api_url = os.getenv("API_URL", "http://localhost:8000")
+
+    # Read current state
+    current_state = os.getenv("DEBUG_WIRE_LOG", "false").lower() == "true"
+
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        wire_log_on = st.toggle("Wire Log", value=current_state, key="wire_log_toggle")
+    with col2:
+        if wire_log_on:
+            st.success("🟢 Wire Log 已开启 — 检查容器日志查看 LLM 输入/输出")
+        else:
+            st.info("🔵 Wire Log 已关闭")
+
+    if wire_log_on != current_state:
+        try:
+            resp = requests.post(
+                f"{api_url}/admin/config",
+                json={"key": "DEBUG_WIRE_LOG", "value": "true" if wire_log_on else "false"},
+                timeout=5,
+            )
+            if resp.status_code == 200:
+                st.success("✅ 配置已更新，Agent 将在下次调用时生效。")
+            else:
+                st.warning(f"API 返回: {resp.status_code}")
+        except Exception as e:
+            # Fallback: set env var directly (only affects dashboard process)
+            os.environ["DEBUG_WIRE_LOG"] = "true" if wire_log_on else "false"
+            st.info(f"⚠️ API 不可用，已设置本地环境变量。重启容器以生效: `docker-compose restart nexus-app`")
+
+    st.divider()
+    st.markdown("""
+    **查看方法：**
+    ```bash
+    docker-compose logs -f --timestamps nexus-app
+    ```
+
+    Wire Log 会以 📤 / ✅ 标记显示完整的 LLM 输入和输出 JSON。
+    """)

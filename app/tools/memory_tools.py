@@ -16,7 +16,13 @@ async def save_insight(content: str, user_id: int) -> str:
     """
     from app.core.memory import memory_manager
 
-    await memory_manager.add_memory(user_id=user_id, content=content, memory_type="reflexion")
+    # Use 'fact_extraction' skill or auto-select
+    await memory_manager.add_memory_with_skill(
+        user_id=user_id,
+        content=content,
+        memory_type="reflexion",
+        skill_name="fact_extraction"
+    )
     return f"✅ Insight saved to memory: {content[:50]}..."
 
 
@@ -33,7 +39,13 @@ async def store_preference(content: str, user_id: int) -> str:
     """
     from app.core.memory import memory_manager
 
-    await memory_manager.add_memory(user_id=user_id, content=content, memory_type="profile")
+    # Use 'preference_capture' skill
+    await memory_manager.add_memory_with_skill(
+        user_id=user_id,
+        content=content,
+        memory_type="profile",
+        skill_name="preference_capture"
+    )
     return f"✅ Preference stored: {content[:50]}..."
 
 
@@ -83,6 +95,23 @@ async def forget_memory(memory_id: int, user_id: int = None) -> str:
     """
     from app.core.memory import memory_manager
 
+    # Record negative feedback on the originating skill before deletion
+    try:
+        from sqlmodel import select
+
+        from app.core.db import AsyncSessionLocal
+        from app.core.designer import MemSkillDesigner
+        from app.models.memory import Memory
+
+        async with AsyncSessionLocal() as session:
+            stmt = select(Memory).where(Memory.id == memory_id, Memory.user_id == user_id)
+            result = await session.execute(stmt)
+            memory = result.scalar_one_or_none()
+            if memory and memory.skill_id:
+                await MemSkillDesigner.record_feedback(memory.skill_id, is_positive=False)
+    except Exception:
+        pass  # Non-critical, don't block deletion
+
     success = await memory_manager.delete_memory(user_id=user_id, memory_id=memory_id)
     if success:
         return f"✅ Memory ID:{memory_id} has been forgotten."
@@ -107,10 +136,72 @@ async def forget_all_memories(memory_type: str = None, confirm: bool = False, us
 
     from app.core.memory import memory_manager
 
-    # We need to access DB directly for bulk delete as memory_manager doesn't support it yet
-    # Or validly extend memory_manager.
-    # Extending memory_manager is cleaner.
     count = await memory_manager.delete_all_memories(user_id=user_id, memory_type=memory_type)
 
     type_msg = f"of type '{memory_type}' " if memory_type else ""
     return f"✅ forgotten {count} memories {type_msg}for user."
+
+
+@tool
+@require_role("admin")
+async def evolve_memory_skills(user_id: int = None) -> str:
+    """
+    [Admin] Trigger the MemSkill Designer to analyze underperforming memory skills
+    and generate improved prompts. Results are saved as canary versions for review.
+
+    Args:
+        user_id: User ID (auto-injected)
+    """
+    from app.core.designer import MemSkillDesigner
+
+    return await MemSkillDesigner.run_evolution_cycle()
+
+
+@tool
+@require_role("admin")
+async def list_skill_changelog(limit: int = 10, user_id: int = None) -> str:
+    """
+    [Admin] View the evolution history of memory skills.
+    Shows recent Designer changes with their approval status.
+
+    Args:
+        limit: Number of recent entries to show (default: 10)
+        user_id: User ID (auto-injected)
+    """
+    from app.core.designer import MemSkillDesigner
+
+    entries = await MemSkillDesigner.get_changelog_list(limit=limit)
+    if not entries:
+        return "📋 No evolution history yet."
+
+    lines = ["📋 **Memory Skill Evolution History:**\n"]
+    for e in entries:
+        status_icon = {"canary": "🟡", "approved": "✅", "rejected": "🚫"}.get(e["status"], "❓")
+        lines.append(
+            f"{status_icon} **#{e['id']}** [{e['skill_name']}] — {e['status']}\n"
+            f"  Reason: {e['reason']}\n"
+            f"  Created: {e['created_at']}"
+        )
+    return "\n".join(lines)
+
+
+@tool
+@require_role("admin")
+async def approve_skill_evolution(changelog_id: int, action: str = "approve", user_id: int = None) -> str:
+    """
+    [Admin] Approve or reject a canary skill evolution.
+    Approved changes update the skill's prompt template to the new version.
+
+    Args:
+        changelog_id: The changelog entry ID to act on
+        action: 'approve' or 'reject'
+        user_id: User ID (auto-injected)
+    """
+    from app.core.designer import MemSkillDesigner
+
+    if action == "approve":
+        return await MemSkillDesigner.approve_changelog(changelog_id)
+    elif action == "reject":
+        return await MemSkillDesigner.reject_changelog(changelog_id)
+    else:
+        return f"❌ Invalid action: '{action}'. Use 'approve' or 'reject'."

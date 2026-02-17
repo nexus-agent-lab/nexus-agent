@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel
 
+import app.core.logging_config  # noqa: F401  — Centralized logging (must be first)
 from app.api.auth import router as auth_router
 from app.api.skill_learning import router as skills_learning_router
 from app.api.skills import router as skills_router
@@ -22,12 +23,6 @@ from app.interfaces.telegram import run_telegram_bot
 from app.models.user import User
 from app.tools.registry import get_static_tools
 
-logging.basicConfig(level=logging.INFO)
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("httpcore").setLevel(logging.WARNING)
-logging.getLogger("openai").setLevel(logging.INFO)
-logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
-logging.getLogger("aiosqlite").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 # Global reference
@@ -80,6 +75,10 @@ async def lifespan(app: FastAPI):
             tool_map[category] = []
         tool_map[category].append(tool.name)
 
+    # Register tools with Semantic Router (CRITICAL — without this, route() returns [])
+    from app.core.tool_router import tool_router
+    await tool_router.register_tools(all_tools)
+
     logger.info(f"Agent initialized with {len(all_tools)} tools across {len(tool_map)} categories:")
     for cat, t_names in tool_map.items():
         logger.info(f"  - [{cat.upper()}]: {', '.join(t_names)}")
@@ -99,8 +98,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Nexus Agent API", version="2.0.0", lifespan=lifespan)
 
 # Register API routers
+from app.api.admin import router as admin_router
 app.include_router(skills_router)
 app.include_router(skills_learning_router)
+app.include_router(admin_router)
 
 app.include_router(auth_router)
 

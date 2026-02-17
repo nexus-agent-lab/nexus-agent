@@ -13,33 +13,14 @@ from app.core.state import AgentState
 
 logger = logging.getLogger(__name__)
 
-BASE_SYSTEM_PROMPT = """You are Nexus, an advanced AI Operating System connecting the physical and digital worlds.
+BASE_SYSTEM_PROMPT = """You are Nexus, an AI Operating System connecting physical and digital worlds.
 
-### CORE OPERATING PROTOCOLS
-1. **AUTONOMOUS DISCOVERY**:
-   - You rarely know specific IDs (Device IDs, User IDs, Table Names) beforehand.
-   - **MANDATORY**: Always use available discovery/search tools FIRST to locate resources.
-     - Do NOT guess IDs.
-   - **PROACTIVE**: If the user's intent is clear (e.g., "turn on lights"), find the target and execute.
-
-2. **SKILL-BASED EXECUTION**:
-   - Your capabilities are defined by the "LOADED SKILLS" section below.
-   - **PRIORITY**: You MUST follow the specific rules and patterns defined in each Skill Card.
-   - If a proper tool is missing, report the limitation.
-
-3. **DATA & LOGIC HANDLING**:
-   - **Large Outputs**: If a tool returns extensive text/JSON (e.g. >100 items), Do NOT output it directly. Use `python_sandbox` to filter/summarize.
-   - **Calculations**: Use `python_sandbox` for any complex math or logic.
-
-4. **DISCOVERY & ERROR RECOVERY**:
-   - **Unknown Tools**: If you are unsure which tool to use, call `list_available_tools`.
-   - **Unknown Arguments**: If you are unsure about a tool's arguments or schema, call `get_tool_details(tool_name)`.
-   - **Do NOT Hallucinate**: Never invent tool names or arguments. Use discovery tools to find the truth.
-
-5. **RESPONSE STANDARDS**:
-   - **Language**: Strictly follow the user's language.
-   - **Conciseness**: Return only the requested value or confirmation.
-     - Avoid exposing internal IDs unless debugging.
+### PROTOCOLS
+1. **DISCOVERY FIRST**: Never guess IDs. Use discovery/search tools to locate resources before acting.
+2. **SKILL RULES**: Follow rules in LOADED SKILLS section. If a tool is missing, say so.
+3. **LARGE DATA**: Use `python_sandbox` to filter/summarize large outputs (>100 items) or do calculations.
+4. **NO HALLUCINATION**: Never invent tool names. Use `list_available_tools` if unsure.
+5. **LANGUAGE**: Match the user's language. Be concise.
 """
 
 
@@ -55,39 +36,8 @@ def get_llm():
     if not api_key:
         print("Warning: LLM_API_KEY is not set.")
 
-    # 真实请求/响应劫持 (True Wire Logging)
-    async def log_request(request):
-        if "chat/completions" in str(request.url):
-            try:
-                body = request.read().decode("utf-8")
-                print("\n" + "🚀" * 15 + " [WIRE] LLM REQUEST BODY " + "🚀" * 15)
-                print(body)
-                print("=" * 100 + "\n")
-            except Exception as e:
-                print(f"Logging Error: {e}")
-
-    async def log_response(response):
-        if "chat/completions" in str(response.url):
-            print("\n" + "📥" * 15 + f" [WIRE] LLM RESPONSE HEADERS ({response.status_code}) " + "📥" * 15)
-            print(f"Status: {response.status_code}")
-            print("=" * 100 + "\n")
-
-    # Sync Hooks
-    def log_request_sync(request):
-        if "chat/completions" in str(request.url):
-            try:
-                body = request.read().decode("utf-8")
-                print("\n" + "🚀" * 15 + " [WIRE-SYNC] LLM REQUEST BODY " + "🚀" * 15)
-                print(body)
-                print("=" * 100 + "\n")
-            except Exception as e:
-                print(f"Logging Error: {e}")
-
-    def log_response_sync(response):
-        if "chat/completions" in str(response.url):
-            print("\n" + "📥" * 15 + f" [WIRE-SYNC] LLM RESPONSE HEADERS ({response.status_code}) " + "📥" * 15)
-            print(f"Status: {response.status_code}")
-            print("=" * 100 + "\n")
+    # Wire Logging (gated by DEBUG_WIRE_LOG env var)
+    _wire_log = os.getenv("DEBUG_WIRE_LOG", "false").lower() == "true"
 
     # 针对 GLM-4.7-Flash 的特殊配置
     if "glm-4" in model_name.lower() and "flash" in model_name.lower():
@@ -127,6 +77,13 @@ async def retrieve_memories(state: AgentState):
 
     # Importing here to avoid potential circular deps
     from app.core.memory import memory_manager
+
+    # Optimization: Skip memory retrieval for short messages (e.g. "hi", "ok", "stop")
+    # or simple confirmations to save Embedding calls (which block for 200ms+)
+    SKIP_PATTERNS = ["hi", "hello", "ok", "thanks", "thank you", "stop", "exit", "quit", "menu", "help"]
+    if len(last_user_msg) < 10 or last_user_msg.strip().lower() in SKIP_PATTERNS:
+        # logger.debug("Skipping memory retrieval for short/simple message")
+        return {"memories": []}
 
     memories = await memory_manager.search_memory(user_id=user.id, query=last_user_msg)
     memory_strings = [f"[{m.memory_type}] {m.content}" for m in memories]
@@ -183,7 +140,7 @@ async def save_interaction_node(state: AgentState):
     # Use create_task so we don't block the agent
     import asyncio
 
-    asyncio.create_task(SessionManager.compact_session(session_id))
+    asyncio.create_task(SessionManager.maybe_compact(session_id))
 
     return {}
 
@@ -239,7 +196,7 @@ def should_continue(state: AgentState) -> Literal["tools", "__end__"]:
 def create_agent_graph(tools: list):
     llm = get_llm()
     tools_by_name = {t.name: t for t in tools}
-    llm_with_tools = llm.bind_tools(tools)
+    # llm_with_tools = llm.bind_tools(tools)
 
     # Dynamic Instruction Injection from MCP Servers
     from app.core.mcp_manager import MCPManager
@@ -322,28 +279,86 @@ def create_agent_graph(tools: list):
                 messages.insert(0, system_msg)
 
         try:
-            # CRITICAL DEBUG: Log input messages (converted to list/dict for readability)
             import json
+            import os
 
             from langchain_core.messages import message_to_dict
+            _wire_log = os.getenv("DEBUG_WIRE_LOG", "false").lower() == "true"
 
-            msgs_dicts = [message_to_dict(m) for m in messages]
-            # 这里也保留 print，确保用户能看到结构化的消息内容
-            print("\n" + "📤" * 15 + " [STRUCTURED] LLM INPUT " + "📤" * 15)
-            print(json.dumps(msgs_dicts, ensure_ascii=False, indent=2))
-            print("=" * 100 + "\n")
+            # --- Flow Trace Logging (Start) ---
+            if _wire_log:
+                last_msg_content = messages[-1].content if messages else "Unknown"
+                if len(str(last_msg_content)) > 50:
+                    last_msg_content = str(last_msg_content)[:50] + "..."
+                
+                print(f"\nUser Query: \"{last_msg_content}\"")
+                print("  │")
+                print("  ▼")
+                print("① call_model (agent.py)")
+                print("  │")
+                
+                sys_len = len(messages[0].content) if messages and isinstance(messages[0], SystemMessage) else 0
+                print(f"  ├─ System Prompt Constructed (Length: {sys_len} chars)")
+                print("  │")
 
-            # DEBUG: Show what tools are in the "Tool Belt"
-            tool_names = [t.name for t in tools]
+            # Dynamic Tool Routing
+            from app.core.tool_router import tool_router, CORE_TOOL_NAMES
+            
+            # Find the last human message for routing context
+            routing_query = ""
+            for msg in reversed(messages):
+                if isinstance(msg, HumanMessage):
+                    routing_query = str(msg.content)
+                    break
+            
+            if _wire_log:
+                print(f"  ├─ tool_router.route(\"{routing_query[:30]}...\")")
+                print("  │   ├─ Embedding Query -> Cosine Similarity")
+
+            # Select relevant tools (fallback to full list if router returns empty)
+            current_tools = await tool_router.route(routing_query)
+            if not current_tools:
+                logger.warning("Router returned empty tool list — falling back to ALL tools")
+                current_tools = tools
+            tool_names = [t.name for t in current_tools]
+
+            if _wire_log:
+                n_core = sum(1 for t in current_tools if t.name in CORE_TOOL_NAMES)
+                n_sem = len(current_tools) - n_core
+                print(f"  │   └─ Selected: {n_core} Core + {n_sem} Semantic = {len(current_tools)} Total")
+                print("  │")
+                print(f"  ├─ llm.bind_tools({len(current_tools)} Tools)")
+                print("  │   └─ Converting to OpenAI Function Schemas")
+                print("  │")
+                print("  └─ llm.ainvoke(messages + tools) -> Sending to LLM")
+                print("      │")
+                print("      ▼")
+                print("② LLM Request Body:")
+
             logger.info(f"LLM TOOL BELT ({len(tool_names)} tools): {tool_names}")
 
+            # Bind only selected tools for this turn
+            llm_with_tools = llm.bind_tools(current_tools)
+            
+            if _wire_log:
+                # Capture and print the full request body (tools + messages)
+                tool_schemas = llm_with_tools.kwargs.get("tools", [])
+                msgs_dicts = [message_to_dict(m) for m in messages]
+                
+                req_body = {
+                    "model": os.getenv("LLM_MODEL", "unknown"),
+                    "messages": msgs_dicts,
+                    "tools": tool_schemas
+                }
+                print(json.dumps(req_body, ensure_ascii=False, indent=2))
+                print("=" * 60 + "\n")
             response = await llm_with_tools.ainvoke(messages)
 
-            # Debug: Log full output JSON
-            resp_dict = message_to_dict(response)
-            print("\n" + "✅" * 15 + " [STRUCTURED] LLM RESPONSE BODY " + "✅" * 15)
-            print(json.dumps(resp_dict, ensure_ascii=False, indent=2))
-            print("=" * 100 + "\n")
+            if _wire_log:
+                resp_dict = message_to_dict(response)
+                print("\n" + "✅" * 15 + " [STRUCTURED] LLM RESPONSE BODY " + "✅" * 15)
+                print(json.dumps(resp_dict, ensure_ascii=False, indent=2))
+                print("=" * 100 + "\n")
 
             # ======================================================
             # 🚑 【Universal Patch】Recover tool calls from plain text
@@ -521,6 +536,20 @@ def create_agent_graph(tools: list):
                     context=current_context,
                     tool_tags=tool_tags,
                 ):
+                    # 🩹 Sanitize tool args: fix None values for typed params
+                    # LLMs sometimes pass `None` for booleans/ints, causing Pydantic errors
+                    schema = getattr(tool_to_call, "args_schema", None)
+                    if schema:
+                        for field_name, field_info in schema.model_fields.items():
+                            if field_name in tool_args and tool_args[field_name] is None:
+                                anno = field_info.annotation
+                                if anno is bool:
+                                    tool_args[field_name] = field_info.default if field_info.default is not None else False
+                                elif anno is int:
+                                    tool_args[field_name] = field_info.default if field_info.default is not None else 0
+                                elif anno is str:
+                                    tool_args[field_name] = field_info.default if field_info.default is not None else ""
+
                     prediction = await tool_to_call.ainvoke(tool_args)
                     result_str = str(prediction)
 
@@ -589,6 +618,12 @@ async def stream_agent_events(graph, input_state: dict, config: dict = None):
     Standardized wrapper for astream_events.
     Yields events for UI/Telegram consumption.
     """
+    # Set recursion limit to prevent infinite loops (P1)
+    if config is None:
+        config = {}
+    if "recursion_limit" not in config:
+        config["recursion_limit"] = 20
+
     try:
         async for event in graph.astream_events(input_state, config=config, version="v2"):
             kind = event["event"]
@@ -617,5 +652,9 @@ async def stream_agent_events(graph, input_state: dict, config: dict = None):
                     yield {"event": "final_answer", "data": getattr(last_msg, "content", "")}
 
     except Exception as e:
+        error_msg = str(e)
+        if "recursion_limit" in error_msg.lower():
+            error_msg = "⚠️ Agent 陷入了递归循环。这通常是因为工具输出太复杂或解析失败导致的。已强制终止任务以节省资源。"
+
         logger.error(f"Error in astream_events: {e}", exc_info=True)
-        yield {"event": "error", "data": str(e)}
+        yield {"event": "error", "data": error_msg}

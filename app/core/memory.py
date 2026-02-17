@@ -53,7 +53,8 @@ class MemoryManager:
             )
 
     async def add_memory(
-        self, user_id: int, content: str, memory_type: str = "knowledge", dedup_threshold: float = 0.90
+        self, user_id: int, content: str, memory_type: str = "knowledge", dedup_threshold: float = 0.90,
+        skill_id: int = None,
     ):
         """
         Embeds content and stores it in the database.
@@ -91,7 +92,7 @@ class MemoryManager:
                 return duplicate
 
             # 2. Add New Memory
-            new_memory = Memory(user_id=user_id, content=content, embedding=vector, memory_type=memory_type)
+            new_memory = Memory(user_id=user_id, content=content, embedding=vector, memory_type=memory_type, skill_id=skill_id)
             session.add(new_memory)
             await session.commit()
             return new_memory
@@ -168,6 +169,119 @@ class MemoryManager:
             result = await session.execute(statement)
             await session.commit()
             return result.rowcount
+
+
+    async def add_memory_with_skill(
+        self, user_id: int, content: str, context: str = "", skill_name: str = None, memory_type: str = "knowledge"
+    ):
+        """
+        Add memory with automatic skill processing (Encoding).
+        1. Selects best 'encoding' skill (or uses provided skill_name).
+        2. Processes content via LLM.
+        3. Saves processed content to vector DB.
+        """
+        from langchain_core.messages import HumanMessage
+
+        from app.core.agent import logger
+        from app.core.llm_utils import get_llm_client
+        from app.core.memory_controller import MemoryController
+        from app.core.memory_skill_loader import MemorySkillLoader
+
+        # 1. Determine Skill
+        skill = None
+        if skill_name:
+            skill = MemorySkillLoader.get_skill_by_name(skill_name)
+        else:
+            # Only use auto-selection if content is long enough or complex?
+            # For now, always try to match if keywords match.
+            skill = await MemoryController.select_skill(content, "encoding")
+
+        processed_content = content
+
+        # 2. Apply Skill (if found)
+        if skill:
+            logger.info(f"Applying memory skill '{skill['name']}' to content")
+            try:
+                # Render Prompt
+                # Simple replacement for now (safer than eval)
+                # Ensure we handle potential missing variables gracefully
+                prompt = skill["prompt_template"]
+                prompt = prompt.replace("{{ content }}", content)
+                prompt = prompt.replace("{{ context }}", context or "")
+
+                # Call LLM
+                llm = get_llm_client()
+                response = await llm.ainvoke([HumanMessage(content=prompt)])
+
+                # Check directly for string content or object
+                if hasattr(response, "content"):
+                    processed_content = response.content.strip()
+                else:
+                    processed_content = str(response).strip()
+
+                logger.info(f"Skill '{skill['name']}' processed memory. Original: {len(content)} chars -> New: {len(processed_content)} chars")
+            except Exception as e:
+                logger.error(f"Failed to apply skill '{skill['name']}': {e}")
+                # Fallback to original content
+
+        # 3. Resolve skill_id from DB for feedback tracking
+        resolved_skill_id = None
+        if skill:
+            try:
+                from app.core.db import AsyncSessionLocal
+                from app.models.memory_skill import MemorySkill as MemorySkillModel
+
+                async with AsyncSessionLocal() as db_session:
+                    stmt = select(MemorySkillModel).where(MemorySkillModel.name == skill["name"])
+                    result = await db_session.execute(stmt)
+                    db_skill = result.scalar_one_or_none()
+                    if db_skill:
+                        resolved_skill_id = db_skill.id
+            except Exception as e:
+                logger.warning(f"Could not resolve skill_id for '{skill['name']}': {e}")
+
+        # 4. Save to Vector DB
+        return await self.add_memory(user_id, processed_content, memory_type=memory_type, skill_id=resolved_skill_id)
+
+    async def search_memory_with_skill(
+        self, user_id: int, query: str, context: str = "", limit: int = 3, threshold: float = 0.4
+    ):
+        """
+        Search memory with automatic query refinement (Retrieval).
+        """
+        from langchain_core.messages import HumanMessage
+
+        from app.core.agent import logger
+        from app.core.llm_utils import get_llm_client
+        from app.core.memory_controller import MemoryController
+
+        # 1. Determine Skill
+        skill = await MemoryController.select_skill(query, "retrieval")
+
+        search_query = query
+
+        # 2. Apply Skill (if found)
+        if skill:
+            logger.info(f"Applying retrieval skill '{skill['name']}' to query")
+            try:
+                prompt = skill["prompt_template"]
+                prompt = prompt.replace("{{ query }}", query) # Assuming retrieval skills use {{ query }}
+                prompt = prompt.replace("{{ context }}", context or "")
+
+                llm = get_llm_client()
+                response = await llm.ainvoke([HumanMessage(content=prompt)])
+
+                if hasattr(response, "content"):
+                    search_query = response.content.strip()
+                else:
+                    search_query = str(response).strip()
+
+                logger.info(f"Refined search query: '{query}' -> '{search_query}'")
+            except Exception as e:
+                logger.error(f"Failed to apply retrieval skill '{skill['name']}': {e}")
+
+        # 3. Search
+        return await self.search_memory(user_id, search_query, limit=limit, threshold=threshold)
 
 
 # Singleton instance

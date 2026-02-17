@@ -20,6 +20,9 @@ class Memory(SQLModel, table=True):
     # profile | reflexion | knowledge
     memory_type: str = Field(index=True)
 
+    # Which MemorySkill produced this memory (for feedback tracking)
+    skill_id: Optional[int] = Field(default=None, foreign_key="memoryskill.id")
+
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

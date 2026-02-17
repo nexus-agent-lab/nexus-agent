@@ -7,7 +7,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
 
 # Basic logging setup
-logging.basicConfig(level=logging.INFO)
+import app.core.logging_config  # noqa: F401  — Centralized logging
+
 logger = logging.getLogger(__name__)
 
 

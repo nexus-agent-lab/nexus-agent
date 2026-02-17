@@ -145,13 +145,24 @@ class MCPMiddleware:
             # Detect structure of the DATA to save (not the wrapper)
             is_structured = isinstance(data_to_save, (dict, list))
 
-            # Additional check: If data_to_save is a string but likely JSON
+            # Additional check: If data_to_save is a string but likely JSON or JSONL (multiple objects)
             if not is_structured and isinstance(data_to_save, str) and data_to_save.strip().startswith(("{", "[")):
+                content_stripped = data_to_save.strip()
                 try:
-                    data_to_save = json.loads(data_to_save)
+                    data_to_save = json.loads(content_stripped)
                     is_structured = True
                 except json.JSONDecodeError:
-                    pass
+                    # Attempt to handle JSONL (multiple concatenated objects)
+                    # Common in list_entities output from HA
+                    if content_stripped.count("}{") > 0:
+                        try:
+                            # Wrap in [ ] and add commas between objects
+                            wrapped = "[" + content_stripped.replace("}\n{", "},{").replace("}{", "},{") + "]"
+                            data_to_save = json.loads(wrapped)
+                            is_structured = True
+                            logger.info("Successfully recovered JSONL data by wrapping in array")
+                        except Exception:
+                            pass
 
             ext = ".json" if is_structured else ".txt"
             filename = f"tool_output_{cache_key[:8]}_{int(now)}{ext}"
