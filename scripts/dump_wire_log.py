@@ -2,6 +2,7 @@
 Dump the exact LLM request body for a temperature query.
 Run inside the container: docker-compose exec -T nexus-app python scripts/dump_wire_log.py
 """
+
 import asyncio
 import json
 import os
@@ -26,10 +27,10 @@ async def main():
     query = "查一下家里的温度"
     selected = await tool_router.route(query)
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Query: {query}")
     print(f"Total tools: {len(all_tools)}, Routed tools: {len(selected)}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print("\n📋 ROUTED TOOL LIST:")
     for t in selected:
         desc = getattr(t, "description", "")[:100]
@@ -42,9 +43,9 @@ async def main():
     # Extract tool schemas from the bound model
     tool_schemas = llm_with_tools.kwargs.get("tools", [])
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("📤 ACTUAL `tools` PARAMETER IN LLM API REQUEST:")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(json.dumps(tool_schemas, ensure_ascii=False, indent=2))
 
     # 4. Show the full request body (messages + tools)
@@ -67,9 +68,9 @@ async def main():
         "temperature": 0,
     }
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("📦 COMPLETE LLM API REQUEST BODY (simplified):")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(json.dumps(full_body, ensure_ascii=False, indent=2))
 
 

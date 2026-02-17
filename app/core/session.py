@@ -163,7 +163,8 @@ class SessionManager:
             async with AsyncSessionLocal() as db:
                 # Count unarchived messages
                 stmt = select(func.count(SessionMessage.id)).where(
-                    SessionMessage.session_id == session_id, SessionMessage.is_archived == False  # noqa: E712
+                    SessionMessage.session_id == session_id,
+                    SessionMessage.is_archived == False,  # noqa: E712
                 )
                 result = await db.execute(stmt)
                 count = result.scalar_one()
@@ -192,7 +193,8 @@ class SessionManager:
             async with AsyncSessionLocal() as db:
                 # 1. Count unarchived messages
                 count_stmt = select(func.count()).where(
-                    SessionMessage.session_id == session_id, SessionMessage.is_archived == False  # noqa: E712
+                    SessionMessage.session_id == session_id,
+                    SessionMessage.is_archived == False,  # noqa: E712
                 )
                 result = await db.execute(count_stmt)
                 count = result.scalar()

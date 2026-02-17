@@ -20,12 +20,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "memory", sa.Column("skill_id", sa.Integer(), nullable=True)
-    )
-    op.create_foreign_key(
-        "fk_memory_skill_id", "memory", "memoryskill", ["skill_id"], ["id"]
-    )
+    op.add_column("memory", sa.Column("skill_id", sa.Integer(), nullable=True))
+    op.create_foreign_key("fk_memory_skill_id", "memory", "memoryskill", ["skill_id"], ["id"])
 
 
 def downgrade() -> None:

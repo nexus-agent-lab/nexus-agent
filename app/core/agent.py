@@ -283,6 +283,7 @@ def create_agent_graph(tools: list):
             import os
 
             from langchain_core.messages import message_to_dict
+
             _wire_log = os.getenv("DEBUG_WIRE_LOG", "false").lower() == "true"
 
             # --- Flow Trace Logging (Start) ---
@@ -290,29 +291,29 @@ def create_agent_graph(tools: list):
                 last_msg_content = messages[-1].content if messages else "Unknown"
                 if len(str(last_msg_content)) > 50:
                     last_msg_content = str(last_msg_content)[:50] + "..."
-                
-                print(f"\nUser Query: \"{last_msg_content}\"")
+
+                print(f'\nUser Query: "{last_msg_content}"')
                 print("  │")
                 print("  ▼")
                 print("① call_model (agent.py)")
                 print("  │")
-                
+
                 sys_len = len(messages[0].content) if messages and isinstance(messages[0], SystemMessage) else 0
                 print(f"  ├─ System Prompt Constructed (Length: {sys_len} chars)")
                 print("  │")
 
             # Dynamic Tool Routing
-            from app.core.tool_router import tool_router, CORE_TOOL_NAMES
-            
+            from app.core.tool_router import CORE_TOOL_NAMES, tool_router
+
             # Find the last human message for routing context
             routing_query = ""
             for msg in reversed(messages):
                 if isinstance(msg, HumanMessage):
                     routing_query = str(msg.content)
                     break
-            
+
             if _wire_log:
-                print(f"  ├─ tool_router.route(\"{routing_query[:30]}...\")")
+                print(f'  ├─ tool_router.route("{routing_query[:30]}...")')
                 print("  │   ├─ Embedding Query -> Cosine Similarity")
 
             # Select relevant tools (fallback to full list if router returns empty)
@@ -339,17 +340,13 @@ def create_agent_graph(tools: list):
 
             # Bind only selected tools for this turn
             llm_with_tools = llm.bind_tools(current_tools)
-            
+
             if _wire_log:
                 # Capture and print the full request body (tools + messages)
                 tool_schemas = llm_with_tools.kwargs.get("tools", [])
                 msgs_dicts = [message_to_dict(m) for m in messages]
-                
-                req_body = {
-                    "model": os.getenv("LLM_MODEL", "unknown"),
-                    "messages": msgs_dicts,
-                    "tools": tool_schemas
-                }
+
+                req_body = {"model": os.getenv("LLM_MODEL", "unknown"), "messages": msgs_dicts, "tools": tool_schemas}
                 print(json.dumps(req_body, ensure_ascii=False, indent=2))
                 print("=" * 60 + "\n")
             response = await llm_with_tools.ainvoke(messages)
@@ -544,7 +541,9 @@ def create_agent_graph(tools: list):
                             if field_name in tool_args and tool_args[field_name] is None:
                                 anno = field_info.annotation
                                 if anno is bool:
-                                    tool_args[field_name] = field_info.default if field_info.default is not None else False
+                                    tool_args[field_name] = (
+                                        field_info.default if field_info.default is not None else False
+                                    )
                                 elif anno is int:
                                     tool_args[field_name] = field_info.default if field_info.default is not None else 0
                                 elif anno is str:

@@ -10,9 +10,7 @@ engine = get_engine()
 st.title("🧠 记忆皮层 (Memory Cortex)")
 
 # ──────────────────────── Tab Layout ────────────────────────
-tab_memories, tab_skills, tab_evolution = st.tabs([
-    "📦 记忆存储", "⚡ 技能管理", "🧬 进化历史"
-])
+tab_memories, tab_skills, tab_evolution = st.tabs(["📦 记忆存储", "⚡ 技能管理", "🧬 进化历史"])
 
 # ═══════════════════════ Tab 1: Memories ═══════════════════════
 with tab_memories:
@@ -143,7 +141,7 @@ with tab_evolution:
                                     # Get skill info
                                     skill_info = conn.execute(
                                         text("SELECT id, version FROM memoryskill WHERE name = :name"),
-                                        {"name": entry["skill_name"]}
+                                        {"name": entry["skill_name"]},
                                     ).fetchone()
 
                                     if skill_info:
@@ -156,7 +154,7 @@ with tab_evolution:
                                                     updated_at = NOW()
                                                 WHERE name = :name
                                             """),
-                                            {"new_prompt": entry["new_prompt"], "name": entry["skill_name"]}
+                                            {"new_prompt": entry["new_prompt"], "name": entry["skill_name"]},
                                         )
                                         conn.execute(
                                             text("""
@@ -164,7 +162,7 @@ with tab_evolution:
                                                 SET status = 'approved', reviewed_at = NOW()
                                                 WHERE id = :cid
                                             """),
-                                            {"cid": int(entry["id"])}
+                                            {"cid": int(entry["id"])},
                                         )
                                         conn.commit()
                                         st.success(f"✅ 已批准 #{entry['id']}")
@@ -178,7 +176,7 @@ with tab_evolution:
                                             SET status = 'rejected', reviewed_at = NOW()
                                             WHERE id = :cid
                                         """),
-                                        {"cid": int(entry["id"])}
+                                        {"cid": int(entry["id"])},
                                     )
                                     conn.commit()
                                     st.warning(f"🚫 已拒绝 #{entry['id']}")

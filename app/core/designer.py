@@ -55,10 +55,7 @@ class MemSkillDesigner:
             if total > 0:
                 neg_rate = skill.negative_count / total
                 if neg_rate > cls.NEGATIVE_RATE_THRESHOLD:
-                    logger.info(
-                        f"🔴 Underperforming skill: {skill.name} "
-                        f"(neg_rate={neg_rate:.1%}, total={total})"
-                    )
+                    logger.info(f"🔴 Underperforming skill: {skill.name} (neg_rate={neg_rate:.1%}, total={total})")
                     underperforming.append(skill)
 
         return underperforming
@@ -73,19 +70,11 @@ class MemSkillDesigner:
         from app.models.memory import Memory
 
         async with AsyncSessionLocal() as session:
-            stmt = (
-                select(Memory)
-                .where(Memory.skill_id == skill_id)
-                .order_by(Memory.created_at.desc())
-                .limit(limit)
-            )
+            stmt = select(Memory).where(Memory.skill_id == skill_id).order_by(Memory.created_at.desc()).limit(limit)
             result = await session.execute(stmt)
             memories = result.scalars().all()
 
-        return [
-            {"content": m.content, "created_at": str(m.created_at)}
-            for m in memories
-        ]
+        return [{"content": m.content, "created_at": str(m.created_at)} for m in memories]
 
     @classmethod
     async def evolve_skill(cls, skill) -> Optional[dict]:
@@ -107,9 +96,7 @@ class MemSkillDesigner:
             logger.warning(f"No samples for skill {skill.name}, skipping evolution")
             return None
 
-        samples_text = "\n".join(
-            [f"- {s['content']}" for s in samples]
-        )
+        samples_text = "\n".join([f"- {s['content']}" for s in samples])
 
         # Use Designer LLM (can be different/stronger than runtime LLM)
         designer_model = os.getenv("DESIGNER_LLM_MODEL", os.getenv("LLM_MODEL", "gpt-4o-mini"))
@@ -158,10 +145,12 @@ Return your response in this exact structure:
 """
 
         try:
-            response = await llm.ainvoke([
-                SystemMessage(content="You are an expert at improving AI prompts. Be concise and precise."),
-                HumanMessage(content=prompt),
-            ])
+            response = await llm.ainvoke(
+                [
+                    SystemMessage(content="You are an expert at improving AI prompts. Be concise and precise."),
+                    HumanMessage(content=prompt),
+                ]
+            )
 
             response_text = response.content
 
@@ -279,9 +268,7 @@ Return your response in this exact structure:
         return pass_rate >= 0.6  # At least 60% must pass
 
     @classmethod
-    async def _save_changelog(
-        cls, skill, new_prompt: str, reason: str, canary_passed: bool
-    ) -> int:
+    async def _save_changelog(cls, skill, new_prompt: str, reason: str, canary_passed: bool) -> int:
         """Save evolution record to MemorySkillChangelog."""
         from app.core.db import AsyncSessionLocal
         from app.models.memory_skill import MemorySkillChangelog
@@ -392,11 +379,7 @@ Return your response in this exact structure:
         from app.models.memory_skill import MemorySkillChangelog
 
         async with AsyncSessionLocal() as session:
-            stmt = (
-                select(MemorySkillChangelog)
-                .order_by(MemorySkillChangelog.created_at.desc())
-                .limit(limit)
-            )
+            stmt = select(MemorySkillChangelog).order_by(MemorySkillChangelog.created_at.desc()).limit(limit)
             result = await session.execute(stmt)
             entries = result.scalars().all()
 

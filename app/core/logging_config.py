@@ -19,6 +19,7 @@ log_buffer = deque(maxlen=2000)
 
 class MemoryLogHandler(logging.Handler):
     """Custom handler to store logs in memory deque."""
+
     def emit(self, record):
         try:
             msg = self.format(record)
@@ -46,7 +47,7 @@ def setup_logging():
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(formatter)
     root.addHandler(handler)
-    
+
     # 2. Memory Handler (for Dashboard API)
     mem_handler = MemoryLogHandler()
     mem_handler.setFormatter(formatter)

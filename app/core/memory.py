@@ -53,7 +53,11 @@ class MemoryManager:
             )
 
     async def add_memory(
-        self, user_id: int, content: str, memory_type: str = "knowledge", dedup_threshold: float = 0.90,
+        self,
+        user_id: int,
+        content: str,
+        memory_type: str = "knowledge",
+        dedup_threshold: float = 0.90,
         skill_id: int = None,
     ):
         """
@@ -92,7 +96,9 @@ class MemoryManager:
                 return duplicate
 
             # 2. Add New Memory
-            new_memory = Memory(user_id=user_id, content=content, embedding=vector, memory_type=memory_type, skill_id=skill_id)
+            new_memory = Memory(
+                user_id=user_id, content=content, embedding=vector, memory_type=memory_type, skill_id=skill_id
+            )
             session.add(new_memory)
             await session.commit()
             return new_memory
@@ -170,7 +176,6 @@ class MemoryManager:
             await session.commit()
             return result.rowcount
 
-
     async def add_memory_with_skill(
         self, user_id: int, content: str, context: str = "", skill_name: str = None, memory_type: str = "knowledge"
     ):
@@ -219,7 +224,9 @@ class MemoryManager:
                 else:
                     processed_content = str(response).strip()
 
-                logger.info(f"Skill '{skill['name']}' processed memory. Original: {len(content)} chars -> New: {len(processed_content)} chars")
+                logger.info(
+                    f"Skill '{skill['name']}' processed memory. Original: {len(content)} chars -> New: {len(processed_content)} chars"
+                )
             except Exception as e:
                 logger.error(f"Failed to apply skill '{skill['name']}': {e}")
                 # Fallback to original content
@@ -265,7 +272,7 @@ class MemoryManager:
             logger.info(f"Applying retrieval skill '{skill['name']}' to query")
             try:
                 prompt = skill["prompt_template"]
-                prompt = prompt.replace("{{ query }}", query) # Assuming retrieval skills use {{ query }}
+                prompt = prompt.replace("{{ query }}", query)  # Assuming retrieval skills use {{ query }}
                 prompt = prompt.replace("{{ context }}", context or "")
 
                 llm = get_llm_client()

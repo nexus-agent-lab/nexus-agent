@@ -77,6 +77,7 @@ async def lifespan(app: FastAPI):
 
     # Register tools with Semantic Router (CRITICAL — without this, route() returns [])
     from app.core.tool_router import tool_router
+
     await tool_router.register_tools(all_tools)
 
     logger.info(f"Agent initialized with {len(all_tools)} tools across {len(tool_map)} categories:")
@@ -99,6 +100,7 @@ app = FastAPI(title="Nexus Agent API", version="2.0.0", lifespan=lifespan)
 
 # Register API routers
 from app.api.admin import router as admin_router
+
 app.include_router(skills_router)
 app.include_router(skills_learning_router)
 app.include_router(admin_router)

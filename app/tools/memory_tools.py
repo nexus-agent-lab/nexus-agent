@@ -18,10 +18,7 @@ async def save_insight(content: str, user_id: int) -> str:
 
     # Use 'fact_extraction' skill or auto-select
     await memory_manager.add_memory_with_skill(
-        user_id=user_id,
-        content=content,
-        memory_type="reflexion",
-        skill_name="fact_extraction"
+        user_id=user_id, content=content, memory_type="reflexion", skill_name="fact_extraction"
     )
     return f"✅ Insight saved to memory: {content[:50]}..."
 
@@ -41,10 +38,7 @@ async def store_preference(content: str, user_id: int) -> str:
 
     # Use 'preference_capture' skill
     await memory_manager.add_memory_with_skill(
-        user_id=user_id,
-        content=content,
-        memory_type="profile",
-        skill_name="preference_capture"
+        user_id=user_id, content=content, memory_type="profile", skill_name="preference_capture"
     )
     return f"✅ Preference stored: {content[:50]}..."
 

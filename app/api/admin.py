@@ -1,11 +1,13 @@
-from fastapi import APIRouter, HTTPException, Query, Body
-from typing import List, Optional
-import os
 import logging
+import os
+
+from fastapi import APIRouter, Body, HTTPException, Query
+
 from app.core.logging_config import log_buffer
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 logger = logging.getLogger(__name__)
+
 
 @router.get("/log")
 async def get_logs(limit: int = Query(100, ge=1, le=1000)):
@@ -18,15 +20,16 @@ async def get_logs(limit: int = Query(100, ge=1, le=1000)):
     # If dashboard expects text, it might need adjustment involving .json()
     return {"logs": logs}
 
+
 @router.post("/config")
 async def update_config(key: str = Body(...), value: str = Body(...)):
     """Update runtime configuration (env vars mostly)."""
     # Allowed keys for safety
     ALLOWED_KEYS = {"DEBUG_WIRE_LOG", "LOG_LEVEL"}
-    
+
     if key not in ALLOWED_KEYS:
         raise HTTPException(status_code=400, detail=f"Key {key} not allowed. Allowed: {ALLOWED_KEYS}")
-    
+
     # Update os.environ so agent.py sees it
     os.environ[key] = value
     logger.info(f"Admin updated config: {key} = {value}")

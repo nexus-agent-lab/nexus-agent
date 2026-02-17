@@ -62,6 +62,7 @@ with tab3:
     st.caption("开启后，所有 LLM 请求和响应将打印到容器日志中。")
 
     import os
+
     import requests
 
     api_url = os.getenv("API_URL", "http://localhost:8000")
@@ -89,10 +90,10 @@ with tab3:
                 st.success("✅ 配置已更新，Agent 将在下次调用时生效。")
             else:
                 st.warning(f"API 返回: {resp.status_code}")
-        except Exception as e:
+        except Exception:
             # Fallback: set env var directly (only affects dashboard process)
             os.environ["DEBUG_WIRE_LOG"] = "true" if wire_log_on else "false"
-            st.info(f"⚠️ API 不可用，已设置本地环境变量。重启容器以生效: `docker-compose restart nexus-app`")
+            st.info("⚠️ API 不可用，已设置本地环境变量。重启容器以生效: `docker-compose restart nexus-app`")
 
     st.divider()
     st.markdown("""

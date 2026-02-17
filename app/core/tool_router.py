@@ -1,4 +1,3 @@
-
 import logging
 import os
 from typing import Any, List
@@ -18,6 +17,7 @@ CORE_TOOL_NAMES = {
     "store_preference",
     "query_memory",
 }
+
 
 class SemanticToolRouter:
     _instance = None
@@ -59,6 +59,7 @@ class SemanticToolRouter:
 
         if "11434" in base_url:
             from langchain_ollama import OllamaEmbeddings
+
             ollama_base = base_url.replace("/v1", "")
             self.embeddings = OllamaEmbeddings(
                 model=model_name.replace(":latest", ""),
@@ -66,6 +67,7 @@ class SemanticToolRouter:
             )
         elif "9292" in base_url:
             from langchain_openai import OpenAIEmbeddings
+
             self.embeddings = OpenAIEmbeddings(
                 model=model_name,
                 api_key=api_key,
@@ -74,6 +76,7 @@ class SemanticToolRouter:
             )
         else:
             from langchain_openai import OpenAIEmbeddings
+
             self.embeddings = OpenAIEmbeddings(
                 model=model_name,
                 api_key=api_key,
@@ -163,7 +166,7 @@ class SemanticToolRouter:
                 # Filter by threshold (optional, or just take top K)
                 # We log matches to see performance
                 _wire_log = os.getenv("DEBUG_WIRE_LOG", "false").lower() == "true"
-                
+
                 if score >= threshold:
                     selected_semantic.append(tool)
                     logger.debug(f"Route Match: {tool.name} (score={score:.4f})")
@@ -172,7 +175,7 @@ class SemanticToolRouter:
                 else:
                     logger.debug(f"Route Drop: {tool.name} (score={score:.4f} < {threshold})")
                     if _wire_log:
-                         print(f"  │   │  ├─ [DROP]  {tool.name:<25} (score={score:.4f})")
+                        print(f"  │   │  ├─ [DROP]  {tool.name:<25} (score={score:.4f})")
 
             # Always return core tools + selected
             final_tools = self.core_tools + selected_semantic
@@ -184,5 +187,6 @@ class SemanticToolRouter:
         except Exception as e:
             logger.error(f"Routing failed: {e}")
             return self.all_tools
+
 
 tool_router = SemanticToolRouter()
