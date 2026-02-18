@@ -212,24 +212,24 @@ def create_agent_graph(tools: list):
     async def call_model(state: AgentState):
         messages = list(state["messages"])
         user = state.get("user")
-        role = user.role if user else "guest"
+        user_role = user.role if user else "guest"
 
-        # 0. Build Base System Prompt with User Context
+        # 0. Build base prompt
         from app.core.prompt_builder import PromptBuilder
 
         # We use BASE_SYSTEM_PROMPT as the "Soul"
         base_prompt_with_context = PromptBuilder.build_system_prompt(user=user, soul_content=BASE_SYSTEM_PROMPT)
 
         # 1. Load context-appropriate summaries and registry
-        skill_summaries = SkillLoader.load_summaries(role=role)
-        skill_registry = SkillLoader.load_registry_with_metadata(role=role)
+        skill_summaries = SkillLoader.load_summaries(role=user_role)
+        skill_registry = SkillLoader.load_registry_with_metadata(role=user_role)
 
         prompt_with_skills = base_prompt_with_context
         # Layer 2: Skill Index (Summaries) - ALWAYS present so Agent knows what it CAN do (Role-specific)
         if skill_summaries:
             prompt_with_skills += (
                 f"\n## AVAILABLE SKILLS (Overview)\n"
-                f"You have the following skills available to your role ({role}). Detailed rules for a skill will be activated when relevant.\n"
+                f"You have the following skills available to your role ({user_role}). Detailed rules for a skill will be activated when relevant.\n"
                 f"{skill_summaries}\n"
             )
 
@@ -248,7 +248,7 @@ def create_agent_graph(tools: list):
                 # Activation Trigger: If any keyword matches the user message
                 if any(kw.lower() in last_human_msg for kw in keywords):
                     logger.info(
-                        f"🚀 [Dynamic Injection] Activating full rules for skill: {skill['name']} for role: {role}"
+                        f"🚀 [Dynamic Injection] Activating full rules for skill: {skill['name']} for role: {user_role}"
                     )
                     active_rules.append(f"### FULL RULES: {skill['name']}\n{skill['rules']}")
 
@@ -278,184 +278,204 @@ def create_agent_graph(tools: list):
             else:
                 messages.insert(0, system_msg)
 
+        import json
+        import os
+
+        from langchain_core.messages import message_to_dict
+
+        _wire_log = os.getenv("DEBUG_WIRE_LOG", "false").lower() == "true"
+
+        # --- Flow Trace Logging (Start) ---
+        if _wire_log:
+            last_msg_content = messages[-1].content if messages else "Unknown"
+            if len(str(last_msg_content)) > 50:
+                last_msg_content = str(last_msg_content)[:50] + "..."
+
+            print(f'\nUser Query: "{last_msg_content}"')
+            print("  │")
+            print("  ▼")
+            print("① call_model (agent.py)")
+            print("  │")
+
+            sys_len = len(messages[0].content) if messages and isinstance(messages[0], SystemMessage) else 0
+            print(f"  ├─ System Prompt Constructed (Length: {sys_len} chars)")
+            print("  │")
+
+        # Dynamic Tool Routing
+        from app.core.tool_router import CORE_TOOL_NAMES, tool_router
+
+        # Find relevant context for routing (Role-Aware & Context-Aware)
+        # We look at the last few messages to understand "check logs" in context of previous errors
+        routing_query = ""
+        context_parts = []
+        # Take up to 3 recent messages (excluding System)
+        recent_msgs = [m for m in messages if isinstance(m, (HumanMessage, AIMessage))][-3:]
+        for msg in recent_msgs:
+            content = str(msg.content)
+            # Truncate long messages to avoid noise
+            if len(content) > 200:
+                content = content[:200] + "..."
+            context_parts.append(content)
+
+        routing_query = " | ".join(context_parts)
+
+        if _wire_log:
+            print(f'  ├─ tool_router.route("{routing_query[:50]}...", role={user_role})')
+            print("  │   ├─ Embedding Query -> Cosine Similarity (Role Filtered)")
+
+        # Select relevant tools (fallback to full list if router returns empty)
+        # PASS user_role to enforce permissions
         try:
-            import json
-            import os
-
-            from langchain_core.messages import message_to_dict
-
-            _wire_log = os.getenv("DEBUG_WIRE_LOG", "false").lower() == "true"
-
-            # --- Flow Trace Logging (Start) ---
-            if _wire_log:
-                last_msg_content = messages[-1].content if messages else "Unknown"
-                if len(str(last_msg_content)) > 50:
-                    last_msg_content = str(last_msg_content)[:50] + "..."
-
-                print(f'\nUser Query: "{last_msg_content}"')
-                print("  │")
-                print("  ▼")
-                print("① call_model (agent.py)")
-                print("  │")
-
-                sys_len = len(messages[0].content) if messages and isinstance(messages[0], SystemMessage) else 0
-                print(f"  ├─ System Prompt Constructed (Length: {sys_len} chars)")
-                print("  │")
-
-            # Dynamic Tool Routing
-            from app.core.tool_router import CORE_TOOL_NAMES, tool_router
-
-            # Find the last human message for routing context
-            routing_query = ""
-            for msg in reversed(messages):
-                if isinstance(msg, HumanMessage):
-                    routing_query = str(msg.content)
-                    break
-
-            if _wire_log:
-                print(f'  ├─ tool_router.route("{routing_query[:30]}...")')
-                print("  │   ├─ Embedding Query -> Cosine Similarity")
-
-            # Select relevant tools (fallback to full list if router returns empty)
-            current_tools = await tool_router.route(routing_query)
+            current_tools = await tool_router.route(routing_query, role=user_role)
             if not current_tools:
-                logger.warning("Router returned empty tool list — falling back to ALL tools")
-                current_tools = tools
-            tool_names = [t.name for t in current_tools]
+                logger.warning("Router returned empty tool list — falling back to ALL ALLOWED tools")
+                current_tools = [t for t in tools if tool_router._check_role(t, user_role)]
+        except Exception as e:
+            logger.error(f"Error during tool routing: {e}", exc_info=True)
+            # Fallback to all tools if routing fails
+            current_tools = tools
 
-            if _wire_log:
-                n_core = sum(1 for t in current_tools if t.name in CORE_TOOL_NAMES)
-                n_sem = len(current_tools) - n_core
-                print(f"  │   └─ Selected: {n_core} Core + {n_sem} Semantic = {len(current_tools)} Total")
-                print("  │")
-                print(f"  ├─ llm.bind_tools({len(current_tools)} Tools)")
-                print("  │   └─ Converting to OpenAI Function Schemas")
-                print("  │")
-                print("  └─ llm.ainvoke(messages + tools) -> Sending to LLM")
-                print("      │")
-                print("      ▼")
-                print("② LLM Request Body:")
+        tool_names = [t.name for t in current_tools]
 
-            logger.info(f"LLM TOOL BELT ({len(tool_names)} tools): {tool_names}")
+        if _wire_log:
+            n_core = sum(1 for t in current_tools if t.name in CORE_TOOL_NAMES)
+            n_sem = len(current_tools) - n_core
+            print(f"  │   └─ Selected: {n_core} Core + {n_sem} Semantic = {len(current_tools)} Total")
+            print("  │")
+            print(f"  ├─ llm.bind_tools({len(current_tools)} Tools)")
+            print("  │   └─ Converting to OpenAI Function Schemas")
+            print("  │")
+            print("  └─ llm.ainvoke(messages + tools) -> Sending to LLM")
+            print("      │")
+            print("      ▼")
+            print("② LLM Request Body:")
 
-            # Bind only selected tools for this turn
-            llm_with_tools = llm.bind_tools(current_tools)
+        logger.info(f"LLM TOOL BELT ({len(tool_names)} tools): {tool_names}")
 
-            if _wire_log:
-                # Capture and print the full request body (tools + messages)
-                tool_schemas = llm_with_tools.kwargs.get("tools", [])
-                msgs_dicts = [message_to_dict(m) for m in messages]
+        # Bind only selected tools for this turn
+        llm_with_tools = llm.bind_tools(current_tools)
 
-                req_body = {"model": os.getenv("LLM_MODEL", "unknown"), "messages": msgs_dicts, "tools": tool_schemas}
-                print(json.dumps(req_body, ensure_ascii=False, indent=2))
-                print("=" * 60 + "\n")
+        if _wire_log:
+            # Capture and print the full request body (tools + messages)
+            tool_schemas = llm_with_tools.kwargs.get("tools", [])
+            msgs_dicts = [message_to_dict(m) for m in messages]
+
+            req_body = {"model": os.getenv("LLM_MODEL", "unknown"), "messages": msgs_dicts, "tools": tool_schemas}
+            print(json.dumps(req_body, ensure_ascii=False, indent=2))
+            print("=" * 60 + "\n")
+
+        try:
             response = await llm_with_tools.ainvoke(messages)
+        except Exception as e:
+            logger.error("Error calling LLM provider:", exc_info=True)
+            error_msg = f"Error calling LLM provider: {str(e)}"
+            return {"messages": [AIMessage(content=error_msg)]}
 
-            if _wire_log:
-                resp_dict = message_to_dict(response)
-                print("\n" + "✅" * 15 + " [STRUCTURED] LLM RESPONSE BODY " + "✅" * 15)
-                print(json.dumps(resp_dict, ensure_ascii=False, indent=2))
-                print("=" * 100 + "\n")
+        if _wire_log:
+            resp_dict = message_to_dict(response)
+            print("\n" + "✅" * 15 + " [STRUCTURED] LLM RESPONSE BODY " + "✅" * 15)
+            print(json.dumps(resp_dict, ensure_ascii=False, indent=2))
+            print("=" * 100 + "\n")
 
-            # ======================================================
-            # 🚑 【Universal Patch】Recover tool calls from plain text
-            # Some local models (Qwen, Llama) output tool calls as text
-            # instead of proper JSON. This patch recovers them.
-            # ======================================================
-            if not response.tool_calls:
-                content = response.content.strip() if response.content else ""
+        # ======================================================
+        # 🚑 【Universal Patch】Recover tool calls from plain text
+        # Some local models (Qwen, Llama) output tool calls as text
+        # instead of proper JSON. This patch recovers them.
+        # ======================================================
+        if not response.tool_calls:
+            content = response.content.strip() if response.content else ""
 
-                # Patch A: Markdown JSON block (```json {...} ```)
-                if content.startswith("{") or "```json" in content:
-                    try:
-                        json_str = content.replace("```json", "").replace("```", "").strip()
-                        data = json.loads(json_str)
-                        if "name" in data:
-                            logger.warning(f"[Agent Patch] Recovered JSON Tool Call: {data['name']}")
-                            response = AIMessage(
-                                content="",
-                                tool_calls=[
-                                    {
-                                        "name": data["name"],
-                                        "args": data.get("arguments", {}) or data.get("parameters", {}),
-                                        "id": f"patch_json_{id(response)}",
-                                    }
-                                ],
-                            )
-                    except json.JSONDecodeError:
-                        pass
-
-                # Patch B: Pseudo-function text (python_sandbox(code))
-                if not response.tool_calls and "python_sandbox" in content:
-                    import re
-
-                    # Match python_sandbox(...) with any content inside
-                    match = re.search(r'python_sandbox\s*\(\s*["\']?(.*?)["\']?\s*\)', content, re.DOTALL)
-                    if not match:
-                        # Try matching triple-quoted code blocks
-                        match = re.search(r'python_sandbox\s*\(\s*"""(.*?)"""\s*\)', content, re.DOTALL)
-                    if not match:
-                        # Try extracting code from markdown block after python_sandbox mention
-                        code_match = re.search(r"```python\n(.*?)```", content, re.DOTALL)
-                        if code_match:
-                            match = code_match
-
-                    if match:
-                        code_content = match.group(1).strip()
-                        logger.warning("[Agent Patch] Recovered Regex Tool Call: python_sandbox")
+            # Patch A: Markdown JSON block (```json {...} ```)
+            if content.startswith("{") or "```json" in content:
+                try:
+                    json_str = content.replace("```json", "").replace("```", "").strip()
+                    data = json.loads(json_str)
+                    if "name" in data:
+                        logger.warning(f"[Agent Patch] Recovered JSON Tool Call: {data['name']}")
                         response = AIMessage(
                             content="",
                             tool_calls=[
                                 {
-                                    "name": "python_sandbox",
-                                    "args": {"code": code_content},
-                                    "id": f"patch_regex_{id(response)}",
+                                    "name": data["name"],
+                                    "args": data.get("arguments", {}) or data.get("parameters", {}),
+                                    "id": f"patch_json_{id(response)}",
                                 }
                             ],
                         )
-            # ======================================================
+                except json.JSONDecodeError:
+                    pass
 
-            # ======================================================
-            # 🔄 【Empty Response Reflexion】Force retry on silent failure
-            # Patch C: Auto-extract <<<CODE>>> from offload tool message
-            # ======================================================
-            if not response.tool_calls and not (response.content and response.content.strip()):
-                # Check if the last tool message contained offload alert
-                last_tool_msg = None
-                for msg in reversed(messages):
-                    if hasattr(msg, "type") and msg.type == "tool":
-                        last_tool_msg = msg
-                        break
+            # Patch B: Pseudo-function text (python_sandbox(code))
+            if not response.tool_calls and "python_sandbox" in content:
+                import re
 
-                if last_tool_msg and "<<<OFFLOAD" in str(last_tool_msg.content):
-                    import re
-
-                    tool_content = str(last_tool_msg.content)
-                    code_match = re.search(r"<<<CODE>>>\n(.*?)<<<END>>>", tool_content, re.DOTALL)
+                # Match python_sandbox(...) with any content inside
+                match = re.search(r'python_sandbox\s*\(\s*["\']?(.*?)["\']?\s*\)', content, re.DOTALL)
+                if not match:
+                    # Try matching triple-quoted code blocks
+                    match = re.search(r'python_sandbox\s*\(\s*"""(.*?)"""\s*\)', content, re.DOTALL)
+                if not match:
+                    # Try extracting code from markdown block after python_sandbox mention
+                    code_match = re.search(r"```python\n(.*?)```", content, re.DOTALL)
                     if code_match:
-                        code = code_match.group(1).strip()
-                        logger.warning("[Agent Patch C] Auto-extracted code from offload message")
-                        response = AIMessage(
-                            content="",
-                            tool_calls=[
-                                {"name": "python_sandbox", "args": {"code": code}, "id": f"auto_extract_{id(response)}"}
-                            ],
-                        )
-                    else:
-                        logger.warning("[Agent Reflexion] Empty response after offload, retrying...")
-                        nudge = SystemMessage(content="CALL python_sandbox NOW.")
-                        messages.append(response)
-                        messages.append(nudge)
-                        response = llm_with_tools.invoke(messages)
-                        resp_dict = message_to_dict(response)
-                        logger.info(f"LLM RETRY OUTPUT: {json.dumps(resp_dict, ensure_ascii=False)}")
-            # ======================================================
+                        match = code_match
 
-            return {"messages": [response]}
-        except Exception as e:
-            # Handle API errors gracefully
-            error_msg = f"Error calling LLM provider: {str(e)}"
-            return {"messages": [AIMessage(content=error_msg)]}
+                if match:
+                    code_content = match.group(1).strip()
+                    logger.warning("[Agent Patch] Recovered Regex Tool Call: python_sandbox")
+                    response = AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "name": "python_sandbox",
+                                "args": {"code": code_content},
+                                "id": f"patch_regex_{id(response)}",
+                            }
+                        ],
+                    )
+        # ======================================================
+
+        # ======================================================
+        # 🔄 【Empty Response Reflexion】Force retry on silent failure
+        # Patch C: Auto-extract <<<CODE>>> from offload tool message
+        # ======================================================
+        if not response.tool_calls and not (response.content and response.content.strip()):
+            # Check if the last tool message contained offload alert
+            last_tool_msg = None
+            for msg in reversed(messages):
+                if hasattr(msg, "type") and msg.type == "tool":
+                    last_tool_msg = msg
+                    break
+
+            if last_tool_msg and "<<<OFFLOAD" in str(last_tool_msg.content):
+                import re
+
+                tool_content = str(last_tool_msg.content)
+                code_match = re.search(r"<<<CODE>>>\n(.*?)<<<END>>>", tool_content, re.DOTALL)
+                if code_match:
+                    code = code_match.group(1).strip()
+                    logger.warning("[Agent Patch C] Auto-extracted code from offload message")
+                    response = AIMessage(
+                        content="",
+                        tool_calls=[
+                            {"name": "python_sandbox", "args": {"code": code}, "id": f"auto_extract_{id(response)}"}
+                        ],
+                    )
+                else:
+                    logger.warning("[Agent Reflexion] Empty response after offload, retrying...")
+                    nudge = SystemMessage(content="CALL python_sandbox NOW.")
+                    messages.append(response)
+                    messages.append(nudge)
+                    # We do NOT wrap this retry in try/except (per user rule)
+                    # If it fails, let it crash or be handled by generic.
+                    # Actually, since we wrapped the MAIN one, maybe we should wrap this too if we want robustness.
+                    # But for now, adhering to 'minimize try-catch'.
+                    response = await llm_with_tools.ainvoke(messages)
+                    resp_dict = message_to_dict(response)
+                    logger.info(f"LLM RETRY OUTPUT: {json.dumps(resp_dict, ensure_ascii=False)}")
+        # ======================================================
+
+        return {"messages": [response]}
 
     async def tool_node_with_permissions(state: AgentState):
         messages = state["messages"]

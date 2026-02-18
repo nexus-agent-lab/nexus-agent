@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from sqlalchemy import JSON, Column
+from sqlalchemy import JSON, Column, ForeignKey, Integer
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -28,7 +28,8 @@ class UserIdentity(SQLModel, table=True):
     __tablename__ = "user_identities"
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: int = Field(foreign_key="user.id")
+    # user_id: int = Field(foreign_key="user.id")
+    user_id: int = Field(sa_column=Column(Integer, ForeignKey("user.id", ondelete="CASCADE")))
 
     provider: str = Field(index=True)  # 'telegram', 'feishu', 'dingtalk'
     provider_user_id: str = Field(index=True)  # '12345678', 'ou_xxxx'

@@ -53,3 +53,48 @@ async def broadcast_notification(message: str, channel: str = "all") -> str:
     # Since we don't have a massive broadcast utility yet, let's keep it simple.
 
     return f"✅ Broadcast message queued for channel: {channel}"
+
+
+@tool
+@require_role("admin")
+async def view_system_logs(lines: int = 50, search: str = None) -> str:
+    """
+    [System] View recent Nexus Agent application logs via Docker API.
+    Useful for debugging errors or checking system status.
+    ADMIN ONLY.
+
+    Args:
+        lines: Number of recent log lines to retrieve (default 50).
+        search: Optional keyword to filter logs (case-insensitive).
+    """
+    import docker
+
+    try:
+        # Use hostname as container ID (standard Docker behavior)
+        container_id = os.getenv("HOSTNAME", "")
+        if not container_id:
+            # Fallback: maybe we are running locally? try reading 'nexus.log'
+            return "❌ Error: HOSTNAME env var not found. Cannot identify container."
+
+        client = docker.from_env()
+        try:
+            container = client.containers.get(container_id)
+        except docker.errors.NotFound:
+            return f"❌ Error: Container ID '{container_id}' not found. Are we running in Docker?"
+
+        # logs() returns bytes
+        logs_bytes = container.logs(tail=lines, stderr=True, stdout=True)
+        logs_str = logs_bytes.decode("utf-8", errors="replace")
+
+        output = logs_str
+        if search:
+            filtered = [line for line in output.splitlines() if search.lower() in line.lower()]
+            if not filtered:
+                return f"⚠️ No logs found containing '{search}' in the last {lines} lines."
+            output = "\n".join(filtered)
+
+        return f"📜 System Logs (Last {lines} lines):\n\n{output}"
+
+    except Exception as e:
+        logger.error(f"Failed to fetch logs: {e}")
+        return f"❌ Error fetching logs: {e}. Ensure /var/run/docker.sock is mounted."

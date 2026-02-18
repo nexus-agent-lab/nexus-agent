@@ -4,7 +4,7 @@ from typing import Callable, List
 from langchain_core.tools import tool
 
 from app.core.decorators import require_role
-from app.tools.admin_tools import broadcast_notification, restart_system
+from app.tools.admin_tools import broadcast_notification, restart_system, view_system_logs
 from app.tools.learning_tools import learn_skill_rule
 from app.tools.memory_tools import (
     approve_skill_evolution,
@@ -71,6 +71,7 @@ def get_static_tools() -> List[Callable]:
         remove_scheduled_task,
         restart_system,
         broadcast_notification,
+        view_system_logs,
         list_available_tools,
         get_tool_details,
         submit_suggestion,

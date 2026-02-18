@@ -122,17 +122,40 @@ class SemanticToolRouter:
             logger.error(f"Failed to build tool index: {e}")
             self.tool_index = None
 
-    async def route(self, query: str) -> List[Any]:
+    def _check_role(self, tool: Any, user_role: str) -> bool:
+        """Check if user has permission to use this tool."""
+        # 1. Check tool.required_role (pydantic/langchain attribute)
+        req_role = getattr(tool, "required_role", None)
+
+        # 2. Check tool.func.required_role (decorator attribute)
+        if not req_role and hasattr(tool, "func"):
+            req_role = getattr(tool.func, "required_role", None)
+
+        # Default to "user" if not specified
+        if not req_role:
+            req_role = "user"
+
+        # Admin can access everything
+        if user_role == "admin":
+            return True
+
+        # User cannot access admin tools
+        if req_role == "admin" and user_role != "admin":
+            return False
+
+        return True
+
+    async def route(self, query: str, role: str = "user") -> List[Any]:
         """
-        Select relevant tools based on query.
+        Select relevant tools based on query and user role.
         Returns: Core Tools + Top-K Semantic Tools
         """
-        # If disabled or not ready, return all tools (safe fallback)
+        # If disabled or not ready, return all ALLOWED tools
         if not settings.ENABLE_SEMANTIC_ROUTING or self.tool_index is None or not self.embeddings:
-            return self.all_tools
+            return [t for t in self.all_tools if self._check_role(t, role)]
 
         if not query or not query.strip():
-            return self.core_tools
+            return [t for t in self.core_tools if self._check_role(t, role)]
 
         try:
             # Embed query
@@ -145,7 +168,7 @@ class SemanticToolRouter:
             norm_query = np.linalg.norm(query_vec)
 
             if norm_query == 0:
-                return self.core_tools
+                return [t for t in self.core_tools if self._check_role(t, role)]
 
             # dot product
             scores = np.dot(self.tool_index, query_vec) / (norm_tools * norm_query)
@@ -159,14 +182,18 @@ class SemanticToolRouter:
             top_indices = np.argsort(scores)[-k:][::-1]
 
             selected_semantic = []
+            _wire_log = os.getenv("DEBUG_WIRE_LOG", "false").lower() == "true"
+
             for idx in top_indices:
                 score = scores[idx]
                 tool = self.semantic_tools[idx]
 
+                # Check Permissions FIRST
+                if not self._check_role(tool, role):
+                    continue
+
                 # Filter by threshold (optional, or just take top K)
                 # We log matches to see performance
-                _wire_log = os.getenv("DEBUG_WIRE_LOG", "false").lower() == "true"
-
                 if score >= threshold:
                     selected_semantic.append(tool)
                     logger.debug(f"Route Match: {tool.name} (score={score:.4f})")
@@ -177,8 +204,9 @@ class SemanticToolRouter:
                     if _wire_log:
                         print(f"  │   │  ├─ [DROP]  {tool.name:<25} (score={score:.4f})")
 
-            # Always return core tools + selected
-            final_tools = self.core_tools + selected_semantic
+            # Always return core tools + selected (filtered by role)
+            final_core = [t for t in self.core_tools if self._check_role(t, role)]
+            final_tools = final_core + selected_semantic
 
             # Deduplicate by name just in case
             unique_tools = {getattr(t, "name", str(t)): t for t in final_tools}
@@ -186,7 +214,8 @@ class SemanticToolRouter:
 
         except Exception as e:
             logger.error(f"Routing failed: {e}")
-            return self.all_tools
+            # Fallback: return all ALLOWED tools
+            return [t for t in self.all_tools if self._check_role(t, role)]
 
 
 tool_router = SemanticToolRouter()

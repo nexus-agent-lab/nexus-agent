@@ -11,6 +11,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel
 
 import app.core.logging_config  # noqa: F401  — Centralized logging (must be first)
+from app.api.admin import router as admin_router
 from app.api.auth import router as auth_router
 from app.api.skill_learning import router as skills_learning_router
 from app.api.skills import router as skills_router
@@ -99,7 +100,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Nexus Agent API", version="2.0.0", lifespan=lifespan)
 
 # Register API routers
-from app.api.admin import router as admin_router
 
 app.include_router(skills_router)
 app.include_router(skills_learning_router)

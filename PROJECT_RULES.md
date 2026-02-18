@@ -28,6 +28,9 @@ This document establishes the coding standards, architectural patterns, and best
 ## 4. Error Handling
 - **Graceful Failures**: Tools should return descriptive error strings (e.g., "❌ Error: ...") rather than raising exceptions, so the Agent can recover.
 - **Logging**: Use `logger = logging.getLogger("nexus.{module}")`. Log important state changes at INFO, detailed debugging at DEBUG.
+- **No Global Try/Except**: Do not wrap large blocks of code in catch-all `try...except Exception`. This masks coding errors (like `NameError`).
+  - Only use `try...except` for specific runtime risks (e.g., Network I/O, API calls).
+  - Let coding errors crash so they can be caught by `dev_check.sh` or during local testing.
 
 ## 5. Deployment & Configuration
 - **Environment Variables**: All config must be in `.env`. Use `os.getenv` with safe defaults.
