@@ -38,6 +38,7 @@ This document establishes the coding standards, architectural patterns, and best
 
 ## 6. Testing
 - **Unit Tests**: New logic requires `pytest` coverage. Run with `uv run pytest`.
+- **Git Commits**: After completing any major modification or feature, you MUST run tests (`bash scripts/dev_check.sh`). If tests pass, you MUST immediately create a git commit with a descriptive message.
 - **Integration**: Verification scripts in `scripts/debug/` are encouraged for complex flows.
 - **Git Hooks**: **NEVER** skip pre-commit hooks (e.g. `git commit --no-verify`). Fix the underlying issue (linting/tests) instead.
 - **Verification**: Always run `bash scripts/dev_check.sh` after making changes to ensure code quality.
