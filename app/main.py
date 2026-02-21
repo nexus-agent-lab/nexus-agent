@@ -83,7 +83,6 @@ async def lifespan(app: FastAPI):
             tool_map[category] = []
         tool_map[category].append(tool.name)
 
-
     logger.info(f"Agent initialized with {len(all_tools)} tools across {len(tool_map)} categories:")
     for cat, t_names in tool_map.items():
         logger.info(f"  - [{cat.upper()}]: {', '.join(t_names)}")

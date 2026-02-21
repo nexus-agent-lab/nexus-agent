@@ -65,6 +65,7 @@ class MQService:
 
     INBOX_KEY = "mq:inbox"
     OUTBOX_KEY = "mq:outbox"
+    DLQ_KEY = "mq:dlq"
 
     @classmethod
     async def get_redis(cls) -> redis.Redis:
@@ -129,6 +130,17 @@ class MQService:
         except Exception as e:
             logger.error(f"Failed to push to OUTBOX: {e}")
             raise
+
+    @classmethod
+    async def push_dlq(cls, message: UnifiedMessage, error_msg: str = ""):
+        r = await cls.get_redis()
+        try:
+            message.meta["dlq_error"] = error_msg
+            message.meta["dlq_timestamp"] = time.time()
+            await r.lpush(cls.DLQ_KEY, message.model_dump_json())
+            logger.warning(f"Message {message.id} sent to DLQ ({message.channel}). Error: {error_msg}")
+        except Exception as e:
+            logger.error(f"Failed to push to DLQ: {e}")
 
     @classmethod
     async def pop_outbox(cls) -> Optional[UnifiedMessage]:

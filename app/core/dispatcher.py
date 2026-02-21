@@ -75,26 +75,44 @@ class InterfaceDispatcher:
     @classmethod
     async def _loop(cls):
         logger.info("Dispatcher Loop Running...")
+        max_retries = 3
+        base_delay = 2.0
+
         while cls._running:
             try:
-                # 1. Pop message from Outbox
                 msg = await MQService.pop_outbox()
 
                 if msg:
-                    # 2. Find Handler
                     handler = cls._send_handlers.get(msg.channel)
                     if handler:
-                        try:
-                            # 3. Send
-                            await handler(msg)
-                            logger.info(f"Dispatched Outbound: {msg.id} -> {msg.channel.value}")
-                        except Exception as e:
-                            logger.error(f"Failed to send message {msg.id} via {msg.channel.value}: {e}")
-                            # TODO: Implement retry logic / Dead Letter Queue
+                        success = False
+                        last_error = ""
+
+                        for attempt in range(1, max_retries + 1):
+                            try:
+                                await handler(msg)
+                                logger.info(f"Dispatched Outbound: {msg.id} -> {msg.channel.value}")
+                                success = True
+                                break
+                            except Exception as e:
+                                last_error = str(e)
+                                if attempt < max_retries:
+                                    delay = base_delay * (2 ** (attempt - 1))
+                                    logger.warning(
+                                        f"Failed to send message {msg.id} via {msg.channel.value} (Attempt {attempt}/{max_retries}). "
+                                        f"Retrying in {delay}s: {last_error}"
+                                    )
+                                    await asyncio.sleep(delay)
+                                else:
+                                    logger.error(
+                                        f"Failed to send message {msg.id} via {msg.channel.value} after {max_retries} attempts: {last_error}"
+                                    )
+
+                        if not success:
+                            await MQService.push_dlq(msg, error_msg=last_error)
                     else:
                         logger.warning(f"No handler registered for channel: {msg.channel.value}")
                 else:
-                    # No message, sleep briefly
                     await asyncio.sleep(0.1)
 
             except asyncio.CancelledError:
