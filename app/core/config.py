@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     ROUTING_TOP_K: int = 5
     ROUTING_THRESHOLD: float = 0.35
 
+    # Skill Routing
+    SKILL_ROUTING_TOP_K: int = 3
+    SKILL_ROUTING_THRESHOLD: float = 0.30
+
     # Voice
     STT_BASE_URL: str = "http://host.docker.internal:9191/v1"
     STT_API_KEY: str = "sk-local-test"

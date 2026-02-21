@@ -21,6 +21,7 @@ BASE_SYSTEM_PROMPT = """You are Nexus, an AI Operating System connecting physica
 3. **LARGE DATA**: Use `python_sandbox` to filter/summarize large outputs (>100 items) or do calculations.
 4. **NO HALLUCINATION**: Never invent tool names. Use `list_available_tools` if unsure.
 5. **LANGUAGE**: Match the user's language. Be concise.
+6. **MISSING CAPABILITIES**: If the user requests a capability you lack, assume it's a feature request and call `submit_suggestion` with type='feature_request'.
 """
 
 
@@ -200,7 +201,6 @@ def create_agent_graph(tools: list):
 
     # Dynamic Instruction Injection from MCP Servers
     from app.core.mcp_manager import MCPManager
-    from app.core.skill_loader import SkillLoader
 
     mcp_instructions = MCPManager.get_system_instructions()
     dynamic_system_prompt = BASE_SYSTEM_PROMPT
@@ -220,41 +220,30 @@ def create_agent_graph(tools: list):
         # We use BASE_SYSTEM_PROMPT as the "Soul"
         base_prompt_with_context = PromptBuilder.build_system_prompt(user=user, soul_content=BASE_SYSTEM_PROMPT)
 
-        # 1. Load context-appropriate summaries and registry
-        skill_summaries = SkillLoader.load_summaries(role=user_role)
-        skill_registry = SkillLoader.load_registry_with_metadata(role=user_role)
+        # 1. Prepare Semantic Routing Query
+        # Find relevant context for routing (Role-Aware & Context-Aware)
+        from app.core.tool_router import tool_router
 
+        routing_query = ""
+        context_parts = []
+        recent_msgs = [m for m in messages if isinstance(m, (HumanMessage, AIMessage))][-3:]
+        for msg in recent_msgs:
+            content = str(msg.content)
+            if len(content) > 200:
+                content = content[:200] + "..."
+            context_parts.append(content)
+        routing_query = " | ".join(context_parts)
+
+        # 2. Skill Routing (Hierarchical)
         prompt_with_skills = base_prompt_with_context
-        # Layer 2: Skill Index (Summaries) - ALWAYS present so Agent knows what it CAN do (Role-specific)
-        if skill_summaries:
-            prompt_with_skills += (
-                f"\n## AVAILABLE SKILLS (Overview)\n"
-                f"You have the following skills available to your role ({user_role}). Detailed rules for a skill will be activated when relevant.\n"
-                f"{skill_summaries}\n"
-            )
+        # We use semantically matched skills instead of keyword matching
+        matched_skills = await tool_router.route_skills(routing_query, role=user_role)
 
-        # 2. Capture User Intent for Dynamic Injection
-        last_human_msg = ""
-        for msg in reversed(messages):
-            if isinstance(msg, HumanMessage):
-                last_human_msg = str(msg.content).lower()
-                break
-
-        # 3. Dynamic Rule Activation (Role-aware)
-        active_rules = []
-        if last_human_msg:
-            for skill in skill_registry:
-                keywords = skill["metadata"].get("intent_keywords", [])
-                # Activation Trigger: If any keyword matches the user message
-                if any(kw.lower() in last_human_msg for kw in keywords):
-                    logger.info(
-                        f"🚀 [Dynamic Injection] Activating full rules for skill: {skill['name']} for role: {user_role}"
-                    )
-                    active_rules.append(f"### FULL RULES: {skill['name']}\n{skill['rules']}")
+        if matched_skills:
+            rules = "\n\n".join([f"### {s['name']}\n{s['rules']}" for s in matched_skills])
+            prompt_with_skills += f"\n## ACTIVE SKILL RULES (CONTEXTUAL)\n{rules}\n"
 
         final_system_prompt = prompt_with_skills
-        if active_rules:
-            final_system_prompt += "\n## ACTIVE SKILL RULES (CONTEXTUAL)\n" + "\n\n".join(active_rules) + "\n"
 
         # Ensure System Prompt is present with the latest dynamic rules
         if not messages or not isinstance(messages[0], SystemMessage):
@@ -302,22 +291,7 @@ def create_agent_graph(tools: list):
             print("  │")
 
         # Dynamic Tool Routing
-        from app.core.tool_router import CORE_TOOL_NAMES, tool_router
-
-        # Find relevant context for routing (Role-Aware & Context-Aware)
-        # We look at the last few messages to understand "check logs" in context of previous errors
-        routing_query = ""
-        context_parts = []
-        # Take up to 3 recent messages (excluding System)
-        recent_msgs = [m for m in messages if isinstance(m, (HumanMessage, AIMessage))][-3:]
-        for msg in recent_msgs:
-            content = str(msg.content)
-            # Truncate long messages to avoid noise
-            if len(content) > 200:
-                content = content[:200] + "..."
-            context_parts.append(content)
-
-        routing_query = " | ".join(context_parts)
+        from app.core.tool_router import CORE_TOOL_NAMES
 
         if _wire_log:
             print(f'  ├─ tool_router.route("{routing_query[:50]}...", role={user_role})')

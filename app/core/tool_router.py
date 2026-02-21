@@ -33,10 +33,12 @@ class SemanticToolRouter:
             return
 
         self.embeddings = None
-        self.tool_index = None  # numpy array of embeddings
+        self.tool_index = None  # numpy array of embeddings (Tools)
+        self.skill_index = None  # numpy array of embeddings (Skills)
         self.semantic_tools: List[BaseTool] = []
         self.core_tools: List[BaseTool] = []
         self.all_tools: List[BaseTool] = []
+        self.skill_entries: List[dict] = []  # [{name, metadata, rules}]
 
         try:
             self._setup_embeddings()
@@ -122,6 +124,34 @@ class SemanticToolRouter:
             logger.error(f"Failed to build tool index: {e}")
             self.tool_index = None
 
+    async def register_skills(self, skills: List[dict]):
+        """
+        Register all available skills for semantic routing.
+        skills: List of dicts with {name, metadata, rules}
+        """
+        self.skill_entries = skills
+        if not self.embeddings or not skills:
+            logger.warning("Embeddings not ready or no skills. Skill routing disabled.")
+            return
+
+        descriptions = []
+        for s in skills:
+            name = s["name"]
+            desc = s["metadata"].get("description", "")
+            # Domain and intent keywords can also be part of embedding context
+            domain = s["metadata"].get("domain", "")
+            keywords = ", ".join(s["metadata"].get("intent_keywords", []))
+            descriptions.append(f"Skill: {name}\nDescription: {desc}\nDomain: {domain}\nKeywords: {keywords}")
+
+        try:
+            logger.info(f"Embedding {len(descriptions)} skill descriptions...")
+            vectors = await self.embeddings.aembed_documents(descriptions)
+            self.skill_index = np.array(vectors)
+            logger.info("Skill index built successfully.")
+        except Exception as e:
+            logger.error(f"Failed to build skill index: {e}")
+            self.skill_index = None
+
     def _check_role(self, tool: Any, user_role: str) -> bool:
         """Check if user has permission to use this tool."""
         # 1. Check tool.required_role (pydantic/langchain attribute)
@@ -144,6 +174,68 @@ class SemanticToolRouter:
             return False
 
         return True
+
+    async def route_skills(self, query: str, role: str = "user") -> List[dict]:
+        """
+        Select relevant skills based on query and user role.
+        Returns: List of skill entries matched by semantic similarity.
+        """
+        if not settings.ENABLE_SEMANTIC_ROUTING or self.skill_index is None or not self.embeddings:
+            return []
+
+        if not query or not query.strip():
+            return []
+
+        try:
+            # Embed query (re-use logic or cache if possible layer, but here we just embed)
+            # In a real high-perf scenario, we might pass the embedding in.
+            query_vec = await self.embeddings.aembed_query(query)
+            query_vec = np.array(query_vec)
+
+            # Cosine Similarity
+            norm_skills = np.linalg.norm(self.skill_index, axis=1)
+            norm_query = np.linalg.norm(query_vec)
+
+            if norm_query == 0:
+                return []
+
+            # Avoid division by zero
+            norm_skills[norm_skills == 0] = 1e-9
+
+            scores = np.dot(self.skill_index, query_vec) / (norm_skills * norm_query)
+
+            # Select Top-K
+            k = min(settings.SKILL_ROUTING_TOP_K, len(self.skill_entries))
+            threshold = settings.SKILL_ROUTING_THRESHOLD
+
+            top_indices = np.argsort(scores)[-k:][::-1]
+
+            selected_skills = []
+            _wire_log = os.getenv("DEBUG_WIRE_LOG", "false").lower() == "true"
+
+            for idx in top_indices:
+                score = scores[idx]
+                skill = self.skill_entries[idx]
+
+                # Role Check for Skills
+                req_role = skill["metadata"].get("required_role", "user")
+                if req_role == "admin" and role != "admin":
+                    continue
+
+                if score >= threshold:
+                    selected_skills.append(skill)
+                    logger.debug(f"Skill Match: {skill['name']} (score={score:.4f})")
+                    if _wire_log:
+                        print(f"  │   │  ├─ [SKILL MATCH] {skill['name']:<20} (scale={score:.4f})")
+                else:
+                    if _wire_log:
+                        print(f"  │   │  ├─ [SKILL DROP]  {skill['name']:<20} (scale={score:.4f})")
+
+            return selected_skills
+
+        except Exception as e:
+            logger.error(f"Skill routing failed: {e}")
+            return []
 
     async def route(self, query: str, role: str = "user") -> List[Any]:
         """

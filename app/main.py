@@ -19,6 +19,8 @@ from app.core.agent import create_agent_graph, stream_agent_events
 from app.core.auth import get_current_user
 from app.core.db import init_db
 from app.core.mcp_manager import get_mcp_tools
+from app.core.skill_loader import SkillLoader
+from app.core.tool_router import tool_router
 from app.core.voice import transcribe_audio
 from app.interfaces.telegram import run_telegram_bot
 from app.models.user import User
@@ -42,6 +44,11 @@ async def lifespan(app: FastAPI):
     static_tools = get_static_tools()
     mcp_tools = await get_mcp_tools()
     all_tools = static_tools + mcp_tools
+
+    # Register Tools & Skills for Semantic Routing
+    await tool_router.register_tools(all_tools)
+    all_skills = SkillLoader.load_registry_with_metadata(role="admin")
+    await tool_router.register_skills(all_skills)
 
     global agent_graph
     agent_graph = create_agent_graph(all_tools)
@@ -76,10 +83,6 @@ async def lifespan(app: FastAPI):
             tool_map[category] = []
         tool_map[category].append(tool.name)
 
-    # Register tools with Semantic Router (CRITICAL — without this, route() returns [])
-    from app.core.tool_router import tool_router
-
-    await tool_router.register_tools(all_tools)
 
     logger.info(f"Agent initialized with {len(all_tools)} tools across {len(tool_map)} categories:")
     for cat, t_names in tool_map.items():

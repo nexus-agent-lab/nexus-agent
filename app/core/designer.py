@@ -27,9 +27,9 @@ class MemSkillDesigner:
     """
 
     # Minimum total uses before skill is eligible for evolution
-    MIN_TOTAL_USES = 10
+    MIN_TOTAL_USES = int(os.getenv("DESIGNER_MIN_FEEDBACK", "10"))
     # Negative rate threshold to trigger evolution
-    NEGATIVE_RATE_THRESHOLD = 0.3
+    NEGATIVE_RATE_THRESHOLD = float(os.getenv("DESIGNER_THRESHOLD", "0.3"))
 
     @classmethod
     async def find_underperforming_skills(cls) -> list:
