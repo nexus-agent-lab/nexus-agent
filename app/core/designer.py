@@ -321,6 +321,19 @@ Return your response in this exact structure:
 
             await session.commit()
 
+            if skill.source_file:
+                from app.core.memory_skill_loader import MemorySkillLoader
+
+                updated = MemorySkillLoader.update_skill_file(
+                    filepath=skill.source_file,
+                    new_prompt=skill.prompt_template,
+                    new_version=skill.version,
+                )
+                if updated:
+                    logger.info(f"Updated skill file: {skill.source_file}")
+                else:
+                    logger.warning(f"Failed to update skill file: {skill.source_file}")
+
             logger.info(f"✅ Approved changelog {changelog_id} for skill '{skill.name}' (v{skill.version})")
             return f"✅ Skill '{skill.name}' evolved to v{skill.version}"
 

@@ -94,6 +94,43 @@ class MemorySkillLoader:
         return [s for s in all_skills if s.get("skill_type") == skill_type]
 
     @classmethod
+    def update_skill_file(cls, filepath: str, new_prompt: str, new_version: int) -> bool:
+        """
+        Updates the 'Prompt Template' section and version of a memory skill markdown file.
+        Preserves all other sections and metadata.
+        """
+        try:
+            path = Path(filepath)
+            if not path.exists():
+                logger.error(f"Cannot update skill file, path not found: {filepath}")
+                return False
+
+            content = path.read_text(encoding="utf-8")
+
+            content = re.sub(
+                r"(^---\s*\n.*?version:\s*)(\d+)(.*?---\s*\n)",
+                lambda m: f"{m.group(1)}{new_version}{m.group(3)}",
+                content,
+                flags=re.DOTALL,
+            )
+
+            # We look for ## Prompt Template and capture everything until the next ## or end of file
+            pattern = r"(##\s*Prompt\s*Template\s*\n)(.*?)(?=\n##|\Z)"
+
+            def replacement(match):
+                header = match.group(1)
+                return f"{header}\n{new_prompt.strip()}\n\n"
+
+            new_content = re.sub(pattern, replacement, content, flags=re.DOTALL | re.IGNORECASE)
+
+            path.write_text(new_content, encoding="utf-8")
+            logger.info(f"Successfully updated skill file: {path.name} to v{new_version}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to update skill file {filepath}: {e}")
+            return False
+
+    @classmethod
     async def sync_to_database(cls):
         """
         Sync file-based skills to database.
