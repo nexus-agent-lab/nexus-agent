@@ -29,6 +29,7 @@ pie title 功能完成度 (31.1个Phase)
 | **Identity System** | Multi-User + Token Binding + RBAC (Admin/Standard) |
 | **Telegram UX** | I18n (EN/ZH) + Live Typing + Dynamic Menus + `/bind` & `/unbind` |
 | **Feishu Integration** | Lark MCP SSE 微服务 (独立容器) |
+| **P1 Security** | Python Sandbox Audithook + MCP SSRF/Command Whitelisting + Granular RBAC Tool Domain enforcement |
 | **Open Source Prep** | Security 扫描 + `pyproject.toml` + README + MIT License + CI/CD |
 
 ### 🟢 高级功能 (Phase 21-27) ✅
@@ -105,7 +106,7 @@ pie title 功能完成度 (31.1个Phase)
 | **P0.5** Semantic Routing | 未在原计划中 | ✅ **新增并完成** |
 | **P0.5** Ollama 迁移 | 未在原计划中 | ✅ **新增并完成** |
 | **P0.5** MQ DLQ/Retry | 未在原计划中 | ✅ **新增并完成** |
-| **P1** 安全增强 | "下周" | ❌ 未开始 |
+| **P1** 安全增强 | "下周" | ✅ 已完成 |
 | **P3** DingTalk | 长期 | ❌ 未开始 |
 
 > [!NOTE]
@@ -126,9 +127,8 @@ pie title 功能完成度 (31.1个Phase)
 
 1. **实现 DingTalk 适配器** — 覆盖钉钉用户群，完善企业集成
 2. **正式化 CLI 接口** — 提升开发调试体验
-3. **P1 安全增强** — Skill 审核，为开源做准备
-4. **Home Assistant E2E 测试** — 验证核心场景
-5. **dev_check.sh 全绿** — ✅ 已达成 (34 tests passed, 0 lint errors)
+3. **Home Assistant E2E 测试** — 验证核心场景
+4. **dev_check.sh 全绿** — ✅ 已达成 (34 tests passed, 0 lint errors)
 
 ---
 
@@ -138,6 +138,5 @@ pie title 功能完成度 (31.1个Phase)
 |------|----------|------------|
 | DingTalk Adapter | 完整实现 | 8-12 小时 |
 | CLI Adapter | 标准化接口 | 4-6 小时 |
-| P1 安全增强 | 审核 + 沙箱 + 权限 | 20-30 小时 |
 
-**总计**: 约 32-48 小时的待办工作量
+**总计**: 约 12-18 小时的待办工作量
