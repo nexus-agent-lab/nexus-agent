@@ -212,8 +212,10 @@ class AuthService:
         for tool in all_tools:
             # We assume tool has .name attribute
             tool_name = getattr(tool, "name", str(tool))
-            # domain inference (simplified as per check_tool_permission)
-            domain = "standard"
+            # Extract domain from tool metadata (MCP tools should have domain/category in metadata)
+            domain = "standard"  # fallback
+            if hasattr(tool, "metadata"):
+                domain = tool.metadata.get("domain") or tool.metadata.get("category") or domain
             if AuthService.check_tool_permission(user, tool_name, domain):
                 allowed.append(tool)
         return allowed

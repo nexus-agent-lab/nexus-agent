@@ -488,11 +488,12 @@ def create_agent_graph(tools: list):
             # 1. Permission Check
             from app.core.auth_service import AuthService
 
-            # Infer domain from tool name or tags (Simplification)
-            # e.g. "homeassistant_get_state" -> domain="homeassistant" ??
-            # For now, default to "standard" and rely on tool name blocking.
+            # Extract domain from tool metadata (MCP tools should have domain/category in metadata)
+            domain = "standard"  # fallback
+            if hasattr(tool_to_call, "metadata"):
+                domain = tool_to_call.metadata.get("domain") or tool_to_call.metadata.get("category") or domain
 
-            if not AuthService.check_tool_permission(user, tool_name, domain="standard"):
+            if not AuthService.check_tool_permission(user, tool_name, domain=domain):
                 err_msg = (
                     f"Error: Permission denied. Access to tool '{tool_name}' is restricted for user '{user.username}'."
                 )

@@ -4,6 +4,7 @@ import logging
 import os
 from contextlib import AsyncExitStack
 from typing import Any, Dict, List, Optional, Type
+from urllib.parse import urlparse
 
 # LangChain imports
 from langchain_core.tools import StructuredTool
@@ -26,6 +27,12 @@ except ImportError:
 logger = logging.getLogger("nexus.mcp")
 
 CONFIG_PATH = os.getenv("MCP_CONFIG_PATH", "/app/mcp_server_config.json")
+
+# Whitelist of allowed MCP server commands for security
+ALLOWED_MCP_COMMANDS = ["python", "python3", "node", "npx", "uv"]
+
+# Allowlist of allowed hostnames for SSE MCP servers (SSRF protection)
+ALLOWED_SSE_HOSTNAMES = ["localhost", "127.0.0.1", "host.docker.internal", "mcp-homeassistant", "lark-mcp"]
 
 
 class MCPManager:
@@ -96,6 +103,16 @@ class MCPManager:
                     read, write = None, None
 
                     if url:
+                        # SSRF protection: validate hostname against allowlist
+                        parsed_url = urlparse(url)
+                        hostname = parsed_url.hostname
+                        if hostname not in ALLOWED_SSE_HOSTNAMES:
+                            logger.warning(
+                                f"SSRF protection: Skipping MCP server '{name}' with disallowed hostname '{hostname}'. "
+                                f"Allowed hostnames: {ALLOWED_SSE_HOSTNAMES}"
+                            )
+                            continue
+
                         logger.info(f"Connecting to Remote MCP: {name} ({url}) [Role: {required_role}]...")
                         try:
                             # Headers to bypass local testing validation if needed
@@ -106,6 +123,13 @@ class MCPManager:
                             continue
 
                     elif command:
+                        # Security check: validate command against whitelist
+                        if command not in ALLOWED_MCP_COMMANDS:
+                            logger.critical(
+                                f"SECURITY ALERT: MCP server '{name}' uses forbidden command '{command}'. Allowed commands: {ALLOWED_MCP_COMMANDS}. Skipping server."
+                            )
+                            continue
+
                         logger.info(f"Connecting to Local MCP: {name} ({command} {args}) [Role: {required_role}]...")
                         try:
                             server_params = StdioServerParameters(
