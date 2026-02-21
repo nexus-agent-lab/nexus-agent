@@ -137,50 +137,34 @@ with tab_evolution:
                         col_approve, col_reject = st.columns(2)
                         with col_approve:
                             if st.button(f"✅ 批准 #{entry['id']}", key=f"approve_{entry['id']}"):
-                                with engine.connect() as conn:
-                                    # Get skill info
-                                    skill_info = conn.execute(
-                                        text("SELECT id, version FROM memoryskill WHERE name = :name"),
-                                        {"name": entry["skill_name"]},
-                                    ).fetchone()
+                                import sys
+                                import os
 
-                                    if skill_info:
-                                        conn.execute(
-                                            text("""
-                                                UPDATE memoryskill
-                                                SET prompt_template = :new_prompt,
-                                                    version = version + 1,
-                                                    is_base = false,
-                                                    updated_at = NOW()
-                                                WHERE name = :name
-                                            """),
-                                            {"new_prompt": entry["new_prompt"], "name": entry["skill_name"]},
-                                        )
-                                        conn.execute(
-                                            text("""
-                                                UPDATE memoryskillchangelog
-                                                SET status = 'approved', reviewed_at = NOW()
-                                                WHERE id = :cid
-                                            """),
-                                            {"cid": int(entry["id"])},
-                                        )
-                                        conn.commit()
-                                        st.success(f"✅ 已批准 #{entry['id']}")
-                                        st.rerun()
+                                sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+                                from app.core.designer import MemSkillDesigner
+                                from utils import run_async
+
+                                result_msg = run_async(MemSkillDesigner.approve_changelog(int(entry["id"])))
+                                if "✅" in result_msg:
+                                    st.success(result_msg)
+                                else:
+                                    st.error(result_msg)
+                                st.rerun()
                         with col_reject:
                             if st.button(f"🚫 拒绝 #{entry['id']}", key=f"reject_{entry['id']}"):
-                                with engine.connect() as conn:
-                                    conn.execute(
-                                        text("""
-                                            UPDATE memoryskillchangelog
-                                            SET status = 'rejected', reviewed_at = NOW()
-                                            WHERE id = :cid
-                                        """),
-                                        {"cid": int(entry["id"])},
-                                    )
-                                    conn.commit()
-                                    st.warning(f"🚫 已拒绝 #{entry['id']}")
-                                    st.rerun()
+                                import sys
+                                import os
+
+                                sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+                                from app.core.designer import MemSkillDesigner
+                                from utils import run_async
+
+                                result_msg = run_async(MemSkillDesigner.reject_changelog(int(entry["id"])))
+                                if "🚫" in result_msg:
+                                    st.warning(result_msg)
+                                else:
+                                    st.error(result_msg)
+                                st.rerun()
 
             # ── Full History ──
             st.subheader("📜 完整历史")
