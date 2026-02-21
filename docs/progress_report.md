@@ -7,9 +7,9 @@
 ## 一、已完成功能总览
 
 ```mermaid
-pie title 功能完成度 (30.1个Phase)
-    "已完成" : 23
-    "进行中" : 2
+pie title 功能完成度 (31.1个Phase)
+    "已完成" : 26
+    "进行中" : 0
     "未开始" : 5.1
 ```
 
@@ -48,6 +48,7 @@ pie title 功能完成度 (30.1个Phase)
 | **Semantic Routing** | 基于向量相似度的技能路由，自动选择最相关的工具集 |
 | **Ollama 迁移** | Embedding 完全迁移至 Ollama `bge-m3` (1024 维)，实现全本地化 |
 | **MQ 系统** | Redis 队列 + Worker 模型，接口层与核心层解耦 |
+| **MQ DLQ/Retry** | 死信队列机制 + 指数退避重试，提升消息可靠性 |
 
 ---
 
@@ -62,22 +63,15 @@ pie title 功能完成度 (30.1个Phase)
 | MemorySkillLoader | ✅ | 文件加载 + DB 同步 |
 | MemoryController | ✅ | 关键词匹配 + LLM 回退选择 |
 | MemoryManager 集成 | ⚠️ 部分 | `add_memory_with_skill()` 已接入 `memory_tools.py` |
-| Designer 进化逻辑 | ❌ | 技能自我优化 (基于反馈) |
-| Dashboard 审计 UI | ❌ | 进化历史可视化 |
+| Designer 进化逻辑 | ✅ | 技能自我优化 (基于反馈) |
+| Dashboard 审计 UI | ✅ | 进化历史可视化 |
 
 > [!IMPORTANT]
-> MemSkill 的 **核心管道** (Controller → Skill → Memory) 已可用，但 Designer 和 Dashboard 尚未实现。
+> MemSkill 的 **核心管道** (Controller → Skill → Memory) 已可用，Designer 和 Dashboard 已完成实现。
 
 ---
 
 ## 三、架构缺口与待办事项 🔧
-
-### 消息队列可靠性
-| 缺口 | 影响 | 优先级 |
-|------|------|--------|
-| **Dispatcher 缺少 DLQ/Retry** | 消息处理失败时无法重试，可能丢失关键请求 | P1 |
-
-> 需要在 `app/core/mq.py` 中实现死信队列机制和指数退避重试策略。
 
 ### 企业集成
 | 缺口 | 影响 | 优先级 |
@@ -105,17 +99,17 @@ pie title 功能完成度 (30.1个Phase)
 
 | 优先级 | 计划 | 实际进展 |
 |--------|------|----------|
-| **P0** MemSkill | "立即实现" | ✅ 核心管道完成，Designer 待做 |
+| **P0** MemSkill | "立即实现" | ✅ 核心管道 + Designer + Dashboard 完成 |
 | **P0.5** Session Compacting | 未在原计划中 | ✅ **新增并完成** |
 | **P0.5** GLM Flash 优化 | 未在原计划中 | ✅ **新增并完成** |
 | **P0.5** Semantic Routing | 未在原计划中 | ✅ **新增并完成** |
 | **P0.5** Ollama 迁移 | 未在原计划中 | ✅ **新增并完成** |
+| **P0.5** MQ DLQ/Retry | 未在原计划中 | ✅ **新增并完成** |
 | **P1** 安全增强 | "下周" | ❌ 未开始 |
-| **P2** Dashboard Designer 日志 | "本周" | ❌ 未开始 |
 | **P3** DingTalk | 长期 | ❌ 未开始 |
 
 > [!NOTE]
-> 实际开发优先级调整为**性能优化 + 精准化路由** (Semantic Routing + Ollama 迁移)，这是合理的技术债务偿还——提升本地化程度和推理质量是长期价值的基础。
+> 实际开发优先级调整为**性能优化 + 精准化路由** (Semantic Routing + Ollama 迁移) 和**系统可靠性** (MQ DLQ/Retry)，这是合理的技术债务偿还——提升本地化程度、推理质量和系统可靠性是长期价值的基础。
 
 ### [strategic_analysis.md](file:///Users/michael/.gemini/antigravity/brain/5993dfe4-dc06-4c42-962b-11ce65706cfa/strategic_analysis.md) (2026-02-06)
 
@@ -130,13 +124,11 @@ pie title 功能完成度 (30.1个Phase)
 
 ## 五、建议下一步
 
-1. **实现 DLQ/Retry 机制** — 提升消息队列可靠性，防止任务丢失
-2. **完成 MemSkill Designer** — 让记忆技能可自我进化 (核心差异化)
-3. **实现 DingTalk 适配器** — 覆盖钉钉用户群，完善企业集成
-4. **正式化 CLI 接口** — 提升开发调试体验
-5. **P1 安全增强** — Skill 审核，为开源做准备
-6. **Home Assistant E2E 测试** — 验证核心场景
-7. **dev_check.sh 全绿** — ✅ 已达成 (34 tests passed, 0 lint errors)
+1. **实现 DingTalk 适配器** — 覆盖钉钉用户群，完善企业集成
+2. **正式化 CLI 接口** — 提升开发调试体验
+3. **P1 安全增强** — Skill 审核，为开源做准备
+4. **Home Assistant E2E 测试** — 验证核心场景
+5. **dev_check.sh 全绿** — ✅ 已达成 (34 tests passed, 0 lint errors)
 
 ---
 
@@ -144,10 +136,8 @@ pie title 功能完成度 (30.1个Phase)
 
 | 模块 | 债务类型 | 估计工作量 |
 |------|----------|------------|
-| MQ Dispatcher | 缺少 DLQ/Retry | 4-6 小时 |
 | DingTalk Adapter | 完整实现 | 8-12 小时 |
 | CLI Adapter | 标准化接口 | 4-6 小时 |
-| MemSkill Designer | 进化逻辑 + UI | 16-24 小时 |
 | P1 安全增强 | 审核 + 沙箱 + 权限 | 20-30 小时 |
 
-**总计**: 约 52-78 小时的待办工作量
+**总计**: 约 32-48 小时的待办工作量
