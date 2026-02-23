@@ -67,7 +67,14 @@ class SkillLoader:
                     continue
 
                 critical_rules = cls._extract_section(content, "Critical Rules") or "No critical rules defined."
-                registry.append({"name": skill_file.stem, "metadata": metadata, "rules": critical_rules})
+                registry.append(
+                    {
+                        "name": skill_file.stem,
+                        "metadata": metadata,
+                        "rules": critical_rules,
+                        "full_content": content,
+                    }
+                )
             except Exception as e:
                 logger.error(f"Failed to load skill for registry: {skill_file.name}: {e}")
 

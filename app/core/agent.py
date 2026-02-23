@@ -234,14 +234,24 @@ def create_agent_graph(tools: list):
             context_parts.append(content)
         routing_query = " | ".join(context_parts)
 
-        # 2. Skill Routing (Hierarchical)
+        # 2. Skill Routing (Hierarchical L0/L1/L2)
         prompt_with_skills = base_prompt_with_context
         # We use semantically matched skills instead of keyword matching
         matched_skills = await tool_router.route_skills(routing_query, role=user_role)
 
         if matched_skills:
-            rules = "\n\n".join([f"### {s['name']}\n{s['rules']}" for s in matched_skills])
-            prompt_with_skills += f"\n## ACTIVE SKILL RULES (CONTEXTUAL)\n{rules}\n"
+            active_rules = []
+            for i, s in enumerate(matched_skills):
+                if i == 0:
+                    # L2: Full Content for the most relevant skill
+                    content = s.get("full_content", s["rules"])
+                    active_rules.append(f"### {s['name']} (PRIMARY)\n{content}")
+                else:
+                    # L1: Critical Rules for other matched skills
+                    active_rules.append(f"### {s['name']} (SECONDARY)\n{s['rules']}")
+
+            rules_str = "\n\n".join(active_rules)
+            prompt_with_skills += f"\n## ACTIVE SKILL RULES (CONTEXTUAL)\n{rules_str}\n"
 
         final_system_prompt = prompt_with_skills
 
