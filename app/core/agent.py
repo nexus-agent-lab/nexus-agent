@@ -216,9 +216,15 @@ def create_agent_graph(tools: list):
 
         # 0. Build base prompt
         from app.core.prompt_builder import PromptBuilder
+        from app.core.skill_loader import SkillLoader
+
+        # Get L0 Skill Summaries
+        summaries = SkillLoader.load_summaries(role=user_role)
 
         # We use BASE_SYSTEM_PROMPT as the "Soul"
-        base_prompt_with_context = PromptBuilder.build_system_prompt(user=user, soul_content=BASE_SYSTEM_PROMPT)
+        base_prompt_with_context = PromptBuilder.build_system_prompt(
+            user=user, soul_content=BASE_SYSTEM_PROMPT, skill_summaries=summaries
+        )
 
         # 1. Prepare Semantic Routing Query
         # Find relevant context for routing (Role-Aware & Context-Aware)

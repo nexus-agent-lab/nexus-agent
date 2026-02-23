@@ -21,7 +21,9 @@ class PromptBuilder:
     """
 
     @staticmethod
-    def build_system_prompt(user: Optional[User] = None, soul_content: Optional[str] = None) -> str:
+    def build_system_prompt(
+        user: Optional[User] = None, soul_content: Optional[str] = None, skill_summaries: Optional[str] = None
+    ) -> str:
         # 1. Base Persona (Soul)
         base_prompt = soul_content if soul_content else DEFAULT_SOUL
 
@@ -46,7 +48,18 @@ class PromptBuilder:
 - **Policy/Preferences**: {policy_str}
 """
 
-        # 3. Runtime Information (Conditional, mostly noise for small models)
+        # 3. Available Skills (L0 Summary)
+        skill_info = ""
+        if skill_summaries:
+            skill_info = f"""
+## Available Capabilities (L0)
+Your current installation includes these skills:
+{skill_summaries}
+
+Note: More details will be injected automatically when you handle relevant tasks.
+"""
+
+        # 4. Runtime Information (Conditional, mostly noise for small models)
         runtime_info = ""
         if os.getenv("DEBUG_PROMPT", "false").lower() == "true":
             runtime_info = f"""
@@ -55,14 +68,14 @@ class PromptBuilder:
 - **Time**: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 """
 
-        # 4. Protocol Instructions (Slimmed down)
+        # 5. Protocol Instructions (Slimmed down)
         protocol_instructions = """
 ## Response Protocols
 - **Silent Protocol**: If no reply needed (e.g. "OK", emojis), output `<NO_REPLY>`.
 - **Visibility**: Narrate complex steps (e.g. "🔍 Searching files...").
 """
 
-        # 5. Assembly
-        full_prompt = f"{base_prompt.strip()}\n{user_context}\n{runtime_info}\n{protocol_instructions}"
+        # 6. Assembly
+        full_prompt = f"{base_prompt.strip()}\n{user_context}\n{skill_info}\n{runtime_info}\n{protocol_instructions}"
 
         return full_prompt
