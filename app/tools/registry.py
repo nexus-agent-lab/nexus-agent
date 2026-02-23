@@ -5,6 +5,7 @@ from langchain_core.tools import tool
 
 from app.core.decorators import require_role
 from app.tools.admin_tools import broadcast_notification, restart_system, view_system_logs
+from app.tools.automation import list_watch_rules, watch_entity
 from app.tools.learning_tools import learn_skill_rule
 from app.tools.memory_tools import (
     approve_skill_evolution,
@@ -69,6 +70,8 @@ def get_static_tools() -> List[Callable]:
         schedule_cron_task,
         list_scheduled_tasks,
         remove_scheduled_task,
+        watch_entity,
+        list_watch_rules,
         restart_system,
         broadcast_notification,
         view_system_logs,

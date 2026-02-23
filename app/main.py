@@ -20,6 +20,7 @@ from app.core.auth import get_current_user
 from app.core.db import init_db
 from app.core.mcp_manager import get_mcp_tools
 from app.core.skill_loader import SkillLoader
+from app.core.state_watcher import StateWatcher
 from app.core.tool_router import tool_router
 from app.core.voice import transcribe_audio
 from app.interfaces.telegram import run_telegram_bot
@@ -68,6 +69,7 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(run_feishu_bot())
     asyncio.create_task(InterfaceDispatcher.start())
     asyncio.create_task(AgentWorker.start())
+    asyncio.create_task(StateWatcher.get_instance().start())
 
     # Start Scheduler
     await SchedulerService.get_instance().start()
@@ -94,6 +96,7 @@ async def lifespan(app: FastAPI):
     from app.core.scheduler import SchedulerService
 
     await SchedulerService.get_instance().stop()
+    await StateWatcher.get_instance().stop()
     await AgentWorker.stop()
     await InterfaceDispatcher.stop()
     await stop_mcp()
