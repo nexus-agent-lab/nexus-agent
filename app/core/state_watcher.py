@@ -173,5 +173,14 @@ class StateWatcher:
                 await MQService.push_outbox(notification)
 
             elif rule.action == "agent_prompt":
-                # FUTURE: Push to Agent Inbox to let it "think"
-                pass
+                # Push to Agent Inbox to let it "think"
+                logger.info(f"Waking up Agent for rule {rule.id}")
+                agent_msg = UnifiedMessage(
+                    content=f"SYSTEM ALERT: Device `{entity_id}` is now `{state_value}`. "
+                    f"This matches your watch condition `{rule.condition}`. "
+                    f"Please analyze if any action is needed and notify the user if necessary.",
+                    channel=ChannelType.INTERNAL,  # Mark as internal trigger
+                    user_id=str(rule.user_id),
+                    meta={"source": "state_watcher", "trigger": "proactive_rule", "entity_id": entity_id},
+                )
+                await MQService.push_inbox(agent_msg)

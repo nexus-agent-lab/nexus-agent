@@ -63,3 +63,18 @@ Nexus Agent has transitioned from a simple chatbot to an "AI Operating System" c
 | **Computer Use** | ❌ Not implemented | ✅ Native Browser Control |
 
 **Strategic Move**: Nexus should act as the **Control Plane** (Identity, Permission, Memory), while potentially using OpenClaw capabilities as an **MCP Server** for low-level computer automation.
+
+---
+
+## 6. Architectural Decision: The Hybrid Integration Model
+
+To resolve the conflict between MCP's request-response nature and the need for proactive smart home features, we adopt the **Driver & Interrupt Hybrid Model**:
+
+1.  **Core Perception (Interrupt Layer)**:
+    - High-frequency, real-time event monitoring (e.g., Home Assistant WebSockets) is **built-in to the Nexus Core** (`StateWatcher`).
+    - This acts as the "Kernel Interrupt Handler" of the AI OS, allowing the agent to react in milliseconds to physical world changes without waiting for a user query.
+    
+2.  **Modular Execution (Driver Layer)**:
+    - Standard actions (e.g., turning on lights, fetching history) remain in **Model Context Protocol (MCP)** servers.
+    - **Self-Maintenance Policy**: To ensure security and performance (caching), all critical MCP servers (starting with HA) must be **Forked and Maintained** under our internal GitHub organization rather than relying on unvetted third-party images.
+
