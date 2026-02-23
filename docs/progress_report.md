@@ -50,6 +50,7 @@ pie title 功能完成度 (31.1个Phase)
 | **Ollama 迁移** | Embedding 完全迁移至 Ollama `bge-m3` (1024 维)，实现全本地化 |
 | **MQ 系统** | Redis 队列 + Worker 模型，接口层与核心层解耦 |
 | **MQ DLQ/Retry** | 死信队列机制 + 指数退避重试，提升消息可靠性 |
+| **Hierarchical Context** | L0 (Summary) / L1 (Critical Rules) / L2 (Full Content) tiered injection logic implemented. |
 
 ---
 
@@ -101,6 +102,7 @@ pie title 功能完成度 (31.1个Phase)
 | 优先级 | 计划 | 实际进展 |
 |--------|------|----------|
 | **P0** MemSkill | "立即实现" | ✅ 核心管道 + Designer + Dashboard 完成 |
+| **P0** Hierarchical Context | "立即实现" | ✅ 已完成 |
 | **P0.5** Session Compacting | 未在原计划中 | ✅ **新增并完成** |
 | **P0.5** GLM Flash 优化 | 未在原计划中 | ✅ **新增并完成** |
 | **P0.5** Semantic Routing | 未在原计划中 | ✅ **新增并完成** |
@@ -110,7 +112,7 @@ pie title 功能完成度 (31.1个Phase)
 | **P3** DingTalk | 长期 | ❌ 未开始 |
 
 > [!NOTE]
-> 实际开发优先级调整为**性能优化 + 精准化路由** (Semantic Routing + Ollama 迁移) 和**系统可靠性** (MQ DLQ/Retry)，这是合理的技术债务偿还——提升本地化程度、推理质量和系统可靠性是长期价值的基础。
+> 实际开发优先级调整为**性能优化 + 精准化路由** (Semantic Routing + Ollama 迁移) 和**系统可靠性** (MQ DLQ/Retry)，这是合理的技术债务偿还——提升本地化程度、推理质量和系统可靠性是长期价值的基础。Hierarchical Context 完成了技能注入的三层分级优化，进一步提升了推理效率。
 
 ### [strategic_analysis.md](file:///Users/michael/.gemini/antigravity/brain/5993dfe4-dc06-4c42-962b-11ce65706cfa/strategic_analysis.md) (2026-02-06)
 
@@ -129,6 +131,7 @@ pie title 功能完成度 (31.1个Phase)
 2. **正式化 CLI 接口** — 提升开发调试体验
 3. **Home Assistant E2E 测试** — 验证核心场景
 4. **dev_check.sh 全绿** — ✅ 已达成 (34 tests passed, 0 lint errors)
+5. **验证 Hierarchical Context 效果** — 监控 L0/L1/L2 分级注入对 token 使用和推理质量的影响
 
 ---
 
