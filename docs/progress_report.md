@@ -1,17 +1,18 @@
 # Nexus Agent 项目进展报告
 
-> **更新日期**: 2026-02-21
+> **更新日期**: 2026-02-24
 
 ---
 
 ## 一、已完成功能总览
 
 ```mermaid
-pie title 功能完成度 (31.1个Phase)
-    "已完成" : 26
+pie title 功能完成度 (32.1个Phase)
+    "已完成" : 27
     "进行中" : 0
     "未开始" : 5.1
 ```
+
 
 ### 🟢 核心架构 (Phase 1-11) ✅
 | 模块 | 说明 |
@@ -51,6 +52,18 @@ pie title 功能完成度 (31.1个Phase)
 | **MQ 系统** | Redis 队列 + Worker 模型，接口层与核心层解耦 |
 | **MQ DLQ/Retry** | 死信队列机制 + 指数退避重试，提升消息可靠性 |
 | **Hierarchical Context** | L0 (Summary) / L1 (Critical Rules) / L2 (Full Content) tiered injection logic implemented. |
+
+### 🔴 下一代架构转型 (Phase 40) ✅
+| 模块 | 说明 |
+|------|------|
+| **DB驱动插件/密钥** | Plugin/Secret SQLModel 模型 + AES-256 加密存储 |
+| **动态MCP热加载** | 弃用 `mcp_server_config.json`，支持数据库实时重载 |
+| **晚绑定中间件** | 运行时注入用户密钥，防止日志泄露敏感信息 |
+| **安全输入通道** | 独立 Web 表单收集用户 API 密钥，支持临时 Token |
+| **FastAPI 管理接口** | 插件/密钥 CRUD + MCP 热重载端点 |
+| **Next.js 前端脚手架** | App Router + Tailwind CSS，插件市场 UI（Streamlit 新功能弃用）|
+| **加密机器人集成** | 多租户 MCP 插件，动态注入个人 API 密钥 |
+| **Docker 部署更新** | 统一容器编排，支持插件化扩展 |
 
 ---
 

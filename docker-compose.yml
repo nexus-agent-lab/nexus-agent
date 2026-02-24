@@ -113,6 +113,18 @@ services:
       - FASTMCP_TRANSPORT_SECURITY__ENABLE_DNS_REBINDING_PROTECTION=false
     restart: unless-stopped
 
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - nexus-app
+
+
   lark-mcp:
     image: node:20-slim
     working_dir: /app
