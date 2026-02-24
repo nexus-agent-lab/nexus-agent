@@ -137,12 +137,13 @@ with tab_evolution:
                         col_approve, col_reject = st.columns(2)
                         with col_approve:
                             if st.button(f"✅ 批准 #{entry['id']}", key=f"approve_{entry['id']}"):
-                                import sys
                                 import os
+                                import sys
 
                                 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
-                                from app.core.designer import MemSkillDesigner
                                 from utils import run_async
+
+                                from app.core.designer import MemSkillDesigner
 
                                 result_msg = run_async(MemSkillDesigner.approve_changelog(int(entry["id"])))
                                 if "✅" in result_msg:
@@ -152,12 +153,13 @@ with tab_evolution:
                                 st.rerun()
                         with col_reject:
                             if st.button(f"🚫 拒绝 #{entry['id']}", key=f"reject_{entry['id']}"):
-                                import sys
                                 import os
+                                import sys
 
                                 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
-                                from app.core.designer import MemSkillDesigner
                                 from utils import run_async
+
+                                from app.core.designer import MemSkillDesigner
 
                                 result_msg = run_async(MemSkillDesigner.reject_changelog(int(entry["id"])))
                                 if "🚫" in result_msg:
