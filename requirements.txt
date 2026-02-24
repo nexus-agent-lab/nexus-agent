@@ -29,3 +29,4 @@ aiosqlite
 apscheduler
 croniter
 lark-oapi
+cryptography
