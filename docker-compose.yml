@@ -128,7 +128,8 @@ services:
   lark-mcp:
     image: node:20-slim
     working_dir: /app
-    ports:
+    # ports:
+    #   - "3000:3000" # Internal only
       - "3000:3000"
     environment:
       - LARK_APP_ID=${FEISHU_APP_ID}
