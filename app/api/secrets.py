@@ -28,7 +28,7 @@ class SecretUpdate(BaseModel):
 
 
 class SecretResponse(BaseModel):
-    id: int
+    id: Optional[int]
     key: str
     value: str
     scope: SecretScope
@@ -37,10 +37,7 @@ class SecretResponse(BaseModel):
 
 
 @router.get("/", response_model=List[SecretResponse])
-async def list_secrets(
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
-):
+async def list_secrets(session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
     """List secrets owned by the current user or global secrets if admin."""
     query = select(Secret)
     if current_user.role == "admin":
@@ -56,14 +53,11 @@ async def list_secrets(
     responses = []
     for s in secrets:
         # Mask the value for listing
-        responses.append(SecretResponse(
-            id=s.id,
-            key=s.key,
-            value="********",
-            scope=s.scope,
-            plugin_id=s.plugin_id,
-            owner_id=s.owner_id
-        ))
+        responses.append(
+            SecretResponse(
+                id=s.id, key=s.key, value="********", scope=s.scope, plugin_id=s.plugin_id, owner_id=s.owner_id
+            )
+        )
     return responses
 
 
@@ -71,14 +65,11 @@ async def list_secrets(
 async def create_secret(
     secret_in: SecretCreate,
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Create a new secret."""
     if secret_in.scope == SecretScope.global_scope and current_user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admins can create global secrets"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only admins can create global secrets")
 
     # Encrypt the value
     encrypted_val = encrypt_secret(secret_in.value)
@@ -90,7 +81,7 @@ async def create_secret(
         encrypted_value=encrypted_val,
         scope=secret_in.scope,
         plugin_id=secret_in.plugin_id,
-        owner_id=owner_id
+        owner_id=owner_id,
     )
 
     session.add(db_secret)
@@ -103,30 +94,22 @@ async def create_secret(
         value="********",
         scope=db_secret.scope,
         plugin_id=db_secret.plugin_id,
-        owner_id=db_secret.owner_id
+        owner_id=db_secret.owner_id,
     )
 
 
 @router.get("/{secret_id}", response_model=SecretResponse)
 async def get_secret(
-    secret_id: int,
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    secret_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)
 ):
     """Get a specific secret by ID."""
     secret = await session.get(Secret, secret_id)
     if not secret:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Secret not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Secret not found")
 
     if secret.scope == SecretScope.user_scope and secret.owner_id != current_user.id:
         if current_user.role != "admin":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not authorized to access this secret"
-            )
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to access this secret")
 
     return SecretResponse(
         id=secret.id,
@@ -134,7 +117,7 @@ async def get_secret(
         value="********",
         scope=secret.scope,
         plugin_id=secret.plugin_id,
-        owner_id=secret.owner_id
+        owner_id=secret.owner_id,
     )
 
 
@@ -143,28 +126,19 @@ async def update_secret(
     secret_id: int,
     secret_in: SecretUpdate,
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Update a secret's value."""
     secret = await session.get(Secret, secret_id)
     if not secret:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Secret not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Secret not found")
 
     if secret.scope == SecretScope.user_scope and secret.owner_id != current_user.id:
         if current_user.role != "admin":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not authorized to update this secret"
-            )
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to update this secret")
 
     if secret.scope == SecretScope.global_scope and current_user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admins can update global secrets"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only admins can update global secrets")
 
     secret.encrypted_value = encrypt_secret(secret_in.value)
 
@@ -178,36 +152,25 @@ async def update_secret(
         value="********",
         scope=secret.scope,
         plugin_id=secret.plugin_id,
-        owner_id=secret.owner_id
+        owner_id=secret.owner_id,
     )
 
 
 @router.delete("/{secret_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_secret(
-    secret_id: int,
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    secret_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)
 ):
     """Delete a secret."""
     secret = await session.get(Secret, secret_id)
     if not secret:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Secret not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Secret not found")
 
     if secret.scope == SecretScope.user_scope and secret.owner_id != current_user.id:
         if current_user.role != "admin":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not authorized to delete this secret"
-            )
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to delete this secret")
 
     if secret.scope == SecretScope.global_scope and current_user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admins can delete global secrets"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only admins can delete global secrets")
 
     await session.delete(secret)
     await session.commit()

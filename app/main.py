@@ -15,6 +15,7 @@ from app.api.admin import router as admin_router
 from app.api.auth import router as auth_router
 from app.api.plugins import router as plugins_router
 from app.api.secrets import router as secrets_router
+from app.api.secure_input import router as secure_input_router
 from app.api.skill_learning import router as skills_learning_router
 from app.api.skills import router as skills_router
 from app.core.agent import create_agent_graph, stream_agent_events
@@ -114,6 +115,7 @@ app.include_router(secrets_router)
 app.include_router(skills_learning_router)
 app.include_router(admin_router)
 
+app.include_router(secure_input_router)
 app.include_router(auth_router)
 
 
