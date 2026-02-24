@@ -78,7 +78,7 @@ class MCPManager:
             return os.path.expandvars(obj)
         return obj
 
-    async def _load_from_db(self) -> Dict[str, Any]:
+    async def _load_from_db(self) -> Optional[Dict[str, Any]]:
         """Fetches enabled plugins from the database."""
         try:
             from sqlalchemy import select
@@ -100,12 +100,35 @@ class MCPManager:
                     conf = p.config.copy() if p.config else {}
                     if p.source_url and not conf.get("url"):
                         conf["url"] = p.source_url
+                    # Store plugin ID for secret fetching
+                    conf["plugin_id"] = p.id
 
                     # Ensure name is consistent
                     servers[p.name] = conf
                 return servers
         except Exception as e:
             logger.error(f"Failed to load MCP config from DB: {e}")
+            return None
+
+    async def _fetch_global_secrets(self, plugin_id: int) -> Dict[str, str]:
+        """Fetches and decrypts global secrets for a plugin."""
+        try:
+            from sqlalchemy import select
+
+            from app.core.db import AsyncSessionLocal
+            from app.core.security import decrypt_secret
+            from app.models.secret import Secret, SecretScope
+
+            async with AsyncSessionLocal() as session:
+                statement = select(Secret).where(
+                    Secret.plugin_id == plugin_id, Secret.scope == SecretScope.global_scope
+                )
+                result = await session.execute(statement)
+                secrets = result.scalars().all()
+
+                return {s.key: decrypt_secret(s.encrypted_value) for s in secrets}
+        except Exception as e:
+            logger.error(f"Failed to fetch global secrets for plugin {plugin_id}: {e}")
             return {}
 
     async def initialize(self):
@@ -115,8 +138,12 @@ class MCPManager:
                 return
 
             db_servers = await self._load_from_db()
-            if db_servers:
+            if db_servers is not None and db_servers:
                 self._config = {"mcpServers": db_servers}
+            elif db_servers is None:
+                # DB connection failed, fall back to existing config or JSON
+                logger.warning("DB error, falling back to JSON config")
+                self._load_config()
             else:
                 self._load_config()
             servers = self._config.get("mcpServers", {})
@@ -124,6 +151,11 @@ class MCPManager:
             for name, server_conf in servers.items():
                 if not server_conf.get("enabled", True):
                     continue
+                # Fetch global secrets if plugin_id is present
+                global_secrets = {}
+                plugin_id = server_conf.get("plugin_id")
+                if plugin_id:
+                    global_secrets = await self._fetch_global_secrets(plugin_id)
 
                 try:
                     command = server_conf.get("command")
@@ -151,7 +183,7 @@ class MCPManager:
                         try:
                             # Headers to bypass local testing validation if needed
                             # Note: Server-side fix via MCP_TRANSPORT_SECURITY__ENABLE_DNS_REBINDING_PROTECTION is preferred
-                            read, write = await self.exit_stack.enter_async_context(sse_client(url))
+                            read, write = await self.exit_stack.enter_async_context(sse_client(url, headers=global_secrets))
                         except Exception as e:
                             logger.error(f"Failed to connect to SSE MCP {name}: {e}")
                             continue
@@ -167,7 +199,7 @@ class MCPManager:
                         logger.info(f"Connecting to Local MCP: {name} ({command} {args}) [Role: {required_role}]...")
                         try:
                             server_params = StdioServerParameters(
-                                command=command, args=args, env={**os.environ, **(env or {})}
+                                command=command, args=args, env={**os.environ, **(env or {}), **global_secrets}
                             )
                             read, write = await self.exit_stack.enter_async_context(stdio_client(server_params))
                         except Exception as e:
@@ -309,6 +341,13 @@ class MCPManager:
     async def reload(self):
         """Hot-swaps MCP servers by cleaning up and re-initializing."""
         logger.info("Reloading MCP servers from DB/Config...")
+        
+        # Handle connection errors gracefully by checking DB before cleanup
+        db_servers = await self._load_from_db()
+        if db_servers is None:
+            logger.error("Failed to connect to DB during reload. Keeping existing sessions.")
+            return
+            
         await self.cleanup()
         await self.initialize()
 
