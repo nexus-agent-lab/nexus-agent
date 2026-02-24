@@ -120,6 +120,7 @@ services:
     ports:
       - "3001:3000"
     environment:
+      - API_URL=http://nexus-app:8000
       - NEXT_PUBLIC_API_URL=http://localhost:8000
     depends_on:
       - nexus-app
@@ -128,8 +129,7 @@ services:
   lark-mcp:
     image: node:20-slim
     working_dir: /app
-    # ports:
-    #   - "3000:3000" # Internal only
+    ports:
       - "3000:3000"
     environment:
       - LARK_APP_ID=${FEISHU_APP_ID}

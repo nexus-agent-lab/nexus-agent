@@ -21,7 +21,8 @@ async function getPlugins(): Promise<Plugin[]> {
   // We use the scaffolded endpoint. Note that we handle potential connection errors
   // since the backend might not be running.
   try {
-    const res = await fetch('http://127.0.0.1:8000/api/plugins/', {
+    const baseUrl = process.env.API_URL || 'http://127.0.0.1:8000';
+    const res = await fetch(`${baseUrl}/api/plugins/`, {
       // Revalidate frequently or set to no-store for real-time marketplace data
       cache: 'no-store',
     });
@@ -61,7 +62,7 @@ export default async function PluginMarketplace() {
               No plugins found or the backend API is currently unavailable.
             </p>
             <p className="text-sm text-gray-400 mt-2">
-              Ensure the FastAPI server is running on http://127.0.0.1:8000.
+              Ensure the FastAPI server is running.
             </p>
           </div>
         ) : (
