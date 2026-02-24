@@ -1,8 +1,9 @@
 import logging
 import os
 
-from fastapi import APIRouter, Body, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
+from app.core.auth import require_admin
 from app.core.logging_config import log_buffer
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -34,3 +35,12 @@ async def update_config(key: str = Body(...), value: str = Body(...)):
     os.environ[key] = value
     logger.info(f"Admin updated config: {key} = {value}")
     return {"status": "updated", "key": key, "value": value}
+
+
+@router.post("/mcp/reload")
+async def reload_mcp(current_user=Depends(require_admin)):
+    """Reload MCP servers."""
+    from app.core.mcp_manager import MCPManager
+    manager = MCPManager.get_instance()
+    await manager.reload()
+    return {"status": "success", "message": "MCP servers reloaded successfully."}

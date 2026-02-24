@@ -59,3 +59,15 @@ class TestMCPMiddleware:
         os.environ["LLM_BASE_URL"] = "https://api.openai.com"
         threshold = MCPMiddleware._get_response_threshold()
         assert threshold >= MCPMiddleware.THRESHOLD_CLOUD_GLM
+
+    def test_cache_key_excludes_secrets(self):
+        """Cache key should not change when secrets are injected."""
+        from app.core.mcp_middleware import MCPMiddleware
+
+        args = {"param": "value"}
+        key_before = MCPMiddleware._get_cache_key("test_tool", args)
+
+        args_injected = {"param": "value", "api_key": "secret_val"}
+        key_after = MCPMiddleware._get_cache_key("test_tool", args_injected, injected_keys=["api_key"])
+
+        assert key_before == key_after

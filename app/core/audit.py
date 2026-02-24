@@ -2,7 +2,7 @@ import asyncio
 import time
 import uuid
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -10,8 +10,35 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.core.db import engine
 from app.models.audit import AuditLog
 
-# We'll use a functional approach or class-based Context Manager.
-# Using a Context Manager is cleanest for the "Pending -> Success/Failure" flow.
+
+def mask_secrets(data: Any) -> Any:
+    """Recursively mask sensitive keys in a dictionary or list."""
+    if not data:
+        return data
+
+    SECRET_KEYS = {
+        "api_key",
+        "apikey",
+        "token",
+        "access_token",
+        "secret",
+        "password",
+        "passwd",
+        "credentials",
+        "auth",
+    }
+
+    if isinstance(data, dict):
+        new_dict = {}
+        for k, v in data.items():
+            if any(sk in k.lower() for sk in SECRET_KEYS):
+                new_dict[k] = "********"
+            else:
+                new_dict[k] = mask_secrets(v)
+        return new_dict
+    elif isinstance(data, list):
+        return [mask_secrets(item) for item in data]
+    return data
 
 
 async def create_audit_entry(
@@ -22,19 +49,22 @@ async def create_audit_entry(
     tool_args: Optional[Dict[str, Any]],
 ) -> int:
     """Creates initial PENDING audit log and returns its ID."""
+    masked_args = mask_secrets(tool_args)
     async with AsyncSession(engine) as session:
         log_entry = AuditLog(
             trace_id=trace_id,
             user_id=user_id,
             action=action,
             tool_name=tool_name,
-            tool_args=tool_args,
-            status="PENDING",  # Initial status
+            tool_args=masked_args,
+            status="PENDING",
             created_at=datetime.utcnow(),
         )
         session.add(log_entry)
         await session.commit()
         await session.refresh(log_entry)
+        if log_entry.id is None:
+            raise RuntimeError("Failed to create audit entry: ID is None")
         return log_entry.id
 
 
@@ -65,7 +95,7 @@ class AuditInterceptor:
         tool_args: Dict[str, Any],
         user_role: str = "user",
         context: str = "home",
-        tool_tags: list = None,
+        tool_tags: Optional[List[str]] = None,
     ):
         self.trace_id = trace_id
         self.user_id = user_id
@@ -73,20 +103,18 @@ class AuditInterceptor:
         self.tool_args = tool_args
         self.user_role = user_role
         self.context = context
-        self.tool_tags = tool_tags or ["tag:safe"]  # Default to safe
-        self.log_id = None
-        self.start_time = None
+        self.tool_tags = tool_tags or ["tag:safe"]
+        self.log_id: Optional[int] = None
+        self.start_time: Optional[float] = None
 
     async def __aenter__(self):
         self.start_time = time.time()
 
-        # --- 1. Permission Check (Phase 4) ---
         from app.core.policy import PolicyMatrix
 
         allowed = PolicyMatrix.is_allowed(self.user_role, self.context, self.tool_tags)
 
         if not allowed:
-            # We log the attempt before raising error
             await create_audit_entry(
                 trace_id=self.trace_id,
                 user_id=self.user_id,
@@ -99,8 +127,6 @@ class AuditInterceptor:
                 f"(Tags: {self.tool_tags}) in context '{self.context}'"
             )
 
-        # --- 2. Audit Logging ---
-        # Create PENDING record
         self.log_id = await create_audit_entry(
             trace_id=self.trace_id,
             user_id=self.user_id,
@@ -111,6 +137,9 @@ class AuditInterceptor:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self.start_time is None:
+            return
+
         duration = (time.time() - self.start_time) * 1000
         status = "SUCCESS"
         error_msg = None
@@ -119,7 +148,6 @@ class AuditInterceptor:
             status = "FAILURE"
             error_msg = str(exc_val)
 
-            # Proactive Admin Notification
             from app.core.auth_service import AuthService
 
             asyncio.create_task(
@@ -131,9 +159,5 @@ class AuditInterceptor:
                 )
             )
 
-        # Update record
-        # We use asyncio.create_task to make it non-blocking if desired,
-        # but for data integrity ensuring it writes before returning is safer.
-        # Given "Async fire and forget" request:
-        # We can spawn a background task.
-        asyncio.create_task(update_audit_entry(self.log_id, status, duration, error_msg))
+        if self.log_id is not None:
+            asyncio.create_task(update_audit_entry(self.log_id, status, duration, error_msg))
