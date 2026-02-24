@@ -22,7 +22,7 @@ async function getPlugins(): Promise<Plugin[]> {
   // since the backend might not be running.
   try {
     const baseUrl = process.env.API_URL || 'http://127.0.0.1:8000';
-    const res = await fetch(`${baseUrl}/api/plugins/`, {
+    const res = await fetch(`${baseUrl}/plugins/`, {
       // Revalidate frequently or set to no-store for real-time marketplace data
       cache: 'no-store',
     });
