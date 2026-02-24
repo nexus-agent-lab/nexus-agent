@@ -78,13 +78,47 @@ class MCPManager:
             return os.path.expandvars(obj)
         return obj
 
+    async def _load_from_db(self) -> Dict[str, Any]:
+        """Fetches enabled plugins from the database."""
+        try:
+            from sqlalchemy import select
+
+            from app.core.db import AsyncSessionLocal
+            from app.models.plugin import Plugin
+
+            async with AsyncSessionLocal() as session:
+                statement = select(Plugin).where(Plugin.status == "active")
+                result = await session.execute(statement)
+                plugins = result.scalars().all()
+
+                if not plugins:
+                    return {}
+
+                servers = {}
+                for p in plugins:
+                    # Merge basic fields with config JSON
+                    conf = p.config.copy() if p.config else {}
+                    if p.source_url and not conf.get("url"):
+                        conf["url"] = p.source_url
+
+                    # Ensure name is consistent
+                    servers[p.name] = conf
+                return servers
+        except Exception as e:
+            logger.error(f"Failed to load MCP config from DB: {e}")
+            return {}
+
     async def initialize(self):
         """Connects to servers and caches tools."""
         async with self._lock:
             if self._initialized:
                 return
 
-            self._load_config()
+            db_servers = await self._load_from_db()
+            if db_servers:
+                self._config = {"mcpServers": db_servers}
+            else:
+                self._load_config()
             servers = self._config.get("mcpServers", {})
 
             for name, server_conf in servers.items():
@@ -271,6 +305,12 @@ class MCPManager:
                 if instruction:
                     instructions.append(f"### {name.upper()} INSTRUCTIONS\n{instruction}")
         return "\n\n".join(instructions)
+
+    async def reload(self):
+        """Hot-swaps MCP servers by cleaning up and re-initializing."""
+        logger.info("Reloading MCP servers from DB/Config...")
+        await self.cleanup()
+        await self.initialize()
 
     async def cleanup(self):
         async with self._lock:

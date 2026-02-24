@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, List, Optional
 
-from sqlmodel import Field, Relationship, SQLModel
+from sqlmodel import JSON, Column, Field, Relationship, SQLModel
 
 if TYPE_CHECKING:
     from app.models.secret import Secret
@@ -18,6 +18,7 @@ class Plugin(SQLModel, table=True):
     type: str = Field(description="Type or category of the plugin")
     source_url: str = Field(description="Source URL or repository for the plugin")
     status: str = Field(default="active", index=True, description="Current status of the plugin")
+    config: dict = Field(default={}, sa_column=Column(JSON), description="Configuration for the plugin")
 
     # Relationships
     secrets: List["Secret"] = Relationship(back_populates="plugin")
