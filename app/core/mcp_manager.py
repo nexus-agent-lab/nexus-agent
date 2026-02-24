@@ -183,7 +183,9 @@ class MCPManager:
                         try:
                             # Headers to bypass local testing validation if needed
                             # Note: Server-side fix via MCP_TRANSPORT_SECURITY__ENABLE_DNS_REBINDING_PROTECTION is preferred
-                            read, write = await self.exit_stack.enter_async_context(sse_client(url, headers=global_secrets))
+                            read, write = await self.exit_stack.enter_async_context(
+                                sse_client(url, headers=global_secrets)
+                            )
                         except Exception as e:
                             logger.error(f"Failed to connect to SSE MCP {name}: {e}")
                             continue
@@ -341,13 +343,13 @@ class MCPManager:
     async def reload(self):
         """Hot-swaps MCP servers by cleaning up and re-initializing."""
         logger.info("Reloading MCP servers from DB/Config...")
-        
+
         # Handle connection errors gracefully by checking DB before cleanup
         db_servers = await self._load_from_db()
         if db_servers is None:
             logger.error("Failed to connect to DB during reload. Keeping existing sessions.")
             return
-            
+
         await self.cleanup()
         await self.initialize()
 
