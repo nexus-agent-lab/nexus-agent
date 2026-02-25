@@ -46,10 +46,8 @@ async def init_db():
 
                     if user_count == 0:
                         username = os.getenv("INITIAL_ADMIN_USERNAME", "admin")
-                        api_key = os.getenv("INITIAL_ADMIN_API_KEY")
-
-                        if not api_key:
-                            api_key = secrets.token_urlsafe(16)
+                        # Always generate a secure random key for the first admin
+                        api_key = secrets.token_urlsafe(16)
 
                         admin_user = User(username=username, api_key=api_key, role="admin", language="en")
 
@@ -70,7 +68,7 @@ async def init_db():
 │  ║    Please save these credentials securely!                     ║  │
 │  ║    Use them to log into the Mission Control Dashboard.         ║  │
 │  ║                                                                 ║  │
-│  ╚══════════════════════════════════════════════════════════════╝  │
+│  ║    ╚══════════════════════════════════════════════════════════════╝  │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────┘""".format(username=username, api_key=api_key)
                         logger.warning("\n" + warning_box)
