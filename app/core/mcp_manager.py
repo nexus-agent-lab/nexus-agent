@@ -137,15 +137,15 @@ class MCPManager:
             if self._initialized:
                 return
 
+            # Always load base config from JSON first
+            self._load_config()
+            if "mcpServers" not in self._config:
+                self._config["mcpServers"] = {}
+                
+            # Merge DB servers on top
             db_servers = await self._load_from_db()
-            if db_servers is not None and db_servers:
-                self._config = {"mcpServers": db_servers}
-            elif db_servers is None:
-                # DB connection failed, fall back to existing config or JSON
-                logger.warning("DB error, falling back to JSON config")
-                self._load_config()
-            else:
-                self._load_config()
+            if db_servers:
+                self._config["mcpServers"].update(db_servers)
             servers = self._config.get("mcpServers", {})
 
             for name, server_conf in servers.items():
@@ -222,7 +222,7 @@ class MCPManager:
 
                     for tool in mcp_tools_response.tools:
                         lc_tool = self._convert_to_langchain_tool(
-                            name, session, tool, required_role, server_tool_config
+                            name, session, tool, required_role, server_tool_config, plugin_id
                         )
                         self.tools.append(lc_tool)
 
@@ -240,6 +240,7 @@ class MCPManager:
         tool: MCPToolModel,
         required_role: str,
         tool_config_map: Dict = None,
+        plugin_id: Optional[int] = None,
     ) -> StructuredTool:
         tool_config_map = tool_config_map or {}
 
@@ -267,7 +268,9 @@ class MCPManager:
                     except Exception as e:
                         return json.dumps({"type": "error", "message": str(e)}, ensure_ascii=False)
 
-                tool_conf = tool_config_map.get(tool.name, {})
+                tool_conf = tool_config_map.get(tool.name, {}).copy()
+                if plugin_id:
+                    tool_conf["plugin_id"] = plugin_id
                 return await MCPMiddleware.call_tool(
                     tool_name=tool.name, args=kwargs, original_func=original_mcp_call, tool_config=tool_conf
                 )
