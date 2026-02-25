@@ -69,15 +69,15 @@ Migrate Streamlit dashboard features to a modern Next.js frontend with FastAPI b
   - Return: `{total_count, type_counts, skill_linked_count}`
 
 ### Telemetry & Logs API (`app/api/telemetry.py`)
-- [ ] Create `telemetry.py` router file
-- [ ] `GET /audit` - List audit logs (existing in AuditLog table)
+- [x] Create `telemetry.py` router file
+- [x] `GET /audit` - List audit logs (existing in AuditLog table)
   - Query params: `limit` (default: 50), `status` (SUCCESS|FAILURE|DENIED), `user_id` (optional)
   - Use `@require_admin` for admin access, `@with_user` for user-scoped logs
   - Return: `[{id, trace_id, user_id, action, tool_name, tool_args, status, error_message, created_at, completed_at, duration_ms}]`
-- [ ] `GET /telemetry/health` - Get system health metrics (for Dashboard)
+- [x] `GET /telemetry/health` - Get system health metrics (for Dashboard)
   - Check DB connection, LLM service status, Tailscale connectivity
   - Return: `{agent_core: "online", database: "connected"|"offline", llm_service: "ollama"|"cloud", tailscale: "active"|"inactive"}`
-- [ ] `POST /admin/config` - Update runtime config (existing endpoint, verify functionality)
+- [x] `POST /admin/config` - Update runtime config (existing endpoint, verify functionality)
   - Ensure `DEBUG_WIRE_LOG` toggle works for dashboard
 - [ ] `POST /admin/mcp/reload` - Reload MCP servers (existing, verify)
 
