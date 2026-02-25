@@ -23,3 +23,15 @@ export async function verifyAuthToken(token: string) {
     throw new Error("Invalid or expired token");
   }
 }
+
+
+/**
+ * Represents the user data stored in the JWT payload.
+ */
+export interface UserPayload {
+  sub: string;
+  username: string;
+  role: string;
+  api_key: string;
+  exp: number;
+}
