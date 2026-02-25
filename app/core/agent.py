@@ -506,7 +506,7 @@ def create_agent_graph(tools: list):
 
             # Extract domain from tool metadata (MCP tools should have domain/category in metadata)
             domain = "standard"  # fallback
-            if hasattr(tool_to_call, "metadata"):
+            if hasattr(tool_to_call, "metadata") and tool_to_call.metadata is not None:
                 domain = tool_to_call.metadata.get("domain") or tool_to_call.metadata.get("category") or domain
 
             if not AuthService.check_tool_permission(user, tool_name, domain=domain):
