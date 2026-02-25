@@ -62,6 +62,11 @@ Migrate Streamlit dashboard features to a modern Next.js frontend with FastAPI b
 - [x] Create `/users` page
 - [x] User list section
 - [x] Create user form
+- [x] User details and role info in Layout top bar (Dynamic)
+- [ ] User detail view (`/users/[user_id]`)
+- [ ] Edit user role/policy form
+- [x] User list section
+- [x] Create user form
 - [ ] User detail view (`/users/[user_id]`)
 - [ ] Edit user role/policy form
 

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from app.core.auth import get_current_user, require_admin
+from app.core.auth_service import AuthService
 from app.core.db import get_session
 from app.models.user import User, UserIdentity
 
@@ -232,3 +233,43 @@ async def create_user_binding(
             detail="Failed to create binding",
         )
     return db_binding
+
+
+@router.post("/{user_id}/bind-token", response_model=Dict[str, str])
+async def create_bind_token(
+    user_id: int,
+    current_user: User = Depends(get_current_user),
+):
+    """Generate a 6-digit numeric token for account binding."""
+    if current_user.id != user_id and current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to create a bind token for this user",
+        )
+
+    token = await AuthService.create_bind_token(user_id)
+    return {"token": token}
+
+
+@router.delete("/{user_id}/identities/{identity_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def unbind_identity(
+    user_id: int,
+    identity_id: int,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """Unbind an identity from a user."""
+    if current_user.id != user_id and current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to unbind identities for this user",
+        )
+
+    identity = await session.get(UserIdentity, identity_id)
+    if not identity or identity.user_id != user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Identity not found")
+
+    success = await AuthService.unbind_identity(identity.provider, identity.provider_user_id)
+    if not success:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to unbind identity")
+    return None

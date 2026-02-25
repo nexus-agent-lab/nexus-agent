@@ -17,6 +17,7 @@ from app.models.user import User
 router = APIRouter(tags=["Telemetry"])
 logger = logging.getLogger(__name__)
 
+
 class RedisStatus(BaseModel):
     status: str
     inbox_length: int
@@ -24,13 +25,16 @@ class RedisStatus(BaseModel):
     dlq_length: int
     error: Optional[str] = None
 
+
 class DatabaseStatus(BaseModel):
     status: str
     error: Optional[str] = None
 
+
 class SystemHealth(BaseModel):
     status: str
     timestamp: datetime
+
 
 @router.get("/audit", response_model=List[AuditLog])
 async def get_audit_logs(
@@ -40,10 +44,9 @@ async def get_audit_logs(
     current_user: User = Depends(require_admin),
 ):
     """Retrieve audit logs (Admin only)."""
-    result = await session.execute(
-        select(AuditLog).order_by(AuditLog.created_at.desc()).offset(skip).limit(limit)
-    )
+    result = await session.execute(select(AuditLog).order_by(AuditLog.created_at.desc()).offset(skip).limit(limit))
     return result.scalars().all()
+
 
 @router.get("/system/health", response_model=SystemHealth)
 async def get_system_health(
@@ -51,6 +54,7 @@ async def get_system_health(
 ):
     """Get basic system health (Admin only)."""
     return SystemHealth(status="ok", timestamp=datetime.utcnow())
+
 
 @router.get("/system/redis", response_model=RedisStatus)
 async def get_redis_status(
@@ -62,21 +66,11 @@ async def get_redis_status(
         inbox_len = await r.llen(MQService.INBOX_KEY)
         outbox_len = await r.llen(MQService.OUTBOX_KEY)
         dlq_len = await r.llen(MQService.DLQ_KEY)
-        return RedisStatus(
-            status="connected",
-            inbox_length=inbox_len,
-            outbox_length=outbox_len,
-            dlq_length=dlq_len
-        )
+        return RedisStatus(status="connected", inbox_length=inbox_len, outbox_length=outbox_len, dlq_length=dlq_len)
     except Exception as e:
         logger.error(f"Redis status check failed: {e}")
-        return RedisStatus(
-            status="error",
-            inbox_length=0,
-            outbox_length=0,
-            dlq_length=0,
-            error=str(e)
-        )
+        return RedisStatus(status="error", inbox_length=0, outbox_length=0, dlq_length=0, error=str(e))
+
 
 @router.get("/system/database", response_model=DatabaseStatus)
 async def get_database_status(

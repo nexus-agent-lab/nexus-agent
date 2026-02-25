@@ -10,7 +10,7 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 logger = logging.getLogger(__name__)
 
 
-@router.get("/log")
+@router.get("/log", dependencies=[Depends(require_admin)])
 async def get_logs(limit: int = Query(100, ge=1, le=1000)):
     """Get recent logs from memory buffer."""
     # Convert deque to list and slice last N
@@ -22,7 +22,7 @@ async def get_logs(limit: int = Query(100, ge=1, le=1000)):
     return {"logs": logs}
 
 
-@router.post("/config")
+@router.post("/config", dependencies=[Depends(require_admin)])
 async def update_config(key: str = Body(...), value: str = Body(...)):
     """Update runtime configuration (env vars mostly)."""
     # Allowed keys for safety
@@ -37,10 +37,11 @@ async def update_config(key: str = Body(...), value: str = Body(...)):
     return {"status": "updated", "key": key, "value": value}
 
 
-@router.post("/mcp/reload")
-async def reload_mcp(current_user=Depends(require_admin)):
+@router.post("/mcp/reload", dependencies=[Depends(require_admin)])
+async def reload_mcp():
     """Reload MCP servers."""
     from app.core.mcp_manager import MCPManager
+
     manager = MCPManager.get_instance()
     await manager.reload()
     return {"status": "success", "message": "MCP servers reloaded successfully."}

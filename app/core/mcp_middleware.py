@@ -75,9 +75,7 @@ class MCPMiddleware:
 
         async with AsyncSessionLocal() as session:
             stmt = select(Secret).where(
-                Secret.plugin_id == plugin_id,
-                Secret.scope == SecretScope.user_scope,
-                Secret.owner_id == user_id
+                Secret.plugin_id == plugin_id, Secret.scope == SecretScope.user_scope, Secret.owner_id == user_id
             )
             result = await session.execute(stmt)
             secrets = result.scalars().all()
@@ -111,7 +109,7 @@ class MCPMiddleware:
 
         tool_args = args.copy()
         injected_keys = await cls._inject_user_secrets(tool_name, tool_args, config)
-        cache_key = cls._get_cache_key(tool_name, args, injected_keys=None) # args doesn't have secrets yet
+        cache_key = cls._get_cache_key(tool_name, args, injected_keys=None)  # args doesn't have secrets yet
 
         if ttl > 0 and cache_key in cls._cache:
             ts, cached_data = cls._cache[cache_key]

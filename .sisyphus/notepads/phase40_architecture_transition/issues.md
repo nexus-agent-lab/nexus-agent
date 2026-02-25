@@ -1,0 +1,2 @@
+- 2026-02-24: Noticed that dynamic MCP loader task was mostly complete, but patched `app/core/mcp_manager.py` to handle DB connection errors gracefully during `reload()`. Existing sessions are now kept if the database is unreachable.
+- **FastAPI Body parsing for dict**: When updating JSON columns (like Plugin's config), directly typing a parameter as `dict` in a FastAPI route without `Body(...)` will cause OpenAPI schema issues or require query params. Using a Pydantic `BaseModel` (e.g. `PluginUpdate`) is a much more robust approach.

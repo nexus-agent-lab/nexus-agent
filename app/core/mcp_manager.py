@@ -26,7 +26,9 @@ except ImportError:
 
 logger = logging.getLogger("nexus.mcp")
 
-CONFIG_PATH = os.getenv("MCP_CONFIG_PATH", "/app/mcp_server_config.json")
+# Support both Docker and Local dev paths
+_DEFAULT_CONFIG_PATH = os.path.join(os.getcwd(), "mcp_server_config.json")
+CONFIG_PATH = os.getenv("MCP_CONFIG_PATH", _DEFAULT_CONFIG_PATH)
 
 # Whitelist of allowed MCP server commands for security
 ALLOWED_MCP_COMMANDS = ["python", "python3", "node", "npx", "uv"]
@@ -141,7 +143,7 @@ class MCPManager:
             self._load_config()
             if "mcpServers" not in self._config:
                 self._config["mcpServers"] = {}
-                
+
             # Merge DB servers on top
             db_servers = await self._load_from_db()
             if db_servers:

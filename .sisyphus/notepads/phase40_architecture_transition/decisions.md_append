@@ -1,0 +1,12 @@
+### Late-Binding Secret Injection and Caching Avoidance (MCP Middleware)
+
+**Context:**
+MCP tools may require sensitive user-specific secrets (e.g., API keys). Injecting these into arguments creates a risk of exposing them in logs, caching layers (`ToolCache`), or large-response sandboxes (`SANDBOX_DATA_DIR`).
+
+**Decision:**
+1. **Shallow Copy for Arguments**: In `MCPMiddleware.call_tool`, we create a copy of the incoming arguments (`tool_args = args.copy()`) before injecting decrypted user-level secrets. This guarantees that upstream components (like `Agent` audit logs) never see the injected secrets because their reference dictionary remains unmodified.
+2. **Post-Execution Masking**: To prevent the tool result (which is a JSON wrapper string) from accidentally returning and caching an echoed secret, we iterate over the injected secrets and perform a direct string replacement (`result.replace(secret_val, "***MASKED***")`) on the tool's raw result string. This ensures the cached data, the returned data, and the sandbox data are thoroughly sanitized.
+3. **Targeted Late-Binding**: The secrets injected are strictly queried from the database based on `owner_id == user_id` and `scope == SecretScope.user_scope`, matching the executing plugin's `plugin_id`.
+
+**Rationale:**
+This "late-binding" avoids needing to restart MCP servers or alter `server_conf` every time a user adds an API key. Copying arguments and masking output ensures the caching mechanism behaves correctly (caching only sanitized inputs and outputs) without introducing security vulnerabilities.

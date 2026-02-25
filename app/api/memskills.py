@@ -68,12 +68,7 @@ async def get_memskills_stats(session: AsyncSession = Depends(get_session)):
     deprecated = sum(1 for s in skills if s.status == "deprecated")
 
     feedback_data = [
-        {
-            "name": s.name,
-            "positive_count": s.positive_count,
-            "negative_count": s.negative_count
-        }
-        for s in skills
+        {"name": s.name, "positive_count": s.positive_count, "negative_count": s.negative_count} for s in skills
     ]
 
     return MemorySkillStatsResponse(
@@ -81,7 +76,7 @@ async def get_memskills_stats(session: AsyncSession = Depends(get_session)):
         active_skills=active,
         canary_skills=canary,
         deprecated_skills=deprecated,
-        feedback_data=feedback_data
+        feedback_data=feedback_data,
     )
 
 
@@ -89,9 +84,7 @@ async def get_memskills_stats(session: AsyncSession = Depends(get_session)):
 async def list_changelogs(session: AsyncSession = Depends(get_session), limit: int = 20):
     """List recent Memory Skill changelogs."""
     result = await session.execute(
-        select(MemorySkillChangelog)
-        .order_by(MemorySkillChangelog.created_at.desc())
-        .limit(limit)
+        select(MemorySkillChangelog).order_by(MemorySkillChangelog.created_at.desc()).limit(limit)
     )
     return result.scalars().all()
 
@@ -142,4 +135,3 @@ async def reject_changelog(id: int):
     if "❌" in result:
         raise HTTPException(status_code=400, detail=result)
     return {"message": result}
-
