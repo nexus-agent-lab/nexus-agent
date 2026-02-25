@@ -1,16 +1,17 @@
 import asyncio
 import logging
 import os
+import secrets
 
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
-from sqlmodel import SQLModel
+from sqlmodel import SQLModel, select
 
 # Basic logging setup
 import app.core.logging_config  # noqa: F401  — Centralized logging
 
 logger = logging.getLogger(__name__)
-
 
 # Import models to register them with SQLModel.metadata
 
@@ -35,6 +36,44 @@ async def init_db():
 
                 # await conn.run_sync(SQLModel.metadata.drop_all)
                 await conn.run_sync(SQLModel.metadata.create_all)
+
+                # Provision initial admin user if no users exist
+                from app.models.user import User
+
+                async with AsyncSessionLocal() as session:
+                    result = await session.execute(select(func.count(User.id)))
+                    user_count = result.scalar()
+
+                    if user_count == 0:
+                        username = os.getenv("INITIAL_ADMIN_USERNAME", "admin")
+                        api_key = os.getenv("INITIAL_ADMIN_API_KEY")
+
+                        if not api_key:
+                            api_key = secrets.token_urlsafe(16)
+
+                        admin_user = User(username=username, api_key=api_key, role="admin", language="en")
+
+                        session.add(admin_user)
+                        await session.commit()
+
+                        # Print visible warning with credentials
+                        warning_box = """
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                     │
+│  ╔══════════════════════════════════════════════════════════════╗  │
+│  ║                                                                 ║  │
+│  ║    ⚠️  INITIAL ADMIN USER CREATED ⚠️                             ║  │
+│  ║                                                                 ║  │
+│  ║    Username: {username:<50} ║  │
+│  ║    API Key:   {api_key:<50} ║  │
+│  ║                                                                 ║  │
+│  ║    Please save these credentials securely!                     ║  │
+│  ║    Use them to log into the Mission Control Dashboard.         ║  │
+│  ║                                                                 ║  │
+│  ╚══════════════════════════════════════════════════════════════╝  │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────┘""".format(username=username, api_key=api_key)
+                        logger.warning("\n" + warning_box)
             logger.info("Database initialized successfully.")
             return
         except Exception as e:
