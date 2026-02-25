@@ -13,6 +13,7 @@ from pydantic import BaseModel
 import app.core.logging_config  # noqa: F401  — Centralized logging (must be first)
 from app.api.admin import router as admin_router
 from app.api.auth import router as auth_router
+from app.api.memories import router as memories_router
 from app.api.memskills import router as memskills_router
 from app.api.plugins import router as plugins_router
 from app.api.secrets import router as secrets_router
@@ -120,6 +121,7 @@ app.include_router(admin_router)
 app.include_router(secure_input_router)
 app.include_router(memskills_router)
 app.include_router(users_router)
+app.include_router(memories_router)
 app.include_router(auth_router)
 
 

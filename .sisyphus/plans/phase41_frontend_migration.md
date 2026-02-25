@@ -19,14 +19,14 @@ Migrate Streamlit dashboard features to a modern Next.js frontend with FastAPI b
 *Create FastAPI endpoints that Streamlit currently bypasses via direct DB access.*
 
 ### Users & IAM API (`app/api/users.py`)
-- [ ] Create `users.py` router file
-- [ ] `GET /users` - List all users with role and policy (admin only)
+- [x] Create `users.py` router file
+- [x] `GET /users` - List all users with role and policy (admin only)
   - Use `@require_admin` decorator
   - Return: `[{id, username, role, api_key, policy, language, timezone}]`
-- [ ] `GET /users/{user_id}` - Get user details including identities (admin only)
+- [x] `GET /users/{user_id}` - Get user details including identities (admin only)
   - Include `UserIdentity` relationships
   - Return: User object with `identities` array
-- [ ] `POST /users` - Create new user (admin only)
+- [x] `POST /users` - Create new user (admin only)
   - Fields: `username`, `role` (default: user)
   - Auto-generate `api_key`
   - Return: Created user with `api_key`
@@ -35,37 +35,37 @@ Migrate Streamlit dashboard features to a modern Next.js frontend with FastAPI b
   - Return: `{token, expires_in}`
 - [ ] `DELETE /users/{user_id}/identities/{identity_id}` - Unbind identity
   - Use existing `AuthService.unbind_identity()`
-- [ ] `PATCH /users/{user_id}` - Update user role and policy
+- [x] `PATCH /users/{user_id}` - Update user role and policy
   - Fields: `role`, `policy` (JSON)
   - Validate policy is valid JSON
   - Return: Updated user
 
 ### MemSkills API (`app/api/memskills.py`)
-- [ ] Create `memskills.py` router file
-- [ ] `GET /memskills` - List all memory skills
+- [x] Create `memskills.py` router file
+- [x] `GET /memskills` - List all memory skills
   - Query params: `status` (optional: active|canary|deprecated), `skill_type` (encoding|retrieval)
   - Return: Array with stats: `[{id, name, skill_type, version, status, positive_count, negative_count, is_base, created_at}]`
 - [ ] `GET /memskills/{skill_id}` - Get skill details with prompt template
   - Return: Skill object including `prompt_template`
 - [ ] `GET /memskills/stats` - Get skill statistics (for dashboard metrics)
   - Return: `{total, active_count, canary_count, deprecated_count, total_memories}`
-- [ ] `POST /memskills/changelog/approve` - Approve canary skill (admin only)
+- [x] `POST /memskills/changelog/approve` - Approve canary skill (admin only)
   - Body: `{changelog_id}`
   - Use existing `MemSkillDesigner.approve_changelog()`
-- [ ] `POST /memskills/changelog/reject` - Reject canary skill (admin only)
+- [x] `POST /memskills/changelog/reject` - Reject canary skill (admin only)
   - Body: `{changelog_id}`
   - Use existing `MemSkillDesigner.reject_changelog()`
-- [ ] `GET /memskills/changelog` - List skill evolution history
+- [x] `GET /memskills/changelog` - List skill evolution history
   - Query params: `limit` (default: 20), `status` (canary|approved|rejected)
   - Return: Array: `[{id, skill_name, reason, status, old_prompt, new_prompt, created_at, reviewed_at}]`
 
 ### Memory API (`app/api/memories.py`)
-- [ ] Create `memories.py` router file
-- [ ] `GET /memories` - List stored memories
+- [x] Create `memories.py` router file
+- [x] `GET /memories` - List stored memories
   - Query params: `user_id` (optional), `limit` (default: 50), `memory_type` (profile|reflexion|knowledge)
   - Use `@with_user` decorator for user-scoped access
   - Return: `[{id, user_id, memory_type, content, skill_id, created_at}]`
-- [ ] `GET /memories/stats` - Get memory statistics
+- [x] `GET /memories/stats` - Get memory statistics
   - Return: `{total_count, type_counts, skill_linked_count}`
 
 ### Telemetry & Logs API (`app/api/telemetry.py`)
