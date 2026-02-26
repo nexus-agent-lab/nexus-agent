@@ -18,6 +18,19 @@ CORE_TOOL_NAMES = {
     "query_memory",
 }
 
+# Domain Affinity Scoring Constants
+DOMAIN_AFFINITY = {
+    "same": 1.15,  # 15% boost for same-domain
+    "adjacent": 1.0,  # neutral for related domains
+    "cross": 0.70,  # 30% penalty for cross-domain
+}
+
+DOMAIN_ADJACENCY = {
+    "home": {"smart_home", "home", "iot", "ha"},
+    "system": {"system", "admin", "coding", "debug", "standard"},
+    "work": {"communication", "office", "feishu", "lark", "dingtalk"},
+}
+
 
 class SemanticToolRouter:
     _instance = None
@@ -85,6 +98,19 @@ class SemanticToolRouter:
                 base_url=base_url,
                 dimensions=dimension if dimension == 1536 else None,
             )
+
+    async def sync_with_mcp(self):
+        """
+        Sync semantic router with current MCP tools.
+        (Lazy Sync / Hot-Reload Support)
+        """
+        from app.core.mcp_manager import get_mcp_tools
+        from app.core.static_tools import get_static_tools
+
+        logger.info("Syncing ToolRouter with MCPManager...")
+        mcp_tools = await get_mcp_tools()
+        static_tools = get_static_tools()
+        await self.register_tools(static_tools + mcp_tools)
 
     async def register_tools(self, tools: List[Any]):
         """
@@ -237,10 +263,36 @@ class SemanticToolRouter:
             logger.error(f"Skill routing failed: {e}")
             return []
 
-    async def route(self, query: str, role: str = "user") -> List[Any]:
+    def _get_domain(self, tool: Any) -> str:
+        """Extract domain/category from tool metadata."""
+        if hasattr(tool, "metadata") and tool.metadata:
+            return tool.metadata.get("domain") or tool.metadata.get("category") or "standard"
+        return "standard"
+
+    def _domain_multiplier(self, tool: Any, current_context: str) -> float:
+        """Calculate domain affinity multiplier."""
+        if not current_context or current_context == "home":
+            # Default to no penalty in home context, but boost same-domain
+            context_family = DOMAIN_ADJACENCY.get("home", {"home"})
+        else:
+            context_family = DOMAIN_ADJACENCY.get(current_context, {current_context})
+
+        tool_domain = self._get_domain(tool).lower()
+
+        if tool_domain in context_family:
+            return DOMAIN_AFFINITY["same"]
+
+        # Check for adjacency
+        for family_domains in DOMAIN_ADJACENCY.values():
+            if current_context in family_domains and tool_domain in family_domains:
+                return DOMAIN_AFFINITY["adjacent"]
+
+        return DOMAIN_AFFINITY["cross"]
+
+    async def route(self, query: str, role: str = "user", context: str = "home") -> List[Any]:
         """
-        Select relevant tools based on query and user role.
-        Returns: Core Tools + Top-K Semantic Tools
+        Select relevant tools based on query, user role, and domain context.
+        Returns: Core Tools + Top-K Semantic Tools (Affinity Adjusted) + Discovery Tools
         """
         # If disabled or not ready, return all ALLOWED tools
         if not settings.ENABLE_SEMANTIC_ROUTING or self.tool_index is None or not self.embeddings:
@@ -255,52 +307,98 @@ class SemanticToolRouter:
             query_vec = np.array(query_vec)
 
             # Cosine Similarity: (A . B) / (|A| * |B|)
-            # Assuming normalized embeddings from models usually, but let's be safe
             norm_tools = np.linalg.norm(self.tool_index, axis=1)
             norm_query = np.linalg.norm(query_vec)
 
             if norm_query == 0:
                 return [t for t in self.core_tools if self._check_role(t, role)]
 
-            # dot product
-            scores = np.dot(self.tool_index, query_vec) / (norm_tools * norm_query)
+            # dot product / cosine similarity
+            raw_scores = np.dot(self.tool_index, query_vec) / (norm_tools * norm_query)
+
+            # Apply Domain Affinity Multipliers
+            adjusted_results = []
+            for idx, score in enumerate(raw_scores):
+                tool = self.semantic_tools[idx]
+                multiplier = self._domain_multiplier(tool, context)
+                adjusted_score = score * multiplier
+                adjusted_results.append((tool, adjusted_score, score, idx))
+
+            # Sort by adjusted score
+            adjusted_results.sort(key=lambda x: x[1], reverse=True)
 
             # Select Top-K
             k = min(settings.ROUTING_TOP_K, len(self.semantic_tools))
             threshold = settings.ROUTING_THRESHOLD
 
-            # Get indices of top K scorers
-            # np.argsort returns ascending, so take last k and reverse
-            top_indices = np.argsort(scores)[-k:][::-1]
+            top_results = adjusted_results[:k]
+
+            # Boundary Heuristic Loading (Tier 1)
+            # If any tool from a plugin is hit, include its discovery tools (prefix get_, list_, search_)
+            discovery_tools = []
+            hit_domains = set()
+            for tool, adj_score, _, _ in top_results:
+                if adj_score >= threshold:
+                    domain = self._get_domain(tool)
+                    if domain and domain != "standard":
+                        hit_domains.add(domain)
+
+            if hit_domains:
+                for tool in self.semantic_tools:
+                    domain = self._get_domain(tool)
+                    if domain in hit_domains:
+                        name = tool.name.lower()
+                        # Discovery prefixes
+                        if name.startswith(("get_", "list_", "search_", "read_", "query_")):
+                            if tool not in [tr[0] for tr in top_results]:
+                                discovery_tools.append(tool)
+
+            # Limit discovery tools to avoid token bloat
+            if len(discovery_tools) > 5:
+                discovery_tools = discovery_tools[:5]
+
+            # Collision Detection
+            collision_msg = None
+            if len(top_results) >= 2:
+                top1_tool, top1_adj, top1_raw, _ = top_results[0]
+                top2_tool, top2_adj, top2_raw, _ = top_results[1]
+
+                top1_domain = self._get_domain(top1_tool)
+                top2_domain = self._get_domain(top2_tool)
+
+                delta = abs(top1_adj - top2_adj)
+                if top1_domain != top2_domain and delta < 0.08:
+                    collision_msg = (
+                        f"⚠️ ROUTING AMBIGUITY: Tools from '{top1_domain}' and '{top2_domain}' "
+                        f"both matched (delta={delta:.3f}). Before executing, verify context."
+                    )
+                    logger.warning(collision_msg)
 
             selected_semantic = []
             _wire_log = os.getenv("DEBUG_WIRE_LOG", "false").lower() == "true"
 
-            for idx in top_indices:
-                score = scores[idx]
-                tool = self.semantic_tools[idx]
-
+            for tool, adj_score, raw_score, idx in top_results:
                 # Check Permissions FIRST
                 if not self._check_role(tool, role):
                     continue
 
-                # Filter by threshold (optional, or just take top K)
-                # We log matches to see performance
-                if score >= threshold:
+                if adj_score >= threshold:
                     selected_semantic.append(tool)
-                    logger.debug(f"Route Match: {tool.name} (score={score:.4f})")
+                    logger.debug(f"Route Match: {tool.name} (adj={adj_score:.4f}, raw={raw_score:.4f})")
                     if _wire_log:
-                        print(f"  │   │  ├─ [MATCH] {tool.name:<25} (score={score:.4f})")
+                        print(f"  │   │  ├─ [MATCH] {tool.name:<25} (adj={adj_score:.4f}, raw={raw_score:.4f})")
                 else:
-                    logger.debug(f"Route Drop: {tool.name} (score={score:.4f} < {threshold})")
+                    logger.debug(f"Route Drop: {tool.name} (adj={adj_score:.4f} < {threshold})")
                     if _wire_log:
-                        print(f"  │   │  ├─ [DROP]  {tool.name:<25} (score={score:.4f})")
+                        print(f"  │   │  ├─ [DROP]  {tool.name:<25} (adj={adj_score:.4f})")
 
-            # Always return core tools + selected (filtered by role)
+            # Always return core tools + selected + discovery (filtered by role)
             final_core = [t for t in self.core_tools if self._check_role(t, role)]
-            final_tools = final_core + selected_semantic
+            final_discovery = [t for t in discovery_tools if self._check_role(t, role)]
 
-            # Deduplicate by name just in case
+            final_tools = final_core + selected_semantic + final_discovery
+
+            # Deduplicate by name
             unique_tools = {getattr(t, "name", str(t)): t for t in final_tools}
             return list(unique_tools.values())
 

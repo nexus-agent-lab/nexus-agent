@@ -1,6 +1,76 @@
-# Semantic Tool Routing Design
+# Semantic Tool Routing Design (V3: Graph-Augmented Self-Healing)
 
-## Limit & Challenge
+## 1. Challenge: The "Fatal Flaw" of Pure Vector Search
+Pure cosine similarity understands **semantic overlap** but ignores **logical dependency chains** and **domain boundaries**.
+
+### Example Failure: "Semantic Overfitting"
+- **Query**: "Query logs" (User intent: System logs)
+- **Problem**: System only has `ha_get_logs` (Home Assistant).
+- **Result**: Vector search finds "logs" in HA tool, routes it. Agent blindly executes HA logs instead of realizing system logs are missing.
+- **Root Cause**: Vector DBs prioritize keywords over logical subject or "missing capability" awareness.
+
+## 2. Solution: 3-Tier Hybrid Architecture (V3)
+
+### Tier 1: Domain Affinity & Heuristic Loading (Pre-emptive)
+**Goal**: Filter noise and ensure discovery tools are available before they are needed.
+
+1.  **Domain Affinity Scoring**: Multiply cosine scores by a domain-relevance factor based on `AgentState.context`.
+    - Same domain boost (e.g., 1.15x)
+    - Cross-domain penalty (e.g., 0.7x)
+### Tier 1: Domain Affinity & Heuristic Loading (Pre-emptive)
+**Goal**: Filter noise and ensure discovery tools are available before they are needed.
+
+1.  **Domain Affinity Scoring**: Multiply cosine scores by a domain-relevance factor based on `AgentState.context`.
+    - Same domain boost (e.g., 1.15x)
+    - Cross-domain penalty (e.g., 0.7x)
+2.  **Boundary Heuristic Loading**: When any tool from a specific MCP plugin is matched, auto-include its discovery tools (prefixes like `get_`, `list_`, `search_`).
+
+### Tier 2: Collision Detection & Dynamic Recovery (Reactive)
+**Goal**: Detect ambiguity and allow the agent to fetch missing tools mid-flight.
+
+1.  **Inline Collision Detection**: If Top-1 and Top-2 tools from different domains have a score delta < 0.08, inject a **Routing Alert** into the System Prompt.
+2.  **Circuit Breaker**: Hard limit of 3 retries for tool discovery. After 3 attempts, `request_more_tools` is removed from the belt and an alert is injected into the prompt.
+
+### Tier 3: JIT Experience Cache (Evolving)
+**Goal**: Learn from detours (retries/searches) instantly.
+
+1.  **ExperienceReplay Node**: Captures lessons from successful tasks that required multiple attempts.
+2.  **Lesson Persistence**: Summarized lessons are saved as `preference` memories to guide future routing.
+
+## 3. Observability & Debugging
+Enable `DEBUG_WIRE_LOG=true` in `.env` to see the V3 routing trace in the logs:
+- **Query Reconstruction**: Shows the noise-reduced routing query (Human Messages + Context).
+- **Affinity Scoring**: Logs adjusted scores vs raw cosine similarity.
+- **Collision Alerts**: Highlights semantic ambiguities between domains.
+- **JIT Evolution**: Logs when a new experience is being "replayed" into memory.
+
+
+### Tier 2: Collision Detection & Dynamic Recovery (Reactive)
+**Goal**: Detect ambiguity and allow the agent to fetch missing tools mid-flight.
+
+1.  **Inline Collision Detection**: If Top-1 and Top-2 tools from different domains have a score delta < 0.08, inject a **Routing Alert** into the System Prompt.
+2.  **Request More Tools**: LLM can call `request_more_tools(query)` if it detects it lacks a prerequisite tool.
+3.  **Circuit Breaker**: Hard limit of 3 retries per turn to prevent infinite loops.
+
+### Tier 3: JIT Negative Reinforcement (Evolving)
+**Goal**: Learn from failures and user corrections instantly.
+
+1.  **ExperienceReplay**: Triggered when a user corrects a routing error (e.g., "No, I meant system logs").
+2.  **Negative Memory**: Store persistent constraints in pgvector memory: *"When asking for logs in system context, do NOT use ha_get_logs."*
+
+## 3. Implementation Plan
+
+### P0: Noise Reduction & Domain Scoring
+1.  **Routing Query Optimization**: Filter `HumanMessage` only, exclude `ToolMessage` JSON noise.
+2.  **Affinity Scoring**: Implement multiplier logic in `tool_router.py`.
+
+### P1: Robustness & Protocols
+1.  **System Prompt Hardening**: Add "Domain Verification" and "Keyword ≠ Intent" protocols.
+2.  **Circuit Breaker**: Implement tool removal logic after 3 failed discovery attempts.
+3.  **Registry View**: Refactor `ToolRegistry` as a lazy-sync view of `MCPManager`.
+
+### P2: JIT Learning
+1.  **Feedback Loop**: Integrate `reflexion_node` with `memory_manager` to store negative routing signals.
 - **Current State**: All 34 tools (~7k tokens) are sent to the LLM on every turn.
 - **Problem**:
   - **Latency**: Local GLM-4.7 Flash is slow with long context (>3s processing).

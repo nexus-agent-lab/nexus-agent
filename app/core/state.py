@@ -18,3 +18,8 @@ class AgentState(TypedDict):
     context: str = "home"  # Default context (home/work)
     reflexions: Optional[List[str]] = []  # Stored self-reflections
     retry_count: int = 0  # Track retries for current step
+    search_count: int = 0  # Track tool search retries (Tier 2)
+    active_tool_names: Optional[List[str]] = None  # Explicitly selected tools for current turn
+
+    reflexions: Optional[List[str]] = []  # Stored self-reflections
+    retry_count: int = 0  # Track retries for current step
