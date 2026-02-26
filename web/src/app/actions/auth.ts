@@ -45,7 +45,9 @@ export async function login(prevState: { error?: string } | null | undefined, fo
     const cookieStore = await cookies();
     cookieStore.set("access_token", data.access_token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      // For local AI OS deployments, disable Secure flag unless explicitly requested via REQUIRE_HTTPS.
+      // This prevents the cookie from being dropped on local HTTP connections.
+      secure: process.env.REQUIRE_HTTPS === "true",
       sameSite: "lax",
       path: "/",
       maxAge: 24 * 60 * 60,

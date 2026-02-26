@@ -26,13 +26,6 @@ export async function middleware(request: NextRequest) {
     response.cookies.delete("access_token");
     return response;
   }
-    await verifyAuthToken(token);
-    return NextResponse.next();
-  } catch {
-    const response = NextResponse.redirect(new URL("/login", request.url));
-    response.cookies.delete("access_token");
-    return response;
-  }
 }
 
 export const config = {

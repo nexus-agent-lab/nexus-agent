@@ -1,6 +1,6 @@
+import logging
 import os
 from datetime import datetime, timedelta
-import logging
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -69,5 +69,7 @@ async def generate_bind_token(current_user: User = Depends(get_current_user)):
     """
     Generate a temporary 6-digit token to link a 3rd party account (Telegram/Feishu).
     """
+    if current_user.id is None:
+        raise HTTPException(status_code=500, detail="User ID is missing")
     token = await AuthService.create_bind_token(current_user.id)
     return BindTokenResponse(token=token)
