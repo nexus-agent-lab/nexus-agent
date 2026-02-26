@@ -17,6 +17,7 @@ import {
   Bell,
   Search,
   ChevronDown,
+  Map
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { logout } from "@/app/actions/auth";
@@ -35,6 +36,7 @@ const navItems: NavItem[] = [
   { label: "Audit", href: "/audit", icon: History },
   { label: "Network", href: "/network", icon: Network },
   { label: "Integrations", href: "/integrations", icon: Puzzle },
+  { label: "Roadmap", href: "/roadmap", icon: Map },
 ];
 
 /**

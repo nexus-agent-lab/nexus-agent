@@ -17,6 +17,7 @@ from app.api.auth import router as auth_router
 from app.api.memories import router as memories_router
 from app.api.memskills import router as memskills_router
 from app.api.plugins import router as plugins_router
+from app.api.roadmap import router as roadmap_router
 from app.api.secrets import router as secrets_router
 from app.api.secure_input import router as secure_input_router
 from app.api.skill_learning import router as skills_learning_router
@@ -45,9 +46,6 @@ agent_graph = None
 async def lifespan(app: FastAPI):
     # Startup logic
     await init_db()
-
-    # Start MCP Servers (Handled automatically by get_mcp_tools)
-    # MCPManager.start_all() - REMOVED
 
     # Initialize Tools
     static_tools = get_static_tools()
@@ -122,18 +120,15 @@ app.add_middleware(
 )
 
 # Register API routers
-
-# Register API routers
-
 app.include_router(skills_router)
 app.include_router(plugins_router)
 app.include_router(secrets_router)
 app.include_router(skills_learning_router)
 app.include_router(admin_router)
 app.include_router(telemetry_router)
-
 app.include_router(secure_input_router)
 app.include_router(memskills_router)
+app.include_router(roadmap_router)
 app.include_router(users_router)
 app.include_router(memories_router)
 app.include_router(auth_router)
