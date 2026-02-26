@@ -1,6 +1,7 @@
 # Strategic Analysis: Nexus Agent OS
 
-> **Date**: 2026-02-22
+> **Date**: 2026-02-26
+> **Status**: Updated based on Phase 41 (Frontend Migration) and Autonomous Vision expansion
 > **Status**: Updated based on Phase 30.1 completion
 
 ## 1. Vision: The AI Operating System
@@ -49,6 +50,8 @@ Nexus Agent has transitioned from a simple chatbot to an "AI Operating System" c
 | **P1** | **DingTalk Adapter** | Broaden enterprise reach in the Asian market. |
 | **P1** | **SSO & OIDC** | Enterprise security compliance for dashboard login. |
 | **P1** | **Real-time Logs** | Implement Server-Sent Events (SSE) to stream Agent thinking process to the UI. |
+| **P1** | **Code Factory** | Implement "CodeSkill" registry where Agent can write, test, and persist Python scripts for deterministic scheduling. |
+| **P2** | **CLI Finalization** | Standardize terminal interaction for developers. |
 | **P2** | **CLI Finalization** | Standardize terminal interaction for developers. |
 
 ---
@@ -78,4 +81,16 @@ To resolve the conflict between MCP's request-response nature and the need for p
 2.  **Modular Execution (Driver Layer)**:
     - Standard actions (e.g., turning on lights, fetching history) remain in **Model Context Protocol (MCP)** servers.
     - **Self-Maintenance Policy**: To ensure security and performance (caching), all critical MCP servers (starting with HA) must be **Forked and Maintained** under our internal GitHub organization rather than relying on unvetted third-party images.
+
+---
+
+## 7. Vision: The Autonomous Code Factory (CodeSkill)
+
+To achieve "OpenClaw-like" autonomy while maintaining OS-level security, Nexus Agent will evolve from *Prompt Scheduling* to *Deterministic Script Scheduling*:
+
+1.  **Closed-Loop Evolution**: When faced with a recurring data task, the Agent writes a Python script, tests it in the `dry-run` sandbox, and iterates on errors until it succeeds.
+2.  **CodeSkill Persistence**: Successful scripts are saved as immutable "CodeSkills" in a system registry, rather than re-generated every turn.
+3.  **Dynamic Permission Manifest**: Each CodeSkill declares its required scope (e.g., `read:/storage/twitter`, `network:api.twitter.com`). 
+4.  **Human-in-the-Loop Governance**: High-risk CodeSkills (e.g., file deletion, outbound network) require one-time Admin approval via the Dashboard before being activated for background scheduling.
+5.  **Dehydrated Execution**: Once approved, the `SchedulerService` executes the script natively in a hardened sandbox without invoking the LLM, maximizing reliability and saving tokens.
 
