@@ -10,17 +10,17 @@ interface DataTableProps<T> {
   columns: Column<T>[];
   data: T[];
   className?: string;
-  onRowClick?: (item: T) => void;
 }
 
 /**
  * A reusable table component for displaying data.
+ * This is a Server Component. Interactive elements (buttons, links) should be 
+ * passed via the 'cell' renderer as Client Components or standard HTML tags.
  */
 export default function DataTable<T>({
   columns,
   data,
   className,
-  onRowClick,
 }: DataTableProps<T>) {
   return (
     <div
@@ -41,15 +41,11 @@ export default function DataTable<T>({
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
-            {data.length > 0 ? (
+            {data && data.length > 0 ? (
               data.map((item, rowIdx) => (
                 <tr
                   key={rowIdx}
-                  className={cn(
-                    "bg-white transition-colors hover:bg-neutral-50 dark:bg-neutral-900 dark:hover:bg-neutral-800/50",
-                    onRowClick && "cursor-pointer"
-                  )}
-                  onClick={() => onRowClick?.(item)}
+                  className="bg-white transition-colors hover:bg-neutral-50 dark:bg-neutral-900 dark:hover:bg-neutral-800/50"
                 >
                   {columns.map((column, colIdx) => (
                     <td key={colIdx} className="whitespace-nowrap px-6 py-4">

@@ -37,12 +37,14 @@ class SystemHealth(BaseModel):
     status: str
     timestamp: datetime
 
+
 class NetworkNode(BaseModel):
     hostname: str
     ip: str
     os: Optional[str] = None
     type: str
     online: Optional[bool] = None
+
 
 class NetworkStatusResponse(BaseModel):
     status: str
@@ -98,6 +100,7 @@ async def get_database_status(
     except Exception as e:
         logger.error(f"Database status check failed: {e}")
         return DatabaseStatus(status="error", error=str(e))
+
 
 @router.get("/system/network", response_model=NetworkStatusResponse)
 async def get_network_status(

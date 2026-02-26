@@ -1,5 +1,5 @@
-import os
 from datetime import datetime, timedelta
+
 import jwt
 
 SECRET_KEY = "super-secret-default-key-1234"

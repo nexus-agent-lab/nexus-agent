@@ -48,6 +48,7 @@ Nexus Agent has transitioned from a simple chatbot to an "AI Operating System" c
 | **P0** | **Proactive Triggers** | Implement `StateWatcher` for Home Assistant events (e.g., notify on low battery). |
 | **P1** | **DingTalk Adapter** | Broaden enterprise reach in the Asian market. |
 | **P1** | **SSO & OIDC** | Enterprise security compliance for dashboard login. |
+| **P1** | **Real-time Logs** | Implement Server-Sent Events (SSE) to stream Agent thinking process to the UI. |
 | **P2** | **CLI Finalization** | Standardize terminal interaction for developers. |
 
 ---
