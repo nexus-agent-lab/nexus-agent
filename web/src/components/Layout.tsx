@@ -83,11 +83,6 @@ export default function Layout({
               />
               <span className="text-xl font-bold tracking-tight">Nexus</span>
             </Link>
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white">
-                <Brain className="h-5 w-5" />
-              </div>
-              <span className="text-xl font-bold tracking-tight">Nexus</span>
-            </Link>
             <button
               className="ml-auto lg:hidden"
               onClick={() => setSidebarOpen(false)}

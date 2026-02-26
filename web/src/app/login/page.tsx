@@ -23,10 +23,6 @@ export default function LoginPage() {
             Sign in to Nexus Agent
           </h2>
         </div>
-          <h2 className="text-center text-3xl font-extrabold text-gray-900">
-            Sign in to Nexus Agent
-          </h2>
-        </div>
         
         <form action={formAction} className="mt-8 space-y-6">
           {state?.error && (

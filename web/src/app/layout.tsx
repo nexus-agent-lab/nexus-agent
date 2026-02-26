@@ -22,9 +22,6 @@ export const metadata: Metadata = {
     icon: "https://avatars.githubusercontent.com/u/257899476",
   },
 };
-  title: "Nexus Agent",
-  description: "Private, intelligent control center",
-};
 
 export default async function RootLayout({
   children,
