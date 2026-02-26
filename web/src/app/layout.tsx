@@ -18,6 +18,12 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Nexus Agent",
   description: "Private, intelligent control center",
+  icons: {
+    icon: "https://avatars.githubusercontent.com/u/257899476",
+  },
+};
+  title: "Nexus Agent",
+  description: "Private, intelligent control center",
 };
 
 export default async function RootLayout({

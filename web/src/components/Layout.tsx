@@ -76,6 +76,13 @@ export default function Layout({
           {/* Sidebar Header */}
           <div className="flex h-16 items-center border-b border-neutral-200 px-6 dark:border-neutral-800">
             <Link href="/" className="flex items-center gap-2">
+              <img 
+                src="https://avatars.githubusercontent.com/u/257899476" 
+                alt="Nexus Logo" 
+                className="h-8 w-8 rounded-lg object-cover"
+              />
+              <span className="text-xl font-bold tracking-tight">Nexus</span>
+            </Link>
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white">
                 <Brain className="h-5 w-5" />
               </div>
