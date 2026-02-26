@@ -230,7 +230,7 @@ async def experience_replay_node(state: AgentState):
 
         if lesson:
             logger.info(f"Saving JIT Experience: {lesson}")
-            await memory_manager.save_memory(
+            await memory_manager.add_memory(
                 user_id=user.id,
                 content=lesson,
                 memory_type="preference",
