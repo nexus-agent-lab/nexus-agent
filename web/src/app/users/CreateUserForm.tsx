@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createUser } from "@/app/actions/users";
 import { UserPlus, Key, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
+import { toast } from "@/lib/toast";
 
 interface CreateUserFormProps {
   onSuccess?: () => void;
@@ -27,11 +28,13 @@ export default function CreateUserForm({ onSuccess }: CreateUserFormProps) {
       const result = await createUser({ username, role });
 
       if (result.error) {
+        toast.error(result.error);
         throw new Error(result.error);
       }
 
       const newUser = result.data;
       setGeneratedKey(newUser.api_key);
+      toast.success(`User ${username} created successfully!`);
       setUsername("");
       setRole("user");
       onSuccess?.();

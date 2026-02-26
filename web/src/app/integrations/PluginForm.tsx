@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createPlugin } from "@/app/actions/plugins";
 import { Puzzle, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
+import { toast } from "@/lib/toast";
 
 interface PluginFormProps {
   onSuccess?: () => void;
@@ -42,10 +43,12 @@ export default function PluginForm({ onSuccess }: PluginFormProps) {
       });
 
       if (result.error) {
+        toast.error(result.error);
         throw new Error(result.error);
       }
 
       setSuccess(true);
+      toast.success("Plugin registered successfully!");
       setName("");
       setSourceUrl("");
       setConfigStr("{}");

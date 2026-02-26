@@ -2,8 +2,9 @@ import { cn } from "@/lib/utils";
 
 interface Column<T> {
   header: string;
-  accessorKey: keyof T;
+  accessorKey?: keyof T;
   cell?: (item: T) => React.ReactNode;
+  id?: string;
 }
 
 interface DataTableProps<T> {
@@ -51,7 +52,9 @@ export default function DataTable<T>({
                     <td key={colIdx} className="whitespace-nowrap px-6 py-4">
                       {column.cell
                         ? column.cell(item)
-                        : (item[column.accessorKey] as React.ReactNode)}
+                        : column.accessorKey
+                        ? (item[column.accessorKey] as React.ReactNode)
+                        : null}
                     </td>
                   ))}
                 </tr>

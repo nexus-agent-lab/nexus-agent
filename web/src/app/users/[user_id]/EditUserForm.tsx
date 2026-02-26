@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { updateUser } from "@/app/actions/users";
 import { Save, Loader2, AlertCircle, CheckCircle2, ShieldAlert } from "lucide-react";
+import { toast } from "@/lib/toast";
+
 
 interface User {
   id: number;
@@ -60,10 +62,12 @@ export default function EditUserForm({ user }: EditUserFormProps) {
       });
 
       if (result.error) {
+        toast.error(result.error);
         throw new Error(result.error);
       }
 
       setSuccess(true);
+      toast.success("User changes saved successfully!");
       router.refresh();
       // Hide success message after 3 seconds
       setTimeout(() => setSuccess(false), 3000);
