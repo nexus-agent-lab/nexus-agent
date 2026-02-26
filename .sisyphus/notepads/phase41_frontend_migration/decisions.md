@@ -123,3 +123,9 @@ Implement automatic admin provisioning in `app/core/db.py` inside `init_db()` th
 - **Pro**: Works seamlessly with Docker Compose first-boot scenarios.
 - **Con**: Credentials visible in logs (acceptable for fresh installs, user can rotate later).
 - **Con**: Only runs on truly empty databases (by design, prevents overwriting existing data).
+
+## User Detail and Policy Editing (Task 10)
+- **JSON Policy Editing**: Implemented using a standard `textarea` with client-side JSON validation before submission. This provides a balance between simplicity and functionality for administrative tasks.
+- **Page Protection**: The User Detail page (`/users/[user_id]`) is restricted to users with the `admin` role, ensuring security for sensitive IAM operations.
+- **Server Action**: Created `updateUser` in `web/src/app/actions/users.ts` to wrap the `PATCH /users/{id}` API endpoint. This action handles revalidation for both the users list and the specific user detail page.
+- **Navigation**: Added a "Manage" action column to the Users list table to allow easy access to the detail page.

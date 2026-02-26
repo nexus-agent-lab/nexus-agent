@@ -45,3 +45,11 @@
 - **Server-Side Auth**: Leveraged Next.js Server Components to read cookies and verify JWT tokens server-side before passing user data to client components.
 - **Tailwind Capitalize**: Used Tailwind's 'capitalize' class for role display, with a manual override for 'admin' to 'Administrator' to match original design.
 - **Git Ignore Gotcha**: Discovered that root-level `lib/` ignore pattern affects nested `lib` directories in subprojects (e.g., `web/src/lib`), requiring force-add or ignore adjustment.
+
+## Integrations Page Implementation
+- Implemented `web/src/app/integrations/page.tsx` for managing plugins and MCP servers.
+- Created server actions in `web/src/app/actions/plugins.ts` to handle CRUD and MCP reload.
+- Used `no-store` fetch for real-time plugin data.
+- Enforced Admin-only access using JWT role checks and Shield UI for non-admins.
+- Integrated `DataTable` for listing plugins and added confirmation for deletions.
+- Implemented JSON validation in `PluginForm` to ensure valid configuration is sent to the backend.

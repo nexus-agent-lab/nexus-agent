@@ -51,3 +51,44 @@ return { data: newUser };
     return { error: "Failed to connect to backend" };
   }
 }
+
+/**
+ * Server action to update an existing user.
+ */
+export async function updateUser(userId: number, formData: {
+  username?: string;
+  role?: string;
+  language?: string;
+  timezone?: string;
+  notes?: string;
+  policy?: any;
+}) {
+  const apiKey = await getApiKey();
+  if (!apiKey) {
+    return { error: "Unauthorized" };
+  }
+
+  try {
+    const response = await fetch(`${API_URL}/users/${userId}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": apiKey,
+      },
+      body: JSON.stringify(formData),
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      return { error: data.detail || "Failed to update user" };
+    }
+
+    const updatedUser = await response.json();
+    revalidatePath("/users");
+    revalidatePath(`/users/${userId}`);
+    return { data: updatedUser };
+  } catch (error) {
+    console.error("Update user error:", error);
+    return { error: "Failed to connect to backend" };
+  }
+}

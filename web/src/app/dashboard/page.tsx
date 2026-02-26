@@ -11,6 +11,9 @@ import DataTable from "@/components/DataTable";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 import QuickActions from "./QuickActions";
 import { cn } from "@/lib/utils";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { verifyAuthToken } from "@/lib/auth";
 
 interface SystemHealth {
   status: string;
@@ -38,10 +41,13 @@ interface AuditLog {
   user_id?: number;
 }
 
-async function getSystemHealth(): Promise<SystemHealth | null> {
+async function getSystemHealth(apiKey: string): Promise<SystemHealth | null> {
   try {
     const baseUrl = process.env.API_URL || 'http://127.0.0.1:8000';
-    const res = await fetch(`${baseUrl}/system/health`, { cache: 'no-store' });
+    const res = await fetch(`${baseUrl}/system/health`, { 
+      headers: { "X-API-Key": apiKey },
+      cache: 'no-store' 
+    });
     if (!res.ok) return null;
     return await res.json();
   } catch (e) {
@@ -49,10 +55,13 @@ async function getSystemHealth(): Promise<SystemHealth | null> {
   }
 }
 
-async function getDatabaseStatus(): Promise<DatabaseStatus | null> {
+async function getDatabaseStatus(apiKey: string): Promise<DatabaseStatus | null> {
   try {
     const baseUrl = process.env.API_URL || 'http://127.0.0.1:8000';
-    const res = await fetch(`${baseUrl}/system/database`, { cache: 'no-store' });
+    const res = await fetch(`${baseUrl}/system/database`, { 
+      headers: { "X-API-Key": apiKey },
+      cache: 'no-store' 
+    });
     if (!res.ok) return null;
     return await res.json();
   } catch (e) {
@@ -60,10 +69,13 @@ async function getDatabaseStatus(): Promise<DatabaseStatus | null> {
   }
 }
 
-async function getRedisStatus(): Promise<RedisStatus | null> {
+async function getRedisStatus(apiKey: string): Promise<RedisStatus | null> {
   try {
     const baseUrl = process.env.API_URL || 'http://127.0.0.1:8000';
-    const res = await fetch(`${baseUrl}/system/redis`, { cache: 'no-store' });
+    const res = await fetch(`${baseUrl}/system/redis`, { 
+      headers: { "X-API-Key": apiKey },
+      cache: 'no-store' 
+    });
     if (!res.ok) return null;
     return await res.json();
   } catch (e) {
@@ -71,10 +83,13 @@ async function getRedisStatus(): Promise<RedisStatus | null> {
   }
 }
 
-async function getAuditLogs(): Promise<AuditLog[]> {
+async function getAuditLogs(apiKey: string): Promise<AuditLog[]> {
   try {
     const baseUrl = process.env.API_URL || 'http://127.0.0.1:8000';
-    const res = await fetch(`${baseUrl}/audit?limit=5`, { cache: 'no-store' });
+    const res = await fetch(`${baseUrl}/audit?limit=5`, { 
+      headers: { "X-API-Key": apiKey },
+      cache: 'no-store' 
+    });
     if (!res.ok) return [];
     return await res.json();
   } catch (e) {
@@ -83,11 +98,27 @@ async function getAuditLogs(): Promise<AuditLog[]> {
 }
 
 export default async function DashboardPage() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get("access_token")?.value;
+
+  if (!token) {
+    redirect("/login");
+  }
+
+  let payload;
+  try {
+    payload = await verifyAuthToken(token);
+  } catch (e) {
+    redirect("/login");
+  }
+
+  const apiKey = payload.api_key as string;
+
   const [health, dbStatus, redisStatus, auditLogs] = await Promise.all([
-    getSystemHealth(),
-    getDatabaseStatus(),
-    getRedisStatus(),
-    getAuditLogs(),
+    getSystemHealth(apiKey),
+    getDatabaseStatus(apiKey),
+    getRedisStatus(apiKey),
+    getAuditLogs(apiKey),
   ]);
 
   const auditColumns = [
@@ -174,4 +205,3 @@ export default async function DashboardPage() {
     </div>
   );
 }
-

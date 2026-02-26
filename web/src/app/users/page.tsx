@@ -5,7 +5,8 @@ import { verifyAuthToken } from "@/lib/auth";
 import DataTable from "@/components/DataTable";
 import CreateUserForm from "./CreateUserForm";
 import { cn } from "@/lib/utils";
-
+import Link from "next/link";
+import { Settings2 } from "lucide-react";
 interface User {
   id: number;
   username: string;
@@ -112,7 +113,21 @@ export default async function UsersPage() {
         <span className="uppercase text-neutral-500">{item.language}</span>
       )
     },
+    { 
+      header: "Actions", 
+      accessorKey: "id" as keyof User,
+      cell: (item: User) => (
+        <Link 
+          href={`/users/${item.id}`}
+          className="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+        >
+          <Settings2 className="h-4 w-4" />
+          Manage
+        </Link>
+      )
+    },
   ];
+
 
   return (
     <div className="space-y-8">

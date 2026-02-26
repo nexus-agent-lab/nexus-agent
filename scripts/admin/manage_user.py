@@ -7,9 +7,9 @@ import sys
 # Ensure we can import from app
 sys.path.append(os.getcwd())
 
-from app.core.db import AsyncSessionLocal
 from sqlmodel import select
 
+from app.core.db import AsyncSessionLocal
 from app.models.user import User
 
 

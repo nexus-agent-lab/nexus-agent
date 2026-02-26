@@ -1,4 +1,6 @@
+import json
 import logging
+import subprocess
 from datetime import datetime
 from typing import List, Optional
 
@@ -34,6 +36,18 @@ class DatabaseStatus(BaseModel):
 class SystemHealth(BaseModel):
     status: str
     timestamp: datetime
+
+class NetworkNode(BaseModel):
+    hostname: str
+    ip: str
+    os: Optional[str] = None
+    type: str
+    online: Optional[bool] = None
+
+class NetworkStatusResponse(BaseModel):
+    status: str
+    nodes: List[NetworkNode]
+    error: Optional[str] = None
 
 
 @router.get("/audit", response_model=List[AuditLog])
@@ -84,3 +98,46 @@ async def get_database_status(
     except Exception as e:
         logger.error(f"Database status check failed: {e}")
         return DatabaseStatus(status="error", error=str(e))
+
+@router.get("/system/network", response_model=NetworkStatusResponse)
+async def get_network_status(
+    current_user: User = Depends(require_admin),
+):
+    """Get Tailscale network status (Admin only)."""
+    try:
+        cmd = ["docker", "exec", "nexus-agent-ts-nexus-1", "tailscale", "status", "--json"]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            return NetworkStatusResponse(status="error", nodes=[], error=f"Error: {result.stderr}")
+        status_data = json.loads(result.stdout)
+
+        nodes = []
+        if "Self" in status_data:
+            s = status_data["Self"]
+            nodes.append(
+                NetworkNode(
+                    hostname=s.get("HostName", "Unknown"),
+                    ip=s.get("TailscaleIPs", [""])[0] if s.get("TailscaleIPs") else "",
+                    os=s.get("OS"),
+                    online=s.get("Online"),
+                    type="Local (本节点)",
+                )
+            )
+
+        peers = status_data.get("Peer", {})
+        for _, p in peers.items():
+            nodes.append(
+                NetworkNode(
+                    hostname=p.get("HostName", "Unknown"),
+                    ip=p.get("TailscaleIPs", [""])[0] if p.get("TailscaleIPs") else "",
+                    os=p.get("OS"),
+                    online=p.get("Online"),
+                    type="Peer",
+                )
+            )
+
+        return NetworkStatusResponse(status="ok", nodes=nodes)
+    except FileNotFoundError:
+        return NetworkStatusResponse(status="error", nodes=[], error="Docker CLI not found (running in container?)")
+    except Exception as e:
+        return NetworkStatusResponse(status="error", nodes=[], error=str(e))
