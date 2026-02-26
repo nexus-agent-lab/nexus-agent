@@ -43,5 +43,15 @@ This document establishes the coding standards, architectural patterns, and best
 - **Git Hooks**: **NEVER** skip pre-commit hooks (e.g. `git commit --no-verify`). Fix the underlying issue (linting/tests) instead.
 - **Verification**: Always run `bash scripts/dev_check.sh` after making changes to ensure code quality.
 
+## 7. Logic Retention & Stability
+- **No Unauthorized Deletions**: Do NOT delete existing logic or features unless explicitly requested by the user. 
+- **评估与询问 (Assess & Ask)**: If you discover existing logic that appears obsolete, redundant, or incorrect, you must first assess the impact and **ask the user for confirmation** before removing it.
+- **Stick to the Plan**: Modifications must strictly follow the approved development plan. Do not perform large-scope incidental refactorings or "cleanup" without permission.
+- **Preserve Traceability**: Maintain debugging aids like `wireLog` even during major refactors. If a block must move, ensure it is re-integrated rather than discarded.
+- **Preserve Comments**: NEVER delete existing comments, docstrings, or developer notes. Historical context is critical for long-term maintenance.
+- **Frontend Verification**: If changes are detected in the `web/` directory, `dev_check.sh` will trigger `docker-compose build web` (which runs `npm run build`). This ensures that frontend breaking changes are caught before commit.
+
+- **Strict Syntax Verification**: Every modification MUST pass `python3 -m py_compile` locally. This is integrated into `dev_check.sh` and is a mandatory pre-commit gate. This prevents IndentationErrors and SyntaxErrors from reaching the repository.
+
 ---
 *This file is the source of truth for project standards. Update it as patterns evolve.*
