@@ -59,6 +59,8 @@ services:
       - TELEGRAM_PROXY_URL=${TELEGRAM_PROXY_URL}
       - FEISHU_APP_ID=${FEISHU_APP_ID}
       - FEISHU_APP_SECRET=${FEISHU_APP_SECRET}
+      - JWT_SECRET=${JWT_SECRET:-super-secret-default-key-1234}
+    depends_on:
     depends_on:
       - redis
       - postgres
@@ -120,6 +122,10 @@ services:
     ports:
       - "3001:3000"
     environment:
+      - API_URL=http://nexus-app:8000
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - JWT_SECRET=${JWT_SECRET:-super-secret-default-key-1234}
+    depends_on:
       - API_URL=http://nexus-app:8000
       - NEXT_PUBLIC_API_URL=http://localhost:8000
     depends_on:

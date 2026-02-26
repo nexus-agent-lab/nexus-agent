@@ -1,5 +1,6 @@
 import os
 from datetime import datetime, timedelta
+import logging
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -14,6 +15,7 @@ from app.core.db import get_session
 from app.models.user import User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 SECRET_KEY = os.getenv("JWT_SECRET", "super-secret-default-key-1234")
 ALGORITHM = "HS256"
@@ -47,6 +49,8 @@ async def login_for_access_token(
         "exp": expire,
     }
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+    logger.info(f"JWT token issued for user: {user.username} (ID: {user.id})")
 
     return {
         "access_token": encoded_jwt,

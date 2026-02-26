@@ -20,6 +20,14 @@ export async function middleware(request: NextRequest) {
   try {
     await verifyAuthToken(token);
     return NextResponse.next();
+  } catch (err: any) {
+    console.error(`Middleware Auth Error for ${request.nextUrl.pathname}:`, err.message);
+    const response = NextResponse.redirect(new URL("/login", request.url));
+    response.cookies.delete("access_token");
+    return response;
+  }
+    await verifyAuthToken(token);
+    return NextResponse.next();
   } catch {
     const response = NextResponse.redirect(new URL("/login", request.url));
     response.cookies.delete("access_token");

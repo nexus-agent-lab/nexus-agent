@@ -6,6 +6,12 @@ import { jwtVerify } from "jose";
  */
 export function getJwtSecretKey(): Uint8Array {
   const secret = process.env.JWT_SECRET || "super-secret-default-key-1234";
+  if (!process.env.JWT_SECRET) {
+    console.warn("JWT_SECRET is not set, using default key.");
+  }
+  return new TextEncoder().encode(secret);
+}
+  const secret = process.env.JWT_SECRET || "super-secret-default-key-1234";
   return new TextEncoder().encode(secret);
 }
 
