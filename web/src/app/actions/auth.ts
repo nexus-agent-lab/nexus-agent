@@ -19,7 +19,7 @@ export async function login(prevState: { error?: string } | null | undefined, fo
   }
 
   try {
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const backendUrl = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     
     const params = new URLSearchParams();
     params.append("username", username);
