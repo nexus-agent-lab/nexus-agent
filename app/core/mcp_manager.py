@@ -26,9 +26,6 @@ except ImportError:
 
 logger = logging.getLogger("nexus.mcp")
 
-# Support both Docker and Local dev paths
-_DEFAULT_CONFIG_PATH = os.path.join(os.getcwd(), "mcp_server_config.json")
-CONFIG_PATH = os.getenv("MCP_CONFIG_PATH", _DEFAULT_CONFIG_PATH)
 
 # Whitelist of allowed MCP server commands for security
 ALLOWED_MCP_COMMANDS = ["python", "python3", "node", "npx", "uv"]
@@ -40,12 +37,13 @@ ALLOWED_SSE_HOSTNAMES = ["localhost", "127.0.0.1", "host.docker.internal", "mcp-
 class MCPManager:
     _instance = None
     _lock = asyncio.Lock()  # Protect initialization
+    _db_plugins: Dict[str, Any] = {}
+
 
     def __init__(self):
         self.exit_stack = AsyncExitStack()
         self.sessions: Dict[str, ClientSession] = {}  # server_name -> session
         self.tools: List[StructuredTool] = []
-        self._config: Dict = {}
         self._initialized = False
 
     @classmethod
@@ -53,32 +51,6 @@ class MCPManager:
         if cls._instance is None:
             cls._instance = MCPManager()
         return cls._instance
-
-    def _load_config(self):
-        """Loads and parses the MCP configuration file."""
-        if not os.path.exists(CONFIG_PATH):
-            logger.warning(f"MCP config not found at {CONFIG_PATH}")
-            self._config = {"mcpServers": {}}
-            return
-
-        try:
-            with open(CONFIG_PATH, "r") as f:
-                raw_config = json.load(f)
-                self._config = self._expand_env_vars(raw_config)
-            logger.info(f"Loaded MCP config with {len(self._config.get('mcpServers', {}))} servers.")
-        except Exception as e:
-            logger.error(f"Failed to load MCP config: {e}")
-            self._config = {"mcpServers": {}}
-
-    def _expand_env_vars(self, obj):
-        """Recursively expand environment variables in configuration values."""
-        if isinstance(obj, dict):
-            return {k: self._expand_env_vars(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [self._expand_env_vars(v) for v in obj]
-        elif isinstance(obj, str):
-            return os.path.expandvars(obj)
-        return obj
 
     async def _load_from_db(self) -> Optional[Dict[str, Any]]:
         """Fetches enabled plugins from the database."""
@@ -147,7 +119,20 @@ class MCPManager:
 
                     # Ensure name is consistent
                     servers[p.name] = conf
+
+                # Deduplicate by source_url to prevent double-loading
+                seen_urls = {}
+                for name, conf in list(servers.items()):
+                    url = conf.get("url")
+                    if url and url in seen_urls:
+                        logger.warning(f"Duplicate source_url detected: '{name}' conflicts with '{seen_urls[url]}'. Skipping '{name}'.")
+                        del servers[name]
+                    elif url:
+                        seen_urls[url] = name
+                
+                MCPManager._db_plugins = servers
                 return servers
+
         except Exception as e:
             logger.error(f"Failed to load MCP config from DB: {e}")
             return None
@@ -179,18 +164,13 @@ class MCPManager:
             if self._initialized:
                 return
 
-            # Always load base config from JSON first
-            self._load_config()
-            if "mcpServers" not in self._config:
-                self._config["mcpServers"] = {}
-
-            # Merge DB servers on top
+            # DB is now the single source of truth for installed plugins
             db_servers = await self._load_from_db()
-            if db_servers:
-                self._config["mcpServers"].update(db_servers)
-            servers = self._config.get("mcpServers", {})
+            servers = db_servers if db_servers else {}
 
             for name, server_conf in servers.items():
+
+
                 if not server_conf.get("enabled", True):
                     continue
                 # Fetch global secrets if plugin_id is present
@@ -372,13 +352,8 @@ class MCPManager:
     @classmethod
     def get_system_instructions(cls) -> str:
         """Aggregates system instructions from all enabled servers."""
-        inst = cls.get_instance()
-        if not inst._config:
-            inst._load_config()
-
         instructions = []
-        servers_config = inst._config.get("mcpServers", {})
-        for name, config in servers_config.items():
+        for name, config in cls._db_plugins.items():
             if config.get("enabled", True):
                 instruction = config.get("system_instruction")
                 if instruction:
