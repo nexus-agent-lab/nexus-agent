@@ -1,7 +1,7 @@
 import json
 import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -10,7 +10,10 @@ from sqlmodel import select
 
 from app.core.auth import require_admin
 from app.core.db import get_session
+from app.core.security import encrypt_secret
+from app.core.skill_loader import SkillLoader
 from app.models.plugin import Plugin
+from app.models.secret import Secret, SecretScope
 from app.models.user import User
 
 router = APIRouter(prefix="/plugins", tags=["Plugins"])
@@ -25,6 +28,7 @@ class PluginCreate(BaseModel):
     config: dict = {}
     manifest_id: Optional[str] = None
     required_role: str = "user"
+    secrets: Optional[Dict[str, str]] = None
 
 
 class PluginUpdate(BaseModel):
@@ -96,8 +100,38 @@ async def create_plugin(
     session.add(db_plugin)
     await session.commit()
     await session.refresh(db_plugin)
-    return db_plugin
+    if plugin_in.secrets:
+        for key, value in plugin_in.secrets.items():
+            encrypted_val = encrypt_secret(value)
+            secret_db = Secret(
+                key=key,
+                encrypted_value=encrypted_val,
+                scope=SecretScope.global_scope,
+                plugin_id=db_plugin.id,
+                owner_id=None,
+            )
+            session.add(secret_db)
+        await session.commit()
 
+    project_root = Path(__file__).parent.parent.parent
+    catalog_path = project_root / "plugin_catalog.json"
+    if catalog_path.exists():
+        try:
+            with open(catalog_path, "r") as f:
+                catalog = json.load(f)
+
+            for catalog_entry in catalog:
+                if (plugin_in.manifest_id and catalog_entry.get("id") == plugin_in.manifest_id) or \
+                   catalog_entry.get("source_url") == plugin_in.source_url:
+                    bundled_skills = catalog_entry.get("bundled_skills", [])
+                    for skill in bundled_skills:
+                        await SkillLoader.install_skill(skill)
+                    break
+        except Exception as e:
+            logger.error(f"Failed to process bundled skills: {e}")
+
+    await session.refresh(db_plugin)
+    return db_plugin
 
 @router.patch("/{plugin_id}", response_model=Plugin)
 async def update_plugin(
