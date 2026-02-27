@@ -35,6 +35,7 @@ export async function createPlugin(formData: {
   config?: Record<string, any>;
   manifest_id?: string;
   required_role?: string;
+  secrets?: Record<string, string>;
 }) {
   const apiKey = await getApiKey();
   if (!apiKey) {

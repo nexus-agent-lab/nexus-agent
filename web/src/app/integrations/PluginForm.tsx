@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createPlugin } from "@/app/actions/plugins";
-import { Puzzle, Loader2, AlertCircle, CheckCircle2, Store, Wrench, Shield, Plus, Info, ExternalLink, ArrowRight, Code } from "lucide-react";
+import { Puzzle, Loader2, AlertCircle, CheckCircle2, Store, Wrench, Shield, Plus, Info, ExternalLink, ArrowRight, Code, X, Save } from "lucide-react";
 import { toast } from "@/lib/toast";
 
 interface PluginFormProps {
@@ -25,6 +25,9 @@ export default function PluginForm({ apiKey, onSuccess }: PluginFormProps) {
   const [catalog, setCatalog] = useState<any[]>([]);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+  const [selectedCatalogItem, setSelectedCatalogItem] = useState<any>(null);
+  const [installFormValues, setInstallFormValues] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (activeTab === "store" && !catalogLoaded) {
@@ -100,18 +103,34 @@ export default function PluginForm({ apiKey, onSuccess }: PluginFormProps) {
     }
   };
 
-  const handleInstallFromStore = async (item: any) => {
+  const handleInstallFromStore = (item: any) => {
+    if (item.env_schema && Object.keys(item.env_schema).length > 0) {
+      setSelectedCatalogItem(item);
+      const initialValues: Record<string, string> = {};
+      Object.keys(item.env_schema).forEach(key => {
+        initialValues[key] = "";
+      });
+      setInstallFormValues(initialValues);
+      setIsInstallModalOpen(true);
+    } else {
+      executeInstall(item, {}, {});
+    }
+  };
+
+  const executeInstall = async (item: any, configValues: Record<string, any>, secretValues: Record<string, string>) => {
     setLoading(true);
     setError(null);
     setSuccess(false);
     try {
+      const finalConfig = { ...(item.config || {}), ...configValues };
       const result = await createPlugin({
         name: item.name,
         type: item.type,
         source_url: item.source_url,
         manifest_id: item.id,
         required_role: item.required_role || "user",
-        config: item.config || {},
+        config: finalConfig,
+        secrets: secretValues,
       });
       if (result.error) {
         toast.error(result.error);
@@ -119,6 +138,7 @@ export default function PluginForm({ apiKey, onSuccess }: PluginFormProps) {
       }
       setSuccess(true);
       toast.success(`${item.name} installed successfully!`);
+      setIsInstallModalOpen(false);
       onSuccess?.();
       router.refresh();
       setTimeout(() => setSuccess(false), 3000);
@@ -129,7 +149,24 @@ export default function PluginForm({ apiKey, onSuccess }: PluginFormProps) {
     }
   };
 
+  const handleModalSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCatalogItem) return;
+    const configValues: Record<string, any> = {};
+    const secretValues: Record<string, string> = {};
+    Object.entries(selectedCatalogItem.env_schema).forEach(([key, schema]: [string, any]) => {
+      const value = installFormValues[key];
+      if (schema.type === "password") {
+        secretValues[key] = value;
+      } else {
+        configValues[key] = value;
+      }
+    });
+    executeInstall(selectedCatalogItem, configValues, secretValues);
+  };
+
   return (
+    <>
     <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm transition-all dark:border-neutral-800 dark:bg-neutral-900/50 dark:backdrop-blur-xl">
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
@@ -343,5 +380,66 @@ export default function PluginForm({ apiKey, onSuccess }: PluginFormProps) {
         </div>
       )}
     </div>
+      {isInstallModalOpen && selectedCatalogItem && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-lg bg-white dark:bg-neutral-900 rounded-2xl shadow-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center justify-between p-6 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-800/50">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600">
+                  <Puzzle className="h-6 w-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold">Install {selectedCatalogItem.name}</h2>
+                  <p className="text-xs text-neutral-500">Configure required parameters</p>
+                </div>
+              </div>
+              <button 
+
+                onClick={() => setIsInstallModalOpen(false)}
+                className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-full transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleModalSubmit} className="p-6 space-y-4">
+              {Object.entries(selectedCatalogItem.env_schema).map(([key, schema]: [string, any]) => (
+                <div key={key}>
+                  <label className="mb-2 block text-sm font-bold text-neutral-700 dark:text-neutral-300">
+                    {schema.label || key} {schema.required && <span className="text-rose-500">*</span>}
+                  </label>
+                  <input
+                    type={schema.type === "password" ? "password" : schema.type === "url" ? "url" : "text"}
+                    value={installFormValues[key] || ""}
+                    onChange={(e) => setInstallFormValues({ ...installFormValues, [key]: e.target.value })}
+                    className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-2 text-sm focus:border-indigo-500 focus:bg-white focus:outline-none dark:border-neutral-700 dark:bg-neutral-800"
+                    placeholder={`Enter ${schema.label || key}...`}
+                    required={schema.required}
+                  />
+                </div>
+              ))}
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setIsInstallModalOpen(false)}
+                  className="flex-1 px-4 py-3 text-sm font-bold rounded-xl border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-bold rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                >
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  Confirm Install
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
