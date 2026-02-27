@@ -6,6 +6,7 @@ from typing import List, Optional
 from sqlalchemy import func, select
 
 from app.core.db import AsyncSessionLocal
+from app.core.llm_utils import get_llm_client
 from app.models.session import Session, SessionMessage
 
 logger = logging.getLogger(__name__)
@@ -155,10 +156,6 @@ class SessionManager:
         Conditionally trigger compaction only if meaningful history has accumulated.
         Reduces unnecessary LLM calls (Optimization for GLM Flash).
         """
-        from sqlalchemy import func
-
-        from app.core.db import AsyncSessionLocal
-
         try:
             async with AsyncSessionLocal() as db:
                 # Count unarchived messages
@@ -217,8 +214,6 @@ class SessionManager:
                     return
 
                 # 3. Generate Summary using LLM
-                from app.core.llm_utils import get_llm_client
-
                 llm = get_llm_client()
 
                 # Format context for summarization

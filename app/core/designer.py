@@ -1,16 +1,11 @@
-"""
-MemSkill Designer - Self-evolution engine for Memory Skills.
-
-Analyzes skill performance, generates improved prompts, and safely deploys
-them through canary testing.
-"""
-
 import logging
 import os
 from datetime import datetime
 from typing import List, Optional
 
 from sqlmodel import select
+
+from app.core.llm_utils import get_llm_client
 
 logger = logging.getLogger("nexus.designer")
 
@@ -80,15 +75,8 @@ class MemSkillDesigner:
     async def evolve_skill(cls, skill) -> Optional[dict]:
         """
         Generate an improved prompt for an underperforming skill.
-
-        Args:
-            skill: MemorySkill object to evolve
-
-        Returns:
-            dict with 'new_prompt', 'reason', 'changelog_id' or None if failed
         """
         from langchain_core.messages import HumanMessage, SystemMessage
-        from langchain_openai import ChatOpenAI
 
         # Get recent samples for context
         samples = await cls.get_recent_samples(skill.id)
@@ -98,17 +86,8 @@ class MemSkillDesigner:
 
         samples_text = "\n".join([f"- {s['content']}" for s in samples])
 
-        # Use Designer LLM (can be different/stronger than runtime LLM)
-        designer_model = os.getenv("DESIGNER_LLM_MODEL", os.getenv("LLM_MODEL", "gpt-4o-mini"))
-        designer_base = os.getenv("DESIGNER_LLM_BASE_URL", os.getenv("LLM_BASE_URL"))
-        designer_key = os.getenv("DESIGNER_LLM_API_KEY", os.getenv("LLM_API_KEY"))
-
-        llm = ChatOpenAI(
-            model=designer_model,
-            base_url=designer_base,
-            api_key=designer_key,
-            temperature=0.3,
-        )
+        # Use Designer LLM via central utility
+        llm = get_llm_client(temperature=0.3)
 
         total = skill.positive_count + skill.negative_count
         neg_rate = skill.negative_count / total if total > 0 else 0
@@ -226,19 +205,14 @@ Return your response in this exact structure:
         Returns True if all tests pass.
         """
         from langchain_core.messages import HumanMessage
-        from langchain_openai import ChatOpenAI
 
         samples = await cls.get_recent_samples(skill.id, limit=test_count)
         if not samples:
             logger.warning(f"No samples for canary test of {skill.name}")
             return True  # No data to test against, allow
 
-        llm = ChatOpenAI(
-            model=os.getenv("LLM_MODEL", "gpt-4o-mini"),
-            base_url=os.getenv("LLM_BASE_URL"),
-            api_key=os.getenv("LLM_API_KEY"),
-            temperature=0,
-        )
+        # Use runtime LLM via central utility
+        llm = get_llm_client()
 
         passed = 0
         for sample in samples:

@@ -6,10 +6,10 @@ import uuid
 from typing import Literal
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage, message_to_dict
-from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph
 
 from app.core.audit import AuditInterceptor
+from app.core.llm_utils import get_llm_client
 from app.core.session import SessionManager
 from app.core.state import AgentState
 
@@ -20,48 +20,13 @@ BASE_SYSTEM_PROMPT = """You are Nexus, an AI Operating System connecting physica
 ### PROTOCOLS
 1. **DISCOVERY FIRST**: Never guess IDs. Use discovery/search tools to locate resources before acting.
 2. **SKILL RULES**: Follow rules in LOADED SKILLS section. If a tool is missing, say so.
-3. **LARGE DATA**: Use `python_sandbox` to filter/summarize large outputs (>100 items) or do calculations.
-4. **NO HALLUCINATION**: Never invent tool names. Use `list_available_tools` if unsure.
+3. **LARGE DATA**: Use \`python_sandbox\` to filter/summarize large outputs (>100 items) or do calculations.
+4. **NO HALLUCINATION**: Never invent tool names. Use \`list_available_tools\` if unsure.
 5. **LANGUAGE**: Match the user's language. Be concise.
-6. **MISSING CAPABILITIES**: If the user requests a capability you lack, assume it's a feature request and call `submit_suggestion` with type='feature_request'.
+6. **MISSING CAPABILITIES**: If the user requests a capability you lack, assume it's a feature request and call \`submit_suggestion\` with type='feature_request'.
 7. **DOMAIN VERIFICATION**: Before executing a tool, verify the tool's PURPOSE matches the user's INTENT. If the user asks about "system logs" but only "Home Assistant logs" tools are available, DO NOT substitute one for the other. Instead, inform the user: "I don't have system log access yet. I do have Home Assistant logs - would you like those instead?"
 8. **KEYWORD ≠ INTENT**: The word "logs" can mean system logs, application logs, HA device logs, or audit logs. Always consider the CONTEXT of the request, not just the keyword match.
 """
-
-
-def get_llm():
-    """Configures and returns the LLM instance based on environment variables."""
-    api_key = os.getenv("LLM_API_KEY")
-    base_url = os.getenv("LLM_BASE_URL")
-    model_name = os.getenv("LLM_MODEL", "gpt-4o")
-
-    # CRITICAL DEBUG LOG
-    logger.info(f"initializing LLM with: base_url={base_url}, model={model_name}")
-
-    if not api_key:
-        print("Warning: LLM_API_KEY is not set.")
-
-    # 针对 GLM-4.7-Flash 的特殊配置
-    if "glm-4" in model_name.lower() and "flash" in model_name.lower():
-        logger.info("Using optimized config for GLM-4.7-Flash")
-        return ChatOpenAI(
-            model=model_name,
-            api_key=api_key,
-            base_url=base_url,
-            temperature=0.1,  # Flash 模型建议值
-            streaming=False,
-        )
-
-    # 其他模型使用默认配置
-    # We use ChatOpenAI as the universal client for compatible APIs (GLM, DeepSeek, generic OpenAI).
-    # If base_url is provided, it targets the custom provider.
-    return ChatOpenAI(
-        model=model_name,
-        api_key=api_key,
-        base_url=base_url,
-        temperature=0,
-        streaming=False,
-    )
 
 
 async def retrieve_memories(state: AgentState):
@@ -242,7 +207,8 @@ async def experience_replay_node(state: AgentState):
 
 
 def create_agent_graph(tools: list):
-    llm = get_llm()
+    # Standardized LLM initialization
+    llm = get_llm_client()
     tools_by_name = {t.name: t for t in tools}
 
     # Dynamic Instruction Injection from MCP Servers
@@ -253,7 +219,7 @@ def create_agent_graph(tools: list):
 
     # Layer 1: MCP-specific rules (legacy)
     if mcp_instructions:
-        dynamic_system_prompt += f"\n## SPECIFIC DOMAIN RULES\n{mcp_instructions}\n"
+        dynamic_system_prompt += f"\\n## SPECIFIC DOMAIN RULES\\n{mcp_instructions}\\n"
 
     async def call_model(state: AgentState):
         messages = list(state["messages"])
@@ -301,11 +267,11 @@ def create_agent_graph(tools: list):
                 if i == 0:
                     # L2: Full Content for the most relevant skill (saves tokens vs. loading all)
                     content = s.get("full_content", s["rules"])
-                    active_rules.append(f"### {s['name']} (PRIMARY)\n{content}")
+                    active_rules.append(f"### {s['name']} (PRIMARY)\\n{content}")
                 else:
                     # L1: Critical Rules only for secondary matches
-                    active_rules.append(f"### {s['name']} (SECONDARY)\n{s['rules']}")
-            prompt_with_skills += "\n## ACTIVE SKILL RULES (CONTEXTUAL)\n" + "\n\n".join(active_rules) + "\n"
+                    active_rules.append(f"### {s['name']} (SECONDARY)\\n{s['rules']}")
+            prompt_with_skills += "\\n## ACTIVE SKILL RULES (CONTEXTUAL)\\n" + "\\n\\n".join(active_rules) + "\\n"
 
         final_system_prompt = prompt_with_skills
 
@@ -313,20 +279,21 @@ def create_agent_graph(tools: list):
         if not messages or not isinstance(messages[0], SystemMessage):
             messages.insert(0, SystemMessage(content=final_system_prompt))
         elif isinstance(messages[0], SystemMessage) and "You are Nexus" not in messages[0].content:
-            messages[0] = SystemMessage(content=final_system_prompt + "\n\n" + messages[0].content)
+            messages[0] = SystemMessage(content=final_system_prompt + "\\n\\n" + messages[0].content)
         else:
+            # Find if there's already a system message to append to, or prepend this one
             messages[0] = SystemMessage(content=final_system_prompt)
 
         memories = state.get("memories", [])
         if memories:
-            memory_context = "\n".join(memories)
+            memory_context = "\\n".join(memories)
             system_msg = SystemMessage(
-                content=f"You have the following memories and preferences:\n{memory_context}\n"
+                content=f"You have the following memories and preferences:\\n{memory_context}\\n"
                 f"Use this context to personalize your response or avoid repeating mistakes."
             )
             # Find if there's already a system message to append to, or prepend this one
             if messages and isinstance(messages[0], SystemMessage):
-                messages[0] = SystemMessage(content=messages[0].content + "\n\n" + system_msg.content)
+                messages[0] = SystemMessage(content=messages[0].content + "\\n\\n" + system_msg.content)
             else:
                 messages.insert(0, system_msg)
 
@@ -341,7 +308,7 @@ def create_agent_graph(tools: list):
             if len(str(last_msg_content)) > 50:
                 last_msg_content = str(last_msg_content)[:50] + "..."
 
-            print(f'\nUser Query: "{last_msg_content}"')
+            print(f'\\nUser Query: "{last_msg_content}"')
             print("  │")
             print("  ▼")
             print("① call_model (agent.py)")
@@ -362,7 +329,7 @@ def create_agent_graph(tools: list):
 
             if search_count >= 3:
                 current_tools = [t for t in current_tools if t.name != "request_more_tools"]
-                final_system_prompt += "\n\n## ⚠️ SEARCH LIMIT REACHED\nYou have reached the limit for tool search retries (3/3). Use existing tools or inform user.\n"
+                final_system_prompt += "\\n\\n## ⚠️ SEARCH LIMIT REACHED\\nYou have reached the limit for tool search retries (3/3). Use existing tools or inform user.\\n"
                 messages[0] = SystemMessage(content=final_system_prompt)
 
         except Exception as e:
@@ -393,16 +360,16 @@ def create_agent_graph(tools: list):
                 "tools": [t["function"]["name"] for t in tool_schemas],
             }
             print(json.dumps(req_body, ensure_ascii=False, indent=2))
-            print("=" * 60 + "\n")
+            print("=" * 60 + "\\n")
 
         try:
             response = await llm_with_tools.ainvoke(messages)
 
             if _wire_log:
                 resp_dict = message_to_dict(response)
-                print("\n" + "✅" * 15 + " [STRUCTURED] LLM RESPONSE BODY " + "✅" * 15)
+                print("\\n" + "✅" * 15 + " [STRUCTURED] LLM RESPONSE BODY " + "✅" * 15)
                 print(json.dumps(resp_dict, ensure_ascii=False, indent=2))
-                print("=" * 100 + "\n")
+                print("=" * 100 + "\\n")
 
         except Exception as e:
             logger.error("Error calling LLM provider:", exc_info=True)
@@ -481,7 +448,7 @@ def create_agent_graph(tools: list):
                     tool_tags=getattr(tool_to_call, "tags", ["tag:safe"]),
                 ):
                     # 🩹 Sanitize tool args: fix None values for typed params
-                    # LLMs sometimes pass `None` for booleans/ints, causing Pydantic validation errors.
+                    # LLMs sometimes pass \`None\` for booleans/ints, causing Pydantic validation errors.
                     # This patch ensures defaults are used instead of None for critical types.
                     schema = getattr(tool_to_call, "args_schema", None)
                     if schema:

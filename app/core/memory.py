@@ -1,56 +1,20 @@
+import asyncio
+import logging
 import os
 
-from langchain_openai import OpenAIEmbeddings
 from sqlmodel import select
 
 from app.core.db import AsyncSessionLocal
+from app.core.llm_utils import get_embeddings_client, get_llm_client
 from app.models.memory import Memory
+
+logger = logging.getLogger(__name__)
 
 
 class MemoryManager:
     def __init__(self):
-        # Allow separate configuration for embeddings (local or alternative provider)
-        base_url = os.getenv("EMBEDDING_BASE_URL") or os.getenv("LLM_BASE_URL", "")
-        api_key = os.getenv("EMBEDDING_API_KEY") or os.getenv("LLM_API_KEY")
-
-        # Default to embedding-3 (GLM/v4) if base_url contains bigmodel, else openai default
-        default_model = "embedding-3" if "bigmodel" in base_url else "text-embedding-3-small"
-        model_name = os.getenv("EMBEDDING_MODEL", default_model)
-
-        # Get dimension from env (1024 for bge-m3, 1536 for OpenAI)
-        dimension = int(os.getenv("EMBEDDING_DIMENSION", "1024"))
-
-        from app.core.agent import logger  # Use existing logger
-
-        logger.info(f"MemoryManager Init: base_url='{base_url}', model='{model_name}'")
-
-        # Use OllamaEmbeddings for Ollama backend (port 11434)
-        if "11434" in base_url:
-            from langchain_ollama import OllamaEmbeddings
-
-            # OllamaEmbeddings expects base_url without /v1 suffix
-            ollama_base = base_url.replace("/v1", "")
-            self.embeddings = OllamaEmbeddings(
-                model=model_name.replace(":latest", ""),  # Ollama models don't need :latest
-                base_url=ollama_base,
-            )
-            logger.info(f"Using OllamaEmbeddings with base_url='{ollama_base}'")
-        elif "9292" in base_url:
-            # Local custom embedding server
-            self.embeddings = OpenAIEmbeddings(
-                model=model_name,
-                api_key=api_key,
-                base_url=base_url,
-                check_embedding_ctx_length=False,
-            )
-        else:
-            # OpenAI or other OpenAI-compatible providers
-            self.embeddings = OpenAIEmbeddings(
-                model=model_name,
-                api_key=api_key,
-                base_url=base_url,
-                dimensions=dimension if dimension == 1536 else None,
-            )
+        # Initialize standard clients via central utilities
+        self.embeddings = get_embeddings_client()
 
     async def add_memory(
         self,
@@ -69,9 +33,6 @@ class MemoryManager:
             pass
 
         # Switch to synchronous call in threadpool to avoid async httpx connection issues
-        # vector = await self.embeddings.aembed_query(content)
-        import asyncio
-
         vector = await asyncio.to_thread(self.embeddings.embed_query, content)
 
         async with AsyncSessionLocal() as session:
@@ -108,9 +69,6 @@ class MemoryManager:
         Performs vector similarity search.
         """
         # Switch to synchronous call in threadpool
-        # query_vector = await self.embeddings.aembed_query(query)
-        import asyncio
-
         query_vector = await asyncio.to_thread(self.embeddings.embed_query, query)
 
         async with AsyncSessionLocal() as session:
@@ -187,14 +145,12 @@ class MemoryManager:
         """
         from langchain_core.messages import HumanMessage
 
-        from app.core.agent import logger
-        from app.core.llm_utils import get_llm_client
         from app.core.memory_controller import MemoryController
-        from app.core.memory_skill_loader import MemorySkillLoader
 
         # 1. Determine Skill
         skill = None
         if skill_name:
+            from app.core.memory_skill_loader import MemorySkillLoader
             skill = MemorySkillLoader.get_skill_by_name(skill_name)
         else:
             # Only use auto-selection if content is long enough or complex?
@@ -214,7 +170,7 @@ class MemoryManager:
                 prompt = prompt.replace("{{ content }}", content)
                 prompt = prompt.replace("{{ context }}", context or "")
 
-                # Call LLM
+                # Call LLM via central utility
                 llm = get_llm_client()
                 response = await llm.ainvoke([HumanMessage(content=prompt)])
 
@@ -235,7 +191,6 @@ class MemoryManager:
         resolved_skill_id = None
         if skill:
             try:
-                from app.core.db import AsyncSessionLocal
                 from app.models.memory_skill import MemorySkill as MemorySkillModel
 
                 async with AsyncSessionLocal() as db_session:
@@ -258,8 +213,6 @@ class MemoryManager:
         """
         from langchain_core.messages import HumanMessage
 
-        from app.core.agent import logger
-        from app.core.llm_utils import get_llm_client
         from app.core.memory_controller import MemoryController
 
         # 1. Determine Skill
@@ -275,6 +228,7 @@ class MemoryManager:
                 prompt = prompt.replace("{{ query }}", query)  # Assuming retrieval skills use {{ query }}
                 prompt = prompt.replace("{{ context }}", context or "")
 
+                # Call LLM via central utility
                 llm = get_llm_client()
                 response = await llm.ainvoke([HumanMessage(content=prompt)])
 

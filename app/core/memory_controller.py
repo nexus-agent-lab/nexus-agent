@@ -1,11 +1,8 @@
-"""
-Memory Controller - Skill selection logic for MemSkill system.
-Uses the Executor LLM to select appropriate Memory Skills based on context.
-"""
-
 import logging
 import os
 from typing import Dict, List, Optional
+
+from app.core.llm_utils import get_llm_client
 
 logger = logging.getLogger("nexus.memory_controller")
 
@@ -22,14 +19,6 @@ class MemoryController:
     ) -> Optional[Dict]:
         """
         Select the most appropriate Memory Skill for the given context.
-
-        Args:
-            context: The conversation context or content to process
-            skill_type: "encoding" or "retrieval"
-            available_skills: Optional pre-loaded skills list
-
-        Returns:
-            Selected skill dict or None if no match
         """
         from app.core.memory_skill_loader import MemorySkillLoader
 
@@ -82,14 +71,8 @@ class MemoryController:
         Use LLM to select the best skill when keyword matching is inconclusive.
         """
         try:
-            from langchain_openai import ChatOpenAI
-
-            llm = ChatOpenAI(
-                model=os.getenv("LLM_MODEL", "gpt-4o-mini"),
-                base_url=os.getenv("LLM_BASE_URL"),
-                api_key=os.getenv("LLM_API_KEY"),
-                temperature=0,
-            )
+            # Use LLM via central utility
+            llm = get_llm_client()
 
             skills_desc = "\n".join([f"- {s['name']}: {s['description']}" for s in skills])
 

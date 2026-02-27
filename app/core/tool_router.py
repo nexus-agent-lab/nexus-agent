@@ -6,6 +6,7 @@ import numpy as np
 from langchain_core.tools import BaseTool
 
 from app.core.config import settings
+from app.core.llm_utils import get_embeddings_client
 
 logger = logging.getLogger(__name__)
 
@@ -62,42 +63,8 @@ class SemanticToolRouter:
 
     def _setup_embeddings(self):
         """Initialize embedding model (mirrors MemoryManager config)."""
-        base_url = os.getenv("EMBEDDING_BASE_URL") or os.getenv("LLM_BASE_URL", "")
-        api_key = os.getenv("EMBEDDING_API_KEY") or os.getenv("LLM_API_KEY")
-
-        # Determine model name
-        default_model = "embedding-3" if "bigmodel" in base_url else "text-embedding-3-small"
-        model_name = os.getenv("EMBEDDING_MODEL", default_model)
-        dimension = int(os.getenv("EMBEDDING_DIMENSION", "1024"))
-
-        logger.info(f"ToolRouter Embeddings: base_url='{base_url}', model='{model_name}'")
-
-        if "11434" in base_url:
-            from langchain_ollama import OllamaEmbeddings
-
-            ollama_base = base_url.replace("/v1", "")
-            self.embeddings = OllamaEmbeddings(
-                model=model_name.replace(":latest", ""),
-                base_url=ollama_base,
-            )
-        elif "9292" in base_url:
-            from langchain_openai import OpenAIEmbeddings
-
-            self.embeddings = OpenAIEmbeddings(
-                model=model_name,
-                api_key=api_key,
-                base_url=base_url,
-                check_embedding_ctx_length=False,
-            )
-        else:
-            from langchain_openai import OpenAIEmbeddings
-
-            self.embeddings = OpenAIEmbeddings(
-                model=model_name,
-                api_key=api_key,
-                base_url=base_url,
-                dimensions=dimension if dimension == 1536 else None,
-            )
+        # Initialize standard client via central utility
+        self.embeddings = get_embeddings_client()
 
     async def sync_with_mcp(self):
         """
@@ -105,7 +72,7 @@ class SemanticToolRouter:
         (Lazy Sync / Hot-Reload Support)
         """
         from app.core.mcp_manager import get_mcp_tools
-        from app.core.static_tools import get_static_tools
+        from app.tools.registry import get_static_tools
 
         logger.info("Syncing ToolRouter with MCPManager...")
         mcp_tools = await get_mcp_tools()
