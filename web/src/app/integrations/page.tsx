@@ -8,6 +8,7 @@ import ReloadMCPButton from "./ReloadMCPButton";
 import { cn } from "@/lib/utils";
 import DeletePluginButton from "./DeletePluginButton";
 import EditPluginButton from "./EditPluginButton";
+import ViewSkillButton from "./ViewSkillButton";
 
 interface Plugin {
   id: number;
@@ -17,6 +18,7 @@ interface Plugin {
   status: string;
   required_role: string;
   config: Record<string, any>;
+  manifest_id: string | null;
 }
 
 async function getPlugins(apiKey: string): Promise<Plugin[]> {
@@ -118,7 +120,8 @@ export default async function IntegrationsPage() {
       accessorKey: "id" as keyof Plugin,
       cell: (item: Plugin) => (
         <div className="flex items-center gap-2">
-          <EditPluginButton plugin={item} />
+          <ViewSkillButton pluginId={item.id} apiKey={apiKey} />
+          <EditPluginButton plugin={item} apiKey={apiKey} />
           <DeletePluginButton pluginId={item.id} pluginName={item.name} />
         </div>
       )

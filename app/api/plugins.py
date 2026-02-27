@@ -39,6 +39,7 @@ class PluginUpdate(BaseModel):
     config: Optional[dict] = None
     manifest_id: Optional[str] = None
     required_role: Optional[str] = None
+    secrets: Optional[Dict[str, str]] = None
 
 
 @router.get("/", response_model=List[Plugin])
@@ -61,6 +62,72 @@ async def get_plugin_catalog(current_user: User = Depends(require_admin)):
     except Exception as e:
         logger.error(f"Failed to read plugin catalog: {e}")
         raise HTTPException(status_code=500, detail="Failed to load plugin catalog")
+
+
+@router.get("/{plugin_id}/schema")
+async def get_plugin_schema(
+    plugin_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(require_admin)
+):
+    """Get the configuration schema for a specific plugin from the catalog."""
+    plugin = await session.get(Plugin, plugin_id)
+    if not plugin or not plugin.manifest_id:
+        return {"env_schema": None, "bundled_skills": []}
+
+    project_root = Path(__file__).parent.parent.parent
+    catalog_path = project_root / "plugin_catalog.json"
+    if not catalog_path.exists():
+        return {"env_schema": None, "bundled_skills": []}
+
+    try:
+        with open(catalog_path, "r") as f:
+            catalog = json.load(f)
+        for entry in catalog:
+            if entry.get("id") == plugin.manifest_id:
+                return {"env_schema": entry.get("env_schema"), "bundled_skills": entry.get("bundled_skills", [])}
+    except Exception as e:
+        logger.error(f"Error reading catalog for schema: {e}")
+
+    return {"env_schema": None, "bundled_skills": []}
+
+
+@router.get("/{plugin_id}/skill")
+async def get_plugin_skill(
+    plugin_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(require_admin)
+):
+    """Get the markdown content of the skill associated with this plugin."""
+    plugin = await session.get(Plugin, plugin_id)
+    if not plugin or not plugin.manifest_id:
+        raise HTTPException(status_code=404, detail="Plugin or manifest not found")
+
+    project_root = Path(__file__).parent.parent.parent
+    catalog_path = project_root / "plugin_catalog.json"
+    if not catalog_path.exists():
+        raise HTTPException(status_code=404, detail="Catalog not found")
+
+    try:
+        with open(catalog_path, "r") as f:
+            catalog = json.load(f)
+        skill_id = None
+        for entry in catalog:
+            if entry.get("id") == plugin.manifest_id:
+                bundled = entry.get("bundled_skills", [])
+                if bundled:
+                    skill_id = bundled[0]
+                break
+
+        if not skill_id:
+            raise HTTPException(status_code=404, detail="No bundled skill found for this plugin")
+
+        skill = await SkillLoader.load_by_name(skill_id)
+        if not skill:
+            raise HTTPException(status_code=404, detail=f"Skill file '{skill_id}.md' not found")
+
+        return {"content": skill.get("full_content") or skill.get("rules", "")}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error reading skill for plugin: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{plugin_id}", response_model=Plugin)
@@ -121,8 +188,9 @@ async def create_plugin(
                 catalog = json.load(f)
 
             for catalog_entry in catalog:
-                if (plugin_in.manifest_id and catalog_entry.get("id") == plugin_in.manifest_id) or \
-                   catalog_entry.get("source_url") == plugin_in.source_url:
+                if (plugin_in.manifest_id and catalog_entry.get("id") == plugin_in.manifest_id) or catalog_entry.get(
+                    "source_url"
+                ) == plugin_in.source_url:
                     bundled_skills = catalog_entry.get("bundled_skills", [])
                     for skill in bundled_skills:
                         await SkillLoader.install_skill(skill)
@@ -132,6 +200,7 @@ async def create_plugin(
 
     await session.refresh(db_plugin)
     return db_plugin
+
 
 @router.patch("/{plugin_id}", response_model=Plugin)
 async def update_plugin(
@@ -146,11 +215,42 @@ async def update_plugin(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plugin not found")
 
     update_data = plugin_in.model_dump(exclude_unset=True)
+    secrets_to_update = update_data.pop("secrets", None)
+
     for key, value in update_data.items():
         setattr(plugin, key, value)
 
     session.add(plugin)
+
+    if secrets_to_update:
+        for key, value in secrets_to_update.items():
+            if not value:
+                continue
+            
+            encrypted_val = encrypt_secret(value)
+            
+            # Upsert logic for secrets
+            from sqlmodel import and_
+            existing_secret_result = await session.execute(
+                select(Secret).where(and_(Secret.plugin_id == plugin.id, Secret.key == key))
+            )
+            existing_secret = existing_secret_result.scalars().first()
+            
+            if existing_secret:
+                existing_secret.encrypted_value = encrypted_val
+                session.add(existing_secret)
+            else:
+                new_secret = Secret(
+                    key=key,
+                    encrypted_value=encrypted_val,
+                    scope=SecretScope.global_scope,
+                    plugin_id=plugin.id,
+                    owner_id=None,
+                )
+                session.add(new_secret)
+
     await session.commit()
+
     await session.refresh(plugin)
     return plugin
 
