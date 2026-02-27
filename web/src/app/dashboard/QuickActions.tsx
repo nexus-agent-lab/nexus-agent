@@ -1,6 +1,8 @@
 "use client";
 
 import { RefreshCw, Trash2, Zap } from "lucide-react";
+import { toast } from "@/lib/toast";
+
 import { useState } from "react";
 
 export default function QuickActions() {
@@ -11,7 +13,8 @@ export default function QuickActions() {
     // Simulate action
     await new Promise((resolve) => setTimeout(resolve, 1000));
     setLoading(null);
-    alert(`${action} completed!`);
+    toast.success(`${action} completed!`);
+
   };
 
   return (

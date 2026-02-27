@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Trash2, Loader2 } from "lucide-react";
 import { deletePlugin } from "@/app/actions/plugins";
+import { toast } from "@/lib/toast";
 
 interface DeletePluginButtonProps {
   pluginId: number;
@@ -21,10 +22,12 @@ export default function DeletePluginButton({ pluginId, pluginName }: DeletePlugi
     try {
       const result = await deletePlugin(pluginId);
       if (result.error) {
-        alert(result.error);
+        toast.error(result.error);
+      } else {
+        toast.success("Plugin deleted successfully");
       }
     } catch (error) {
-      alert("Failed to delete plugin");
+      toast.error("Failed to delete plugin");
     } finally {
       setLoading(false);
     }

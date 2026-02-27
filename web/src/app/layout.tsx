@@ -4,6 +4,8 @@ import { cookies } from "next/headers";
 import { verifyAuthToken } from "@/lib/auth";
 import "./globals.css";
 import Layout from "@/components/Layout";
+import ToastContainer from "@/components/ToastContainer";
+
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -47,6 +49,8 @@ export default async function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <Layout user={user}>{children}</Layout>
+        <ToastContainer />
+
       </body>
     </html>
   );
