@@ -7,6 +7,7 @@ import PluginForm from "./PluginForm";
 import ReloadMCPButton from "./ReloadMCPButton";
 import { cn } from "@/lib/utils";
 import DeletePluginButton from "./DeletePluginButton";
+import EditPluginButton from "./EditPluginButton";
 
 interface Plugin {
   id: number;
@@ -14,6 +15,7 @@ interface Plugin {
   type: string;
   source_url: string;
   status: string;
+  required_role: string;
   config: Record<string, any>;
 }
 
@@ -115,7 +117,10 @@ export default async function IntegrationsPage() {
       header: "Actions",
       accessorKey: "id" as keyof Plugin,
       cell: (item: Plugin) => (
-        <DeletePluginButton pluginId={item.id} pluginName={item.name} />
+        <div className="flex items-center gap-2">
+          <EditPluginButton plugin={item} />
+          <DeletePluginButton pluginId={item.id} pluginName={item.name} />
+        </div>
       )
     }
   ];
@@ -137,8 +142,13 @@ export default async function IntegrationsPage() {
         </div>
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-4">
+      <div className="space-y-12">
+        <div className="space-y-6">
+          <ReloadMCPButton />
+          <PluginForm apiKey={apiKey} />
+        </div>
+
+        <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold flex items-center gap-2">
               <Puzzle className="h-5 w-5" />
@@ -146,11 +156,6 @@ export default async function IntegrationsPage() {
             </h2>
           </div>
           <DataTable columns={columns} data={plugins} />
-        </div>
-
-        <div className="space-y-6">
-          <ReloadMCPButton />
-          <PluginForm apiKey={apiKey} />
         </div>
       </div>
     </div>

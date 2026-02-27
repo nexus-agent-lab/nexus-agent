@@ -183,7 +183,7 @@ export default function PluginForm({ apiKey, onSuccess }: PluginFormProps) {
               <p className="text-neutral-500 text-sm">The plugin store is currently empty.</p>
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {catalog.map((item) => (
                 <div 
                   key={item.id} 

@@ -75,6 +75,15 @@ async def create_plugin(
     plugin_in: PluginCreate, session: AsyncSession = Depends(get_session), current_user: User = Depends(require_admin)
 ):
     """Create a new plugin."""
+    existing = await session.execute(
+        select(Plugin).where((Plugin.name == plugin_in.name) | (Plugin.source_url == plugin_in.source_url))
+    )
+    if existing.scalars().first():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"A plugin with the name '{plugin_in.name}' or the same source URL already exists.",
+        )
+
     db_plugin = Plugin(
         name=plugin_in.name,
         type=plugin_in.type,

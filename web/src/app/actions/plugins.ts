@@ -66,6 +66,51 @@ export async function createPlugin(formData: {
 }
 
 /**
+ * Server action to update an existing plugin.
+ * 
+ * @param pluginId The ID of the plugin to update
+ * @param formData The plugin details to update
+ */
+export async function updatePlugin(pluginId: number, formData: {
+  name?: string;
+  type?: string;
+  source_url?: string;
+  status?: string;
+  config?: Record<string, any>;
+  manifest_id?: string;
+  required_role?: string;
+}) {
+  const apiKey = await getApiKey();
+  if (!apiKey) {
+    return { error: "Unauthorized" };
+  }
+
+  try {
+    const response = await fetch(`${API_URL}/plugins/${pluginId}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": apiKey,
+      },
+      body: JSON.stringify(formData),
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      return { error: data.detail || "Failed to update plugin" };
+    }
+
+    const updatedPlugin = await response.json();
+    revalidatePath("/integrations");
+    return { data: updatedPlugin };
+  } catch (error) {
+    console.error("Update plugin error:", error);
+    return { error: "Failed to connect to backend" };
+  }
+}
+
+
+/**
  * Server action to delete a plugin.
  * 
  * @param pluginId The ID of the plugin to delete
