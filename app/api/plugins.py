@@ -122,6 +122,12 @@ async def get_plugin_skill(
         if not skill:
             raise HTTPException(status_code=404, detail=f"Skill file '{skill_id}.md' not found")
 
+        # SkillLoader.load_by_name returns a raw string content, not a dict.
+        return {"content": skill}
+
+        if not skill:
+            raise HTTPException(status_code=404, detail=f"Skill file '{skill_id}.md' not found")
+
         return {"content": skill.get("full_content") or skill.get("rules", "")}
     except HTTPException:
         raise
@@ -226,16 +232,17 @@ async def update_plugin(
         for key, value in secrets_to_update.items():
             if not value:
                 continue
-            
+
             encrypted_val = encrypt_secret(value)
-            
+
             # Upsert logic for secrets
             from sqlmodel import and_
+
             existing_secret_result = await session.execute(
                 select(Secret).where(and_(Secret.plugin_id == plugin.id, Secret.key == key))
             )
             existing_secret = existing_secret_result.scalars().first()
-            
+
             if existing_secret:
                 existing_secret.encrypted_value = encrypted_val
                 session.add(existing_secret)
