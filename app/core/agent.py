@@ -15,7 +15,7 @@ from app.core.state import AgentState
 
 logger = logging.getLogger(__name__)
 
-BASE_SYSTEM_PROMPT = """You are Nexus, an AI Operating System connecting physical and digital worlds.
+BASE_SYSTEM_PROMPT = r"""You are Nexus, an AI Operating System connecting physical and digital worlds.
 
 ### PROTOCOLS
 1. **DISCOVERY FIRST**: Never guess IDs. Use discovery/search tools to locate resources before acting.

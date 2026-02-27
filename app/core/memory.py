@@ -151,6 +151,7 @@ class MemoryManager:
         skill = None
         if skill_name:
             from app.core.memory_skill_loader import MemorySkillLoader
+
             skill = MemorySkillLoader.get_skill_by_name(skill_name)
         else:
             # Only use auto-selection if content is long enough or complex?
