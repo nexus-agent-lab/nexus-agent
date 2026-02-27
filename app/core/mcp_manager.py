@@ -39,7 +39,6 @@ class MCPManager:
     _lock = asyncio.Lock()  # Protect initialization
     _db_plugins: Dict[str, Any] = {}
 
-
     def __init__(self):
         self.exit_stack = AsyncExitStack()
         self.sessions: Dict[str, ClientSession] = {}  # server_name -> session
@@ -125,11 +124,13 @@ class MCPManager:
                 for name, conf in list(servers.items()):
                     url = conf.get("url")
                     if url and url in seen_urls:
-                        logger.warning(f"Duplicate source_url detected: '{name}' conflicts with '{seen_urls[url]}'. Skipping '{name}'.")
+                        logger.warning(
+                            f"Duplicate source_url detected: '{name}' conflicts with '{seen_urls[url]}'. Skipping '{name}'."
+                        )
                         del servers[name]
                     elif url:
                         seen_urls[url] = name
-                
+
                 MCPManager._db_plugins = servers
                 return servers
 
@@ -169,8 +170,6 @@ class MCPManager:
             servers = db_servers if db_servers else {}
 
             for name, server_conf in servers.items():
-
-
                 if not server_conf.get("enabled", True):
                     continue
                 # Fetch global secrets if plugin_id is present
