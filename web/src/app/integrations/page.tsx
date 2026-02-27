@@ -1,13 +1,12 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { Puzzle, Shield, Info, Trash2 } from "lucide-react";
+import { Puzzle, Shield, Info } from "lucide-react";
 import { verifyAuthToken } from "@/lib/auth";
 import DataTable from "@/components/DataTable";
 import PluginForm from "./PluginForm";
 import ReloadMCPButton from "./ReloadMCPButton";
 import { cn } from "@/lib/utils";
 import DeletePluginButton from "./DeletePluginButton";
-import { deletePlugin } from "@/app/actions/plugins";
 
 interface Plugin {
   id: number;
@@ -64,7 +63,8 @@ export default async function IntegrationsPage() {
     );
   }
 
-  const plugins = await getPlugins(payload.api_key as string);
+  const apiKey = payload.api_key as string;
+  const plugins = await getPlugins(apiKey);
 
   const columns = [
     { 
@@ -118,7 +118,6 @@ export default async function IntegrationsPage() {
         <DeletePluginButton pluginId={item.id} pluginName={item.name} />
       )
     }
-
   ];
 
   return (
@@ -151,7 +150,7 @@ export default async function IntegrationsPage() {
 
         <div className="space-y-6">
           <ReloadMCPButton />
-          <PluginForm />
+          <PluginForm apiKey={apiKey} />
         </div>
       </div>
     </div>

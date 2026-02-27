@@ -37,6 +37,17 @@ async def update_config(key: str = Body(...), value: str = Body(...)):
     return {"status": "updated", "key": key, "value": value}
 
 
+@router.get("/config", dependencies=[Depends(require_admin)])
+async def get_config(key: str = Query(...)):
+    """Get runtime configuration (env vars mostly)."""
+    ALLOWED_KEYS = {"DEBUG_WIRE_LOG", "LOG_LEVEL"}
+    if key not in ALLOWED_KEYS:
+        raise HTTPException(status_code=400, detail=f"Key {key} not allowed. Allowed: {ALLOWED_KEYS}")
+
+    value = os.environ.get(key, "false")
+    return {"key": key, "value": value}
+
+
 @router.post("/mcp/reload", dependencies=[Depends(require_admin)])
 async def reload_mcp():
     """Reload MCP servers."""

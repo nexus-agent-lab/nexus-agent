@@ -1,0 +1,7 @@
+- Added `manifest_id` and `required_role` fields to `PluginCreate` and `PluginUpdate` schemas in `app/api/plugins.py` to support the Hybrid Store architecture.
+- Added `GET /plugins/catalog` endpoint BEFORE path parameterized endpoints (like `/{plugin_id}`) to avoid routing conflicts.
+- The new endpoint gracefully handles `FileNotFoundError` by returning an empty list, and other errors by returning a 500 status code.
+- **Hybrid Store UI**: Implementing a tabbed interface for plugin management significantly improves discoverability.
+- **Lucide Icon Sets**: Always verify the exact export names for Lucide icons; for example, use `Wrench` or `Toolbox` if `Tool` is unavailable in the current version.
+- **Component Reset**: When a file becomes corrupted due to failed `edit` operations (e.g., duplicated content or unwanted tags), a `bash` `cat` overwrite is the most reliable way to restore a clean state.
+- **Action Duplication**: Pay attention to server action signatures in `app/actions/` to avoid duplicated logic during refactoring.

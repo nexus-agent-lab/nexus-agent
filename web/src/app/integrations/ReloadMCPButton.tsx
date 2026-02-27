@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { RefreshCw, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { reloadMCP } from "@/app/actions/plugins";
+import { toast } from "@/lib/toast";
 
 export default function ReloadMCPButton() {
   const [loading, setLoading] = useState(false);
@@ -17,15 +18,18 @@ export default function ReloadMCPButton() {
       if (result.error) {
         setStatus("error");
         setMessage(result.error);
+        toast.error(result.error);
       } else {
         setStatus("success");
         setMessage("MCP servers reloaded successfully");
+        toast.success("MCP servers reloaded successfully");
         // Reset status after 3 seconds
         setTimeout(() => setStatus("idle"), 3000);
       }
     } catch (error) {
       setStatus("error");
       setMessage("Failed to connect to backend");
+      toast.error("Failed to connect to backend");
     } finally {
       setLoading(false);
     }

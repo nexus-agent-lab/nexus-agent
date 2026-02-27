@@ -88,6 +88,18 @@ class MCPManager:
             from app.core.db import AsyncSessionLocal
             from app.models.plugin import Plugin
 
+            # Load catalog manifest
+            catalog_dict = {}
+            try:
+                with open(os.path.join(os.getcwd(), "plugin_catalog.json"), "r") as f:
+                    catalog = json.load(f)
+                    for item in catalog:
+                        catalog_dict[item["id"]] = item
+            except FileNotFoundError:
+                logger.warning("plugin_catalog.json not found")
+            except Exception as e:
+                logger.error(f"Failed to load plugin catalog: {e}")
+
             async with AsyncSessionLocal() as session:
                 statement = select(Plugin).where(Plugin.status == "active")
                 result = await session.execute(statement)
@@ -100,8 +112,36 @@ class MCPManager:
                 for p in plugins:
                     # Merge basic fields with config JSON
                     conf = p.config.copy() if p.config else {}
+
+                    if p.manifest_id and p.manifest_id in catalog_dict:
+                        catalog_entry = catalog_dict[p.manifest_id]
+
+                        # Merge config defaults
+                        cat_config = catalog_entry.get("config", {})
+                        for k, v in cat_config.items():
+                            if k not in conf:
+                                conf[k] = v
+
+                        # Override url/source_url if not defined in DB
+                        if not p.source_url and "source_url" in catalog_entry:
+                            p.source_url = catalog_entry["source_url"]
+
+                        # Inject allowed hostnames
+                        for host in catalog_entry.get("allowed_hostnames", []):
+                            if host not in ALLOWED_SSE_HOSTNAMES:
+                                ALLOWED_SSE_HOSTNAMES.append(host)
+
+                        # Use catalog required_role if present
+                        if "required_role" in catalog_entry:
+                            conf["required_role"] = catalog_entry["required_role"]
+
                     if p.source_url and not conf.get("url"):
                         conf["url"] = p.source_url
+
+                    # Ensure required_role from plugin DB is set
+                    if "required_role" not in conf and p.required_role:
+                        conf["required_role"] = p.required_role
+
                     # Store plugin ID for secret fetching
                     conf["plugin_id"] = p.id
 

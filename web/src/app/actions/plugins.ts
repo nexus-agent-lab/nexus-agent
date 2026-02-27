@@ -36,15 +36,6 @@ export async function createPlugin(formData: {
   manifest_id?: string;
   required_role?: string;
 }) {
-
-  name: string;
-  type: string;
-  source_url: string;
-  status?: string;
-  config?: Record<string, any>;
-  manifest_id?: string;
-  required_role?: string;
-}) {
   const apiKey = await getApiKey();
   if (!apiKey) {
     return { error: "Unauthorized" };

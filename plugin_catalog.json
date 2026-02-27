@@ -1,0 +1,30 @@
+[
+  {
+    "id": "official/homeassistant",
+    "name": "Home Assistant",
+    "description": "Control your smart home devices.",
+    "icon": "🏠",
+    "type": "mcp",
+    "source_url": "http://mcp-homeassistant:8080/sse",
+    "required_role": "user",
+    "config": {
+      "tool_config": {
+        "query_entities": { "cache_ttl": 1800 },
+        "get_entity_state": { "cache_ttl": 5 },
+        "call_service": { "cache_ttl": 0 }
+      }
+    },
+    "allowed_hostnames": ["mcp-homeassistant"]
+  },
+  {
+    "id": "official/lark-mcp",
+    "name": "Lark / Feishu",
+    "description": "Integrate with Lark documents and messages.",
+    "icon": "🕊️",
+    "type": "mcp",
+    "source_url": "http://lark-mcp:3000/mcp",
+    "required_role": "user",
+    "config": {},
+    "allowed_hostnames": ["lark-mcp"]
+  }
+]

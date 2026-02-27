@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Terminal, Bug, CheckCircle2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toast } from "@/lib/toast";
 
 interface WireLogToggleProps {
   apiKey: string;
@@ -16,6 +17,28 @@ export default function WireLogToggle({ apiKey }: WireLogToggleProps) {
   const [isEnabled, setIsEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
+
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+        const response = await fetch(`${backendUrl}/admin/config?key=DEBUG_WIRE_LOG`, {
+          headers: {
+            "X-API-Key": apiKey,
+          },
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setIsEnabled(data.value === "true");
+        } else if (response.status === 401) {
+          toast.error("Unauthorized: Please check your API key.");
+        }
+      } catch (error) {
+        console.error("Failed to fetch config:", error);
+      }
+    };
+    fetchConfig();
+  }, [apiKey]);
 
   const toggleWireLog = async () => {
     setIsLoading(true);
@@ -39,12 +62,16 @@ export default function WireLogToggle({ apiKey }: WireLogToggleProps) {
       if (response.ok) {
         setIsEnabled(newValue);
         setStatus("success");
+        toast.success(`Wire logging ${newValue ? "enabled" : "disabled"}`);
         setTimeout(() => setStatus("idle"), 3000);
       } else {
+        const data = await response.json();
+        toast.error(data.detail || "Failed to update configuration");
         setStatus("error");
       }
     } catch (error) {
       console.error("Failed to update config:", error);
+      toast.error("Failed to connect to backend");
       setStatus("error");
     } finally {
       setIsLoading(false);

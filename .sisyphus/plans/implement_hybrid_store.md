@@ -60,5 +60,6 @@ async def get_plugin_catalog(current_user: User = Depends(require_admin)):
 1. Run `bash scripts/dev_check.sh` to ensure Python syntax, Ruff formatting, and Frontend builds are successful.
 
 ## Final Verification Wave
-- [ ] Manual QA: Navigate to `/integrations`. Verify the "Plugin Store" tab shows Home Assistant and Lark. Verify clicking install works.
+- [x] Manual QA: Navigate to `/integrations`. Verify the "Plugin Store" tab shows Home Assistant and Lark. Verify clicking install works.
+
 - [x] Confirm `dev_check.sh` passes 100%.

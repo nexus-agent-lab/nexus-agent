@@ -7,10 +7,11 @@ import { Puzzle, Loader2, AlertCircle, CheckCircle2, Store, Wrench, Shield, Plus
 import { toast } from "@/lib/toast";
 
 interface PluginFormProps {
+  apiKey: string;
   onSuccess?: () => void;
 }
 
-export default function PluginForm({ onSuccess }: PluginFormProps) {
+export default function PluginForm({ apiKey, onSuccess }: PluginFormProps) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"store" | "custom">("store");
   const [name, setName] = useState("");
@@ -23,26 +24,37 @@ export default function PluginForm({ onSuccess }: PluginFormProps) {
   const [success, setSuccess] = useState(false);
   const [catalog, setCatalog] = useState<any[]>([]);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
+  const [catalogLoaded, setCatalogLoaded] = useState(false);
 
   useEffect(() => {
-    if (activeTab === "store" && catalog.length === 0) {
+    if (activeTab === "store" && !catalogLoaded) {
       fetchCatalog();
     }
-  }, [activeTab, catalog.length]);
+  }, [activeTab, catalogLoaded]);
 
   const fetchCatalog = async () => {
     setLoadingCatalog(true);
     try {
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-      const response = await fetch(`${backendUrl}/plugins/catalog`);
+      const response = await fetch(`${backendUrl}/plugins/catalog`, {
+        headers: {
+          "X-API-Key": apiKey,
+        }
+      });
       if (response.ok) {
         const data = await response.json();
         setCatalog(data);
+      } else if (response.status === 401) {
+        toast.error("Unauthorized: Session might have expired. Please log in again.");
+      } else {
+        toast.error(`Failed to load catalog: ${response.statusText}`);
       }
     } catch (error) {
       console.error("Failed to fetch plugin catalog:", error);
+      toast.error("Failed to connect to plugin registry.");
     } finally {
       setLoadingCatalog(false);
+      setCatalogLoaded(true);
     }
   };
 
@@ -53,7 +65,6 @@ export default function PluginForm({ onSuccess }: PluginFormProps) {
     setSuccess(false);
 
     try {
-      // Validate JSON config
       let config = {};
       try {
         config = JSON.parse(configStr);
@@ -81,8 +92,6 @@ export default function PluginForm({ onSuccess }: PluginFormProps) {
       setConfigStr("{}");
       onSuccess?.();
       router.refresh();
-      
-      // Reset success message after 3 seconds
       setTimeout(() => setSuccess(false), 3000);
     } catch (err: any) {
       setError(err.message);

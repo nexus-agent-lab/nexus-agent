@@ -1,6 +1,6 @@
 import json
 import logging
-import os
+from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -26,6 +26,7 @@ class PluginCreate(BaseModel):
     manifest_id: Optional[str] = None
     required_role: str = "user"
 
+
 class PluginUpdate(BaseModel):
     name: Optional[str] = None
     type: Optional[str] = None
@@ -34,6 +35,7 @@ class PluginUpdate(BaseModel):
     config: Optional[dict] = None
     manifest_id: Optional[str] = None
     required_role: Optional[str] = None
+
 
 @router.get("/", response_model=List[Plugin])
 async def list_plugins(session: AsyncSession = Depends(get_session), current_user: User = Depends(require_admin)):
@@ -45,15 +47,18 @@ async def list_plugins(session: AsyncSession = Depends(get_session), current_use
 @router.get("/catalog")
 async def get_plugin_catalog(current_user: User = Depends(require_admin)):
     """Get the predefined plugin catalog (App Store)."""
-    catalog_path = os.path.join(os.getcwd(), "plugin_catalog.json")
+    project_root = Path(__file__).parent.parent.parent
+    catalog_path = project_root / "plugin_catalog.json"
     try:
-        if not os.path.exists(catalog_path):
+        if not catalog_path.exists():
             return []
         with open(catalog_path, "r") as f:
             return json.load(f)
     except Exception as e:
         logger.error(f"Failed to read plugin catalog: {e}")
         raise HTTPException(status_code=500, detail="Failed to load plugin catalog")
+
+
 @router.get("/{plugin_id}", response_model=Plugin)
 async def get_plugin(
     plugin_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(require_admin)
