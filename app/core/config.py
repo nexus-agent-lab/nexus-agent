@@ -19,7 +19,6 @@ class Settings(BaseSettings):
     EMBEDDING_BASE_URL: Optional[str] = None
     EMBEDDING_MODEL: str = "bge-m3:latest"
     EMBEDDING_DIMENSION: int = 1024
-
     EMBEDDING_API_KEY: str = "local"
     EMBEDDING_BASE_URL: str = "http://host.docker.internal:9292/v1"
     EMBEDDING_MODEL: str = "bge-small-zh-v1.5"
