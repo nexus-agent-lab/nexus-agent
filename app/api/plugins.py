@@ -125,7 +125,13 @@ async def get_plugin_skill(
         if not skill_id:
             raise HTTPException(status_code=404, detail="No bundled skill found for this plugin")
 
-        skill = await SkillLoader.load_by_name(skill_id)
+        skill = SkillLoader.load_by_name(skill_id)
+        if not skill:
+            raise HTTPException(status_code=404, detail=f"Skill file '{skill_id}.md' not found")
+
+        # SkillLoader.load_by_name returns a raw string content
+        return {"content": skill}
+
         if not skill:
             raise HTTPException(status_code=404, detail=f"Skill file '{skill_id}.md' not found")
 
