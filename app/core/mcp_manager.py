@@ -107,6 +107,8 @@ class MCPManager:
                             conf["required_role"] = catalog_entry["required_role"]
                         if "allowed_groups" in catalog_entry:
                             conf["allowed_groups"] = catalog_entry["allowed_groups"]
+                        if "context_tags" in catalog_entry:
+                            conf["context_tags"] = catalog_entry["context_tags"]
 
                     if p.source_url and not conf.get("url"):
                         conf["url"] = p.source_url
@@ -244,10 +246,11 @@ class MCPManager:
                     # Fetch available tools
                     mcp_tools_response = await session.list_tools()
                     server_tool_config = server_conf.get("tool_config", {})
+                    context_tags = server_conf.get("context_tags", ["standard"])
 
                     for tool in mcp_tools_response.tools:
                         lc_tool = self._convert_to_langchain_tool(
-                            name, session, tool, required_role, server_tool_config, plugin_id, allowed_groups
+                            name, session, tool, required_role, server_tool_config, plugin_id, allowed_groups, context_tags
                         )
                         self.tools.append(lc_tool)
 
@@ -267,6 +270,7 @@ class MCPManager:
         tool_config_map: Dict = None,
         plugin_id: Optional[int] = None,
         allowed_groups: List[str] = None,
+        context_tags: List[str] = None,
     ) -> StructuredTool:
         tool_config_map = tool_config_map or {}
 
@@ -319,6 +323,7 @@ class MCPManager:
                 "domain": server_name.lower().replace(" ", "_"),
                 "required_role": required_role,
                 "allowed_groups": allowed_groups,
+                "context_tags": context_tags or ["standard"],
             },
         )
 

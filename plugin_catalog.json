@@ -7,6 +7,7 @@
     "type": "mcp",
     "source_url": "http://mcp-homeassistant:8080/sse",
     "required_role": "user",
+    "context_tags": ["home", "smart_home", "iot", "ha", "home_assistant"],
     "config": {
       "tool_config": {
         "query_entities": { "cache_ttl": 1800 },
@@ -29,6 +30,7 @@
     "type": "mcp",
     "source_url": "http://lark-mcp:3000/mcp",
     "required_role": "user",
+    "context_tags": ["work", "communication", "office", "feishu", "lark", "dingtalk", "lark_feishu"],
     "config": {},
     "env_schema": {
       "FEISHU_APP_ID": { "type": "text", "label": "App ID", "required": true },
