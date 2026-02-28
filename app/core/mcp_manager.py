@@ -107,6 +107,8 @@ class MCPManager:
                             conf["required_role"] = catalog_entry["required_role"]
 
                     if p.source_url and not conf.get("url"):
+                        conf[p.name]["url"] = p.source_url if isinstance(conf.get(p.name), dict) else p.source_url
+                        # Wait, the structure in servers dict is expected to be {name: {url: ..., command: ...}}
                         conf["url"] = p.source_url
 
                     # Ensure required_role from plugin DB is set
@@ -202,8 +204,6 @@ class MCPManager:
 
                         logger.info(f"Connecting to Remote MCP: {name} ({url}) [Role: {required_role}]...")
                         try:
-                            # Headers to bypass local testing validation if needed
-                            # Note: Server-side fix via MCP_TRANSPORT_SECURITY__ENABLE_DNS_REBINDING_PROTECTION is preferred
                             read, write = await self.exit_stack.enter_async_context(
                                 sse_client(url, headers=global_secrets)
                             )
@@ -215,7 +215,8 @@ class MCPManager:
                         # Security check: validate command against whitelist
                         if command not in ALLOWED_MCP_COMMANDS:
                             logger.critical(
-                                f"SECURITY ALERT: MCP server '{name}' uses forbidden command '{command}'. Allowed commands: {ALLOWED_MCP_COMMANDS}. Skipping server."
+                                f"SECURITY ALERT: MCP server '{name}' uses forbidden command '{command}'. "
+                                f"Allowed commands: {ALLOWED_MCP_COMMANDS}. Skipping server."
                             )
                             continue
 
@@ -309,7 +310,11 @@ class MCPManager:
             name=tool.name,
             description=f"[{server_name}] {tool.description or tool.name}",
             args_schema=args_schema,
-            metadata={"category": server_name},
+            metadata={
+                "category": server_name,
+                "domain": server_name.lower().replace(" ", "_"),
+                "required_role": required_role,
+            },
         )
 
     def _create_args_schema(self, tool_name: str, schema: Dict[str, Any]) -> Type[BaseModel]:

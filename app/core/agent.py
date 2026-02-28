@@ -421,11 +421,14 @@ def create_agent_graph(tools: list):
             # 1. Permission Check
             from app.core.auth_service import AuthService
 
+            # Extract domain and required_role from tool metadata (MCP tools have these)
             domain = "standard"
+            required_role = None
             if hasattr(tool_to_call, "metadata") and tool_to_call.metadata is not None:
                 domain = tool_to_call.metadata.get("domain") or tool_to_call.metadata.get("category") or domain
+                required_role = tool_to_call.metadata.get("required_role")
 
-            if not AuthService.check_tool_permission(user, tool_name, domain=domain):
+            if not AuthService.check_tool_permission(user, tool_name, domain=domain, required_role=required_role):
                 err_msg = f"Error: Permission denied. Access to tool '{tool_name}' is restricted for user '{user.username if user else 'guest'}'."
                 async with AuditInterceptor(
                     trace_id=trace_id, user_id=user.id if user else None, tool_name=tool_name, tool_args=tool_args
@@ -533,14 +536,12 @@ async def stream_agent_events(graph, input_state: dict, config: dict = None):
                 chunk = event["data"]["chunk"]
                 if hasattr(chunk, "content") and chunk.content:
                     yield {"event": "thought", "data": chunk.content}
-            # 2. Tool Calls
             elif kind == "on_tool_start":
                 yield {"event": "tool_start", "data": {"name": name, "args": event["data"].get("input", {})}}
             elif kind == "on_tool_end":
                 output = event["data"].get("output")
                 preview = (str(output)[:300] + "...") if len(str(output)) > 300 else str(output)
                 yield {"event": "tool_end", "data": {"name": name, "result": preview}}
-            # 3. Final State
             elif kind == "on_chain_end" and name == "LangGraph":
                 final_state = event["data"]["output"]
                 if final_state and "messages" in final_state and final_state["messages"]:

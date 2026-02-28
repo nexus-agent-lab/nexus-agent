@@ -17,6 +17,10 @@ logger = logging.getLogger("nexus.auth")
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 
 
+# RBAC Role Levels
+ROLE_LEVELS = {"admin": 100, "user": 50, "guest": 10}
+
+
 class BindResult(str, Enum):
     SUCCESS = "success"
     PROVIDER_CONFLICT = "provider_conflict"  # Social ID already linked to another user
@@ -180,7 +184,37 @@ class AuthService:
                         logger.warning(f"Unknown channel provider: {identity.provider}")
 
     @staticmethod
-    def check_tool_permission(user: User, tool_name: str, domain: str = "standard") -> bool:
+    @staticmethod
+    def check_tool_permission(user: User, tool_name: str, domain: str = "standard", required_role: str = None) -> bool:
+        """
+        Check if user is allowed to use this tool/domain.
+        """
+        if user.role == "admin":
+            return True
+
+        # 1. Check Role-based Access (Plugin-level)
+        if required_role:
+            user_level = ROLE_LEVELS.get(user.role, 0)
+            target_level = ROLE_LEVELS.get(required_role, 50)  # default to user level
+            if user_level >= target_level:
+                return True
+
+        policy = user.policy or {}
+
+        # 2. Deny List (User-specific override)
+        if tool_name in policy.get("deny_tools", []):
+            return False
+
+        # 3. Allow Domains (User-specific whitelist)
+        # Default allowed domains for standard users
+        defaults = ["standard", "time", "weather"]
+        allowed = policy.get("allow_domains", defaults)
+
+        if domain in allowed:
+            return True
+
+        return False
+
         """
         Check if user is allowed to use this tool/domain.
         """
