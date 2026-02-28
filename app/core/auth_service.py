@@ -4,6 +4,7 @@ import random
 import string
 from datetime import datetime
 from enum import Enum
+from typing import List
 
 import redis.asyncio as redis
 from sqlalchemy.future import select
@@ -15,7 +16,6 @@ logger = logging.getLogger("nexus.auth")
 
 # Redis for temporary tokens
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
-
 
 # RBAC Role Levels
 ROLE_LEVELS = {"admin": 100, "user": 50, "guest": 10}
@@ -73,7 +73,9 @@ class AuthService:
                 if existing.user_id == user_id:
                     return BindResult.SUCCESS  # Already linked correctly
                 else:
-                    logger.warning(f"Social ID {provider_user_id} already linked to another user ({existing.user_id}).")
+                    logger.warning(
+                        f"Social ID {provider_user_id} already linked to another user ({existing.user_id})."
+                    )
                     return BindResult.PROVIDER_CONFLICT  # Conflict: One social ID -> One Nexus User
 
             # Check if this User already has an identity for this provider
@@ -140,10 +142,7 @@ class AuthService:
                 identity.last_seen = datetime.utcnow()
                 await session.commit()
 
-                # Fetch User (eagerly loaded? No, need explicit join or separate fetch)
-                # Since we need the full User object (and its policy), let's fetch it.
-                # Identity.user relationship should work if loaded, but session context matters.
-                # Let's just fetch the user directly.
+                # Fetch User
                 stmt_user = select(User).where(User.id == identity.user_id)
                 res_user = await session.execute(stmt_user)
                 return res_user.scalar_one_or_none()
@@ -184,50 +183,42 @@ class AuthService:
                         logger.warning(f"Unknown channel provider: {identity.provider}")
 
     @staticmethod
-    @staticmethod
-    def check_tool_permission(user: User, tool_name: str, domain: str = "standard", required_role: str = None) -> bool:
+    def check_tool_permission(
+        user: User,
+        tool_name: str,
+        domain: str = "standard",
+        required_role: str = None,
+        allowed_groups: List[str] = None,
+    ) -> bool:
         """
         Check if user is allowed to use this tool/domain.
         """
+        # Admin bypass
         if user.role == "admin":
             return True
 
-        # 1. Check Role-based Access (Plugin-level)
+        policy = user.policy or {}
+
+        # 1. Deny List (User-specific override) - Takes precedence
+        if tool_name in policy.get("deny_tools", []):
+            return False
+
+        # 2. Vertical Gate (Role-based)
         if required_role:
             user_level = ROLE_LEVELS.get(user.role, 0)
             target_level = ROLE_LEVELS.get(required_role, 50)  # default to user level
-            if user_level >= target_level:
-                return True
+            if user_level < target_level:
+                return False
 
-        policy = user.policy or {}
-
-        # 2. Deny List (User-specific override)
-        if tool_name in policy.get("deny_tools", []):
-            return False
-
-        # 3. Allow Domains (User-specific whitelist)
-        # Default allowed domains for standard users
-        defaults = ["standard", "time", "weather"]
-        allowed = policy.get("allow_domains", defaults)
-
-        if domain in allowed:
+        # 3. Horizontal Gate (Group-based)
+        if allowed_groups:
+            user_groups = set(getattr(user, "groups", []) or [])
+            if not user_groups.intersection(set(allowed_groups)):
+                return False
+            # If we match a group, we are allowed (unless denied by role above)
             return True
 
-        return False
-
-        """
-        Check if user is allowed to use this tool/domain.
-        """
-        if user.role == "admin":
-            return True
-
-        policy = user.policy or {}
-
-        # 1. Deny List
-        if tool_name in policy.get("deny_tools", []):
-            return False
-
-        # 2. Allow Domains
+        # 4. Fallback: Allow Domains (User-specific whitelist)
         # Default allowed domains for standard users
         defaults = ["standard", "time", "weather"]
         allowed = policy.get("allow_domains", defaults)
@@ -246,10 +237,18 @@ class AuthService:
         for tool in all_tools:
             # We assume tool has .name attribute
             tool_name = getattr(tool, "name", str(tool))
-            # Extract domain from tool metadata (MCP tools should have domain/category in metadata)
-            domain = "standard"  # fallback
-            if hasattr(tool, "metadata"):
-                domain = tool.metadata.get("domain") or tool.metadata.get("category") or domain
-            if AuthService.check_tool_permission(user, tool_name, domain):
+            # Extract metadata from tool (MCP tools should have domain/category in metadata)
+            metadata = getattr(tool, "metadata", {}) or {}
+            domain = metadata.get("domain") or metadata.get("category") or "standard"
+            required_role = metadata.get("required_role")
+            allowed_groups = metadata.get("allowed_groups")
+
+            if AuthService.check_tool_permission(
+                user,
+                tool_name,
+                domain=domain,
+                required_role=required_role,
+                allowed_groups=allowed_groups,
+            ):
                 allowed.append(tool)
         return allowed
