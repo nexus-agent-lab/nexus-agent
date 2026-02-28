@@ -19,10 +19,14 @@
 
 - [x] Phase 4: API & Frontend Updates
 
-- Update `app/api/users.py` and `app/api/plugins.py`: Ensure schemas (`UserUpdate`, `PluginCreate`, `PluginUpdate`) accept `groups` and `allowed_groups` respectively.
-- Update `web/src/app/users/[user_id]/EditUserForm.tsx` to include an input for `groups` (e.g. comma separated string converted to array).
-- Update `web/src/app/integrations/EditPluginButton.tsx` and `PluginForm.tsx` to include an input for `allowed_groups`.
+- [x] Update `app/api/users.py` and `app/api/plugins.py`: Ensure schemas (`UserUpdate`, `PluginCreate`, `PluginUpdate`) accept `groups` and `allowed_groups` respectively.
+
+- [x] Update `web/src/app/users/[user_id]/EditUserForm.tsx` to include an input for `groups` (e.g. comma separated string converted to array).
+
+- [x] Update `web/src/app/integrations/EditPluginButton.tsx` and `PluginForm.tsx` to include an input for `allowed_groups`.
+
 
 - [x] Phase 5: Quality Assurance
 
-- Run `bash scripts/dev_check.sh`.
+- [x] Run `bash scripts/dev_check.sh`.
+

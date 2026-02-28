@@ -426,11 +426,7 @@ def create_agent_graph(tools: list):
             required_role = None
             allowed_groups = None
             if hasattr(tool_to_call, "metadata") and tool_to_call.metadata is not None:
-                domain = (
-                    tool_to_call.metadata.get("domain")
-                    or tool_to_call.metadata.get("category")
-                    or domain
-                )
+                domain = tool_to_call.metadata.get("domain") or tool_to_call.metadata.get("category") or domain
                 required_role = tool_to_call.metadata.get("required_role")
                 allowed_groups = tool_to_call.metadata.get("allowed_groups")
 
