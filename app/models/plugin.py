@@ -20,6 +20,7 @@ class Plugin(SQLModel, table=True):
     source_url: str = Field(description="Source URL or repository for the plugin")
     status: str = Field(default="active", index=True, description="Current status of the plugin")
     required_role: str = Field(default="user")
+    allowed_groups: List[str] = Field(default=[], sa_column=Column(JSON))
     config: dict = Field(default={}, sa_column=Column(JSON), description="Configuration for the plugin")
 
     # Relationships

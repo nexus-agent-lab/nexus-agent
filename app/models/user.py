@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import JSON, Column, ForeignKey, Integer
 from sqlmodel import Field, Relationship, SQLModel
@@ -12,6 +12,7 @@ class User(SQLModel, table=True):
     username: str = Field(index=True)
     api_key: str = Field(unique=True, index=True)
     role: str = Field(default="user")  # 'admin', 'user', 'guest'
+    groups: List[str] = Field(default=["default"], sa_column=Column(JSON))
     language: str = Field(default="en")  # 'en', 'zh'
     timezone: Optional[str] = Field(default=None)  # e.g. 'Asia/Shanghai'
     notes: Optional[str] = Field(default=None)  # Personal notes/context
