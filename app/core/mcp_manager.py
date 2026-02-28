@@ -109,8 +109,6 @@ class MCPManager:
                             conf["allowed_groups"] = catalog_entry["allowed_groups"]
 
                     if p.source_url and not conf.get("url"):
-                        conf[p.name]["url"] = p.source_url if isinstance(conf.get(p.name), dict) else p.source_url
-                        # Wait, the structure in servers dict is expected to be {name: {url: ..., command: ...}}
                         conf["url"] = p.source_url
 
                     # Ensure required_role from plugin DB is set
@@ -189,7 +187,7 @@ class MCPManager:
                     args = server_conf.get("args", [])
                     env = server_conf.get("env", None)
                     required_role = server_conf.get("required_role", "user")
-                    allowed_groups = server_conf.get("allowed_groups", [])
+                    allowed_groups = server_conf.get("allowed_groups")
 
                     # Check for SSE (URL) configuration first
                     url = server_conf.get("url")

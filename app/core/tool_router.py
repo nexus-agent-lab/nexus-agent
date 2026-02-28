@@ -27,9 +27,9 @@ DOMAIN_AFFINITY = {
 }
 
 DOMAIN_ADJACENCY = {
-    "home": {"smart_home", "home", "iot", "ha"},
+    "home": {"smart_home", "home", "iot", "ha", "home_assistant"},
     "system": {"system", "admin", "coding", "debug", "standard"},
-    "work": {"communication", "office", "feishu", "lark", "dingtalk"},
+    "work": {"communication", "office", "feishu", "lark", "dingtalk", "lark_feishu"},
 }
 
 
