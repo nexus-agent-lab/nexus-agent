@@ -14,6 +14,29 @@ jobs:
     runs-on: ubuntu-latest
     
     services:
+      redis:
+        image: redis:alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      postgres:
+        image: ankane/pgvector:latest
+        env:
+          POSTGRES_USER: nexus
+          POSTGRES_PASSWORD: nexus_password
+          POSTGRES_DB: nexus_test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
       # Use a service container for Redis and Postgres if needed for unit tests,
       # but for now we'll stick to running stateless/mocked tests.
       redis:
@@ -41,6 +64,20 @@ jobs:
         pip install ruff pytest pytest-asyncio pytest-mock
         
     - name: Lint with Ruff
+      run: |
+        ruff check app/ tests/ scripts/ --select E,F,I --ignore E501
+        ruff format --check .
+
+    - name: Run Tests
+      run: |
+        export PYTHONPATH=.
+        pytest -v
+      env:
+        LLM_API_KEY: "test"
+        LLM_BASE_URL: "http://localhost:11434"
+        REDIS_URL: "redis://localhost:6379/0"
+        DATABASE_URL: "postgresql+asyncpg://nexus:nexus_password@localhost:5432/nexus_test_db"
+
       run: |
         ruff check .
         ruff format --check .
