@@ -27,8 +27,6 @@ DOMAIN_AFFINITY = {
 }
 
 
-
-
 class SemanticToolRouter:
     _instance = None
 

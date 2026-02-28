@@ -250,7 +250,14 @@ class MCPManager:
 
                     for tool in mcp_tools_response.tools:
                         lc_tool = self._convert_to_langchain_tool(
-                            name, session, tool, required_role, server_tool_config, plugin_id, allowed_groups, context_tags
+                            name,
+                            session,
+                            tool,
+                            required_role,
+                            server_tool_config,
+                            plugin_id,
+                            allowed_groups,
+                            context_tags,
                         )
                         self.tools.append(lc_tool)
 
