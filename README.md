@@ -115,7 +115,8 @@ graph TD
       ```bash
       # Mac mini M4 (32GB) Requirement
       # Create custom model with 32k context
-      ollama create glm4.7-flash-32k -f ./scripts/glm4-flash-32k.Modelfile
+      ollama create nexus-glm -f ./scripts/glm4-flash-nexus.Modelfile
+
       
       # Pull Embedding Model (Required for RAG)
       ollama pull bge-m3

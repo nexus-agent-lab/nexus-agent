@@ -1,0 +1,23 @@
+FROM glm-4.7-flash
+
+# ═══════════════════════════════════════════════════════════
+# Nexus Agent OS — Optimized Profile (Updated)
+# ═══════════════════════════════════════════════════════════
+
+# Optimized context: 8K is enough for 30+ tools + history.
+# Reducing from 32K prevents memory swap on 32GB Mac Mini.
+PARAMETER num_ctx 8192
+
+# Stable parameters for JSON Tool Calling
+PARAMETER temperature 0.1
+PARAMETER top_p 0.8
+PARAMETER repeat_penalty 1.1
+
+# Anti-CoT suppression
+SYSTEM """You are a precise tool-calling assistant. 
+Output ONLY JSON for tool calls. No thinking/reasoning text."""
+
+PARAMETER num_ctx 32768
+
+# Set temperature (Lower is better for precise tool usage)
+PARAMETER temperature 0.1
