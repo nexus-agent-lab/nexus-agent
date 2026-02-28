@@ -59,3 +59,18 @@
 1. **立即**: 实现 MemSkill P0 (模型 + 基础技能)
 2. **本周**: 添加 Dashboard Designer 审计日志
 3. **下周**: P1 安全增强 (Skill 审核)
+
+---
+
+## 🏗️ 路线图演进 (Quantization Safety Hardening)
+
+* **Epic 1: Aggressive Tool Output Compaction (DualPath inspired) [P1]**
+  * **Description:** Transform raw JSON tool outputs into clean, LLM-summarized facts *before* feeding them back into the LangGraph state. 
+
+  * **Goal:** Save KV-Cache space, reduce context noise, and minimize the risk of quantized models degrading and hallucinating after large tool responses.
+
+
+* **Epic 2: Quantization-Aware Safety Benchmark (T-PTQ inspired) [P2]**
+  * **Description:** Build a dedicated test suite (`tests/integration/test_safety_alignment.py`) to systematically test safety under quantization.
+
+  * **Goal:** Automatically evaluate if local quantized models attempt to bypass RBAC, hallucinate tool parameters, or break alignment under complex prompt conditions and heavy context loads.

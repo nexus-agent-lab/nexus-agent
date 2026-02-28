@@ -10,3 +10,15 @@
 - Added logic to split sensitive fields (type 'password') into `secrets` and other fields into `config`.
 - Updated `createPlugin` server action to accept `secrets` object.
 - Verified that the frontend build and backend tests pass after changes.
+
+### Prompt Hardening for Quantized Models (2026-02-28)
+- Updated BASE_SYSTEM_PROMPT in app/core/agent.py to include stronger anti-hallucination directives.
+- Replaced "NO HALLUCINATION" rule with a "CRITICAL RULE" that explicitly forbids inventing tool names or arguments and instructs the model to STOP and ASK if unsure.
+- Added a "SECURITY & ALIGNMENT" section to the system prompt to enforce RBAC compliance and prevent constraint bypassing.
+- These changes aim to mitigate safety degradation and hallucination risks common in local quantized models as context grows.
+
+### Roadmap Evolution for Quantization Safety (2026-02-28)
+- Updated `docs/priorities.md` to include two new Epics focused on quantization safety hardening.
+- Epic 1 (DualPath inspired) addresses tool output compaction to save KV-Cache and reduce context noise.
+- Epic 2 (T-PTQ inspired) introduces a quantization-aware safety benchmark test suite.
+- These updates provide a clear roadmap for architectural solutions to safety degradation in local quantized models.
