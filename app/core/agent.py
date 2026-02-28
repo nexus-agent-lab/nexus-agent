@@ -424,11 +424,19 @@ def create_agent_graph(tools: list):
             # Extract domain and required_role from tool metadata (MCP tools have these)
             domain = "standard"
             required_role = None
+            allowed_groups = None
             if hasattr(tool_to_call, "metadata") and tool_to_call.metadata is not None:
-                domain = tool_to_call.metadata.get("domain") or tool_to_call.metadata.get("category") or domain
+                domain = (
+                    tool_to_call.metadata.get("domain")
+                    or tool_to_call.metadata.get("category")
+                    or domain
+                )
                 required_role = tool_to_call.metadata.get("required_role")
+                allowed_groups = tool_to_call.metadata.get("allowed_groups")
 
-            if not AuthService.check_tool_permission(user, tool_name, domain=domain, required_role=required_role):
+            if not AuthService.check_tool_permission(
+                user, tool_name, domain=domain, required_role=required_role, allowed_groups=allowed_groups
+            ):
                 err_msg = f"Error: Permission denied. Access to tool '{tool_name}' is restricted for user '{user.username if user else 'guest'}'."
                 async with AuditInterceptor(
                     trace_id=trace_id, user_id=user.id if user else None, tool_name=tool_name, tool_args=tool_args

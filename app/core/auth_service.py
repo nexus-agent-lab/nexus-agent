@@ -73,9 +73,7 @@ class AuthService:
                 if existing.user_id == user_id:
                     return BindResult.SUCCESS  # Already linked correctly
                 else:
-                    logger.warning(
-                        f"Social ID {provider_user_id} already linked to another user ({existing.user_id})."
-                    )
+                    logger.warning(f"Social ID {provider_user_id} already linked to another user ({existing.user_id}).")
                     return BindResult.PROVIDER_CONFLICT  # Conflict: One social ID -> One Nexus User
 
             # Check if this User already has an identity for this provider

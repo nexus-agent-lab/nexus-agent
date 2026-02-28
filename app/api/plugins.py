@@ -28,6 +28,10 @@ class PluginCreate(BaseModel):
     config: dict = {}
     manifest_id: Optional[str] = None
     required_role: str = "user"
+    allowed_groups: List[str] = []
+    secrets: Optional[Dict[str, str]] = None
+
+    required_role: str = "user"
     secrets: Optional[Dict[str, str]] = None
 
 
@@ -39,6 +43,9 @@ class PluginUpdate(BaseModel):
     config: Optional[dict] = None
     manifest_id: Optional[str] = None
     required_role: Optional[str] = None
+    allowed_groups: Optional[List[str]] = None
+    secrets: Optional[Dict[str, str]] = None
+
     secrets: Optional[Dict[str, str]] = None
 
 
@@ -169,7 +176,9 @@ async def create_plugin(
         config=plugin_in.config,
         manifest_id=plugin_in.manifest_id,
         required_role=plugin_in.required_role,
+        allowed_groups=plugin_in.allowed_groups,
     )
+
     session.add(db_plugin)
     await session.commit()
     await session.refresh(db_plugin)

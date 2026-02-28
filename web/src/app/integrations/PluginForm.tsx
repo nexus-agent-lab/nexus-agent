@@ -19,6 +19,7 @@ export default function PluginForm({ apiKey, onSuccess }: PluginFormProps) {
   const [sourceUrl, setSourceUrl] = useState("");
   const [configStr, setConfigStr] = useState("{}");
   const [requiredRole, setRequiredRole] = useState("user");
+  const [allowedGroups, setAllowedGroups] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -81,6 +82,7 @@ export default function PluginForm({ apiKey, onSuccess }: PluginFormProps) {
         source_url: sourceUrl,
         config,
         required_role: requiredRole,
+        allowed_groups: allowedGroups.split(",").map(g => g.trim()).filter(g => g !== ""),
       });
 
       if (result.error) {
@@ -93,6 +95,7 @@ export default function PluginForm({ apiKey, onSuccess }: PluginFormProps) {
       setName("");
       setSourceUrl("");
       setConfigStr("{}");
+      setAllowedGroups("");
       onSuccess?.();
       router.refresh();
       setTimeout(() => setSuccess(false), 3000);
@@ -129,6 +132,7 @@ export default function PluginForm({ apiKey, onSuccess }: PluginFormProps) {
         source_url: item.source_url,
         manifest_id: item.id,
         required_role: item.required_role || "user",
+        allowed_groups: item.allowed_groups || [],
         config: finalConfig,
         secrets: secretValues,
       });
@@ -314,6 +318,20 @@ export default function PluginForm({ apiKey, onSuccess }: PluginFormProps) {
                 <option value="guest">Guest / Public</option>
               </select>
             </div>
+
+            <div>
+              <label className="mb-2 flex items-center gap-2 text-sm font-bold text-neutral-700 dark:text-neutral-300">
+                <Shield className="h-4 w-4 text-indigo-500" />
+                Allowed Groups (comma separated)
+              </label>
+              <input
+                type="text"
+                value={allowedGroups}
+                onChange={(e) => setAllowedGroups(e.target.value)}
+                className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-medium transition-all focus:border-indigo-500 focus:bg-white focus:outline-none dark:border-neutral-700 dark:bg-neutral-800"
+                placeholder="e.g. family, work"
+              />
+            </div>
           </div>
 
           <div>
@@ -394,7 +412,6 @@ export default function PluginForm({ apiKey, onSuccess }: PluginFormProps) {
                 </div>
               </div>
               <button 
-
                 onClick={() => setIsInstallModalOpen(false)}
                 className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-full transition-colors"
               >

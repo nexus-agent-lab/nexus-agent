@@ -10,6 +10,7 @@ interface User {
   username: string;
   role: string;
   language: string;
+  groups: string[];
   timezone?: string;
   notes?: string;
   policy: Record<string, any>;
@@ -41,18 +42,15 @@ async function getUser(userId: string, apiKey: string): Promise<User | null> {
  * for administrators to manage user properties and security policies.
  */
 export default async function UserDetailPage({
-
   params,
 }: {
-  params: { user_id: string };
+  params: Promise<{ user_id: string }>;
 }) {
   const { user_id } = await params;
   const cookieStore = await cookies();
   const token = cookieStore.get("access_token")?.value;
 
-  if (!token) {
-    redirect("/login");
-  }
+  if (!token) redirect("/login");
 
   let payload;
   try {
@@ -82,22 +80,24 @@ export default async function UserDetailPage({
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 animate-in fade-in duration-500">
       <div className="flex items-center gap-4">
         <Link
           href="/users"
-          className="flex h-10 w-10 items-center justify-center rounded-full border border-neutral-200 bg-white transition-colors hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:bg-neutral-800"
+          className="flex h-10 w-10 items-center justify-center rounded-full border border-neutral-200 bg-white transition-colors hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:bg-neutral-800 text-neutral-500 dark:text-neutral-400"
         >
           <ChevronLeft className="h-5 w-5" />
         </Link>
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-3xl font-bold tracking-tight">User Details</h1>
+            <h1 className="text-3xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
+              User Details
+            </h1>
             <span className="rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs font-mono text-neutral-500 dark:bg-neutral-800">
               #{user.id}
             </span>
           </div>
-          <p className="text-neutral-500 dark:text-neutral-400">
+          <p className="text-neutral-500 dark:text-neutral-400 mt-1">
             View and manage permissions for {user.username}.
           </p>
         </div>
@@ -126,6 +126,10 @@ export default async function UserDetailPage({
               <div className="flex items-center justify-between text-sm">
                 <span className="text-neutral-500">Language</span>
                 <span className="font-medium uppercase">{user.language}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-neutral-500">Groups</span>
+                <span className="font-medium">{(user.groups || []).join(", ")}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-neutral-500">Timezone</span>

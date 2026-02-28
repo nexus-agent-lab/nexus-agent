@@ -17,6 +17,7 @@ interface Plugin {
   source_url: string;
   status: string;
   required_role: string;
+  allowed_groups: string[];
   config: Record<string, any>;
   manifest_id: string | null;
 }

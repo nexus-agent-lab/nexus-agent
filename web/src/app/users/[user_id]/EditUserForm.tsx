@@ -6,12 +6,12 @@ import { updateUser } from "@/app/actions/users";
 import { Save, Loader2, AlertCircle, CheckCircle2, ShieldAlert } from "lucide-react";
 import { toast } from "@/lib/toast";
 
-
 interface User {
   id: number;
   username: string;
   role: string;
   language: string;
+  groups: string[];
   timezone?: string;
   notes?: string;
   policy: Record<string, any>;
@@ -26,12 +26,12 @@ interface EditUserFormProps {
  * and modify the security policy JSON object.
  */
 export default function EditUserForm({ user }: EditUserFormProps) {
-
   const router = useRouter();
   const [formData, setFormData] = useState({
     username: user.username,
     role: user.role,
     language: user.language,
+    groups: (user.groups || ["default"]).join(", "),
     timezone: user.timezone || "",
     notes: user.notes || "",
   });
@@ -58,6 +58,7 @@ export default function EditUserForm({ user }: EditUserFormProps) {
     try {
       const result = await updateUser(user.id, {
         ...formData,
+        groups: formData.groups.split(",").map((g) => g.trim()).filter((g) => g !== ""),
         policy: parsedPolicy,
       });
 
@@ -130,6 +131,20 @@ export default function EditUserForm({ user }: EditUserFormProps) {
               onChange={handleChange}
               className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm focus:border-indigo-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800"
               placeholder="e.g. en, ko"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+              Groups (comma separated)
+            </label>
+            <input
+              type="text"
+              name="groups"
+              value={formData.groups}
+              onChange={handleChange}
+              className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm focus:border-indigo-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800"
+              placeholder="e.g. family, devs"
             />
           </div>
 

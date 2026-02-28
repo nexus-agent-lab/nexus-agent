@@ -105,6 +105,8 @@ class MCPManager:
                         # Use catalog required_role if present
                         if "required_role" in catalog_entry:
                             conf["required_role"] = catalog_entry["required_role"]
+                        if "allowed_groups" in catalog_entry:
+                            conf["allowed_groups"] = catalog_entry["allowed_groups"]
 
                     if p.source_url and not conf.get("url"):
                         conf[p.name]["url"] = p.source_url if isinstance(conf.get(p.name), dict) else p.source_url
@@ -114,6 +116,8 @@ class MCPManager:
                     # Ensure required_role from plugin DB is set
                     if "required_role" not in conf and p.required_role:
                         conf["required_role"] = p.required_role
+                    if "allowed_groups" not in conf and p.allowed_groups:
+                        conf["allowed_groups"] = p.allowed_groups
 
                     # Store plugin ID for secret fetching
                     conf["plugin_id"] = p.id
@@ -185,6 +189,7 @@ class MCPManager:
                     args = server_conf.get("args", [])
                     env = server_conf.get("env", None)
                     required_role = server_conf.get("required_role", "user")
+                    allowed_groups = server_conf.get("allowed_groups", [])
 
                     # Check for SSE (URL) configuration first
                     url = server_conf.get("url")
@@ -244,7 +249,7 @@ class MCPManager:
 
                     for tool in mcp_tools_response.tools:
                         lc_tool = self._convert_to_langchain_tool(
-                            name, session, tool, required_role, server_tool_config, plugin_id
+                            name, session, tool, required_role, server_tool_config, plugin_id, allowed_groups
                         )
                         self.tools.append(lc_tool)
 
@@ -263,6 +268,7 @@ class MCPManager:
         required_role: str,
         tool_config_map: Dict = None,
         plugin_id: Optional[int] = None,
+        allowed_groups: List[str] = None,
     ) -> StructuredTool:
         tool_config_map = tool_config_map or {}
 
@@ -314,6 +320,7 @@ class MCPManager:
                 "category": server_name,
                 "domain": server_name.lower().replace(" ", "_"),
                 "required_role": required_role,
+                "allowed_groups": allowed_groups,
             },
         )
 

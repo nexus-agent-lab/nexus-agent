@@ -24,6 +24,9 @@ class UserCreate(BaseModel):
     language: str = "en"
     timezone: Optional[str] = None
     notes: Optional[str] = None
+    groups: List[str] = ["default"]
+    policy: Dict[str, Any] = {}
+
     policy: Dict[str, Any] = {}
 
 
@@ -33,6 +36,9 @@ class UserUpdate(BaseModel):
     language: Optional[str] = None
     timezone: Optional[str] = None
     notes: Optional[str] = None
+    groups: Optional[List[str]] = None
+    policy: Optional[Dict[str, Any]] = None
+
     policy: Optional[Dict[str, Any]] = None
 
 
@@ -87,6 +93,7 @@ async def create_user(
         language=user_in.language,
         timezone=user_in.timezone,
         notes=user_in.notes,
+        groups=user_in.groups,
         policy=user_in.policy,
     )
     session.add(db_user)

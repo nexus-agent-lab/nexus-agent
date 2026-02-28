@@ -13,6 +13,7 @@ interface EditPluginButtonProps {
     type: string;
     source_url: string;
     required_role: string;
+    allowed_groups: string[];
     config: Record<string, any>;
     manifest_id: string | null;
   };
@@ -29,6 +30,7 @@ export default function EditPluginButton({ plugin, apiKey }: EditPluginButtonPro
     type: plugin.type,
     source_url: plugin.source_url,
     required_role: plugin.required_role || "user",
+    allowed_groups: (plugin.allowed_groups || []).join(", "),
     configStr: JSON.stringify(plugin.config, null, 2),
   });
 
@@ -103,6 +105,7 @@ export default function EditPluginButton({ plugin, apiKey }: EditPluginButtonPro
         type: formData.type,
         source_url: formData.source_url,
         required_role: formData.required_role,
+        allowed_groups: formData.allowed_groups.split(",").map(g => g.trim()).filter(g => g !== ""),
         config: config,
         secrets: Object.keys(secretValues).length > 0 ? secretValues : undefined,
       });
@@ -119,6 +122,7 @@ export default function EditPluginButton({ plugin, apiKey }: EditPluginButtonPro
       setLoading(false);
     }
   };
+
   return (
     <>
       <button
@@ -187,6 +191,17 @@ export default function EditPluginButton({ plugin, apiKey }: EditPluginButtonPro
                     <option value="admin">Administrator</option>
                     <option value="guest">Guest / Public</option>
                   </select>
+                </div>
+                
+                <div className="md:col-span-2">
+                  <label className="mb-2 block text-sm font-bold text-neutral-700 dark:text-neutral-300">Allowed Groups (comma separated)</label>
+                  <input
+                    type="text"
+                    value={formData.allowed_groups}
+                    onChange={(e) => setFormData({ ...formData, allowed_groups: e.target.value })}
+                    className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-2 text-sm focus:border-indigo-500 focus:bg-white focus:outline-none dark:border-neutral-700 dark:bg-neutral-800"
+                    placeholder="e.g. family, work"
+                  />
                 </div>
               </div>
 

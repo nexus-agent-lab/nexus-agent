@@ -62,6 +62,8 @@ export async function updateUser(userId: number, formData: {
   timezone?: string;
   notes?: string;
   policy?: any;
+  groups?: string[];
+
 }) {
   const apiKey = await getApiKey();
   if (!apiKey) {

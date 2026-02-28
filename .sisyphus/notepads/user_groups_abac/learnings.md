@@ -1,0 +1,13 @@
+- SQLModel List[str] with sa_column=Column(JSON) was successfully used to represent groups for User and Plugin models.
+- Updated AuthService.check_tool_permission to support horizontal gate logic via allowed_groups.
+- Implemented intersection check between user.groups and tool.allowed_groups.
+- Cleaned up duplicate code blocks in app/core/auth_service.py.
+- Ensured that user-specific deny_tools takes precedence over all allow checks.
+- Maintained backward compatibility with allow_domains as a fallback when no allowed_groups are defined on the tool.
+- Updated `app/core/mcp_manager.py` to propagate `allowed_groups` from plugin configuration to tool metadata.
+- `_load_from_db` now correctly merges `allowed_groups` from both the plugin catalog and the database record.
+- LangChain `StructuredTool` now carries `allowed_groups` in its `metadata` dictionary, enabling downstream permission checks in the agent loop.
+
+- Fixed a regression in `app/core/mcp_manager.py` where a duplicated call to `_convert_to_langchain_tool` was overwriting the tool metadata and dropping the `allowed_groups` property.- Updated `app/core/agent.py` to extract `allowed_groups` from tool metadata and pass it to `AuthService.check_tool_permission`.
+- Ensured that `allowed_groups` defaults to `None` if not present in metadata.
+- Verified syntax with `python3 -m py_compile`.

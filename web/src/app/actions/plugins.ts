@@ -24,8 +24,6 @@ async function getApiKey() {
 
 /**
  * Server action to create a new plugin.
- * 
- * @param formData The plugin details (name, type, source_url, status, config)
  */
 export async function createPlugin(formData: {
   name: string;
@@ -35,6 +33,7 @@ export async function createPlugin(formData: {
   config?: Record<string, any>;
   manifest_id?: string;
   required_role?: string;
+  allowed_groups?: string[];
   secrets?: Record<string, string>;
 }) {
   const apiKey = await getApiKey();
@@ -68,9 +67,6 @@ export async function createPlugin(formData: {
 
 /**
  * Server action to update an existing plugin.
- * 
- * @param pluginId The ID of the plugin to update
- * @param formData The plugin details to update
  */
 export async function updatePlugin(pluginId: number, formData: {
   name?: string;
@@ -80,6 +76,7 @@ export async function updatePlugin(pluginId: number, formData: {
   config?: Record<string, any>;
   manifest_id?: string;
   required_role?: string;
+  allowed_groups?: string[];
   secrets?: Record<string, string>;
 }) {
   const apiKey = await getApiKey();
@@ -111,11 +108,8 @@ export async function updatePlugin(pluginId: number, formData: {
   }
 }
 
-
 /**
  * Server action to delete a plugin.
- * 
- * @param pluginId The ID of the plugin to delete
  */
 export async function deletePlugin(pluginId: number) {
   const apiKey = await getApiKey();
