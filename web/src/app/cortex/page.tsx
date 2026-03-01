@@ -7,6 +7,8 @@ import DataTable from "@/components/DataTable";
 import MetricCard from "@/components/MetricCard";
 import { cn } from "@/lib/utils";
 import ChangelogActions from "./ChangelogActions";
+import MemoryActions from "./MemoryActions";
+
 
 interface Memory {
   id: number;
@@ -187,12 +189,10 @@ async function MemoriesTab({ apiKey }: { apiKey: string }) {
       header: "Content", 
       accessorKey: "content" as keyof Memory,
       cell: (m: Memory) => (
-        <div className="max-w-md overflow-hidden text-ellipsis whitespace-nowrap text-neutral-900 dark:text-neutral-100">
-          {m.content}
-        </div>
+        <MemoryActions id={m.id} content={m.content} type={m.memory_type} />
       )
     },
-    { 
+    {
       header: "Created At", 
       accessorKey: "created_at" as keyof Memory,
       cell: (m: Memory) => (
@@ -200,18 +200,18 @@ async function MemoriesTab({ apiKey }: { apiKey: string }) {
           {new Date(m.created_at).toLocaleString()}
         </span>
       )
-    },
+    }
   ];
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <MetricCard label="Total Memories" value={stats?.total_memories || 0} icon={<Database className="h-4 w-4" />} />
         <MetricCard label="Profiles" value={stats?.memories_by_type?.profile || 0} />
         <MetricCard label="Reflexions" value={stats?.memories_by_type?.reflexion || 0} />
         <MetricCard label="Knowledge" value={stats?.memories_by_type?.knowledge || 0} />
+        <MetricCard label="Lessons" value={stats?.memories_by_type?.preference || 0} icon={<Brain className="h-4 w-4" />} />
       </div>
-
       <div className="space-y-4">
         <h3 className="text-lg font-semibold">Recent Memories</h3>
         <DataTable columns={memoryColumns} data={memories || []} />

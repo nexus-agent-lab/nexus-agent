@@ -95,3 +95,25 @@ async def get_memory_stats(
     by_type = {row[0]: row[1] for row in result_type.all()}
 
     return MemoryStats(total_memories=total, memories_by_type=by_type)
+
+
+@router.delete("/{memory_id}")
+async def delete_memory(
+    memory_id: int,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Delete a memory. Standard users can only delete their own. Admins can delete any.
+    """
+    memory = await session.get(Memory, memory_id)
+    if not memory:
+        raise HTTPException(status_code=404, detail="Memory not found")
+
+    if current_user.role != "admin" and memory.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this memory")
+
+    await session.delete(memory)
+    await session.commit()
+
+    return {"status": "success"}
