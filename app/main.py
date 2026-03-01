@@ -41,11 +41,29 @@ logger = logging.getLogger(__name__)
 # Global reference
 agent_graph = None
 
+async def restore_settings():
+    import os
+
+    from sqlmodel import select
+
+    from app.core.db import AsyncSessionLocal
+    from app.models.settings import SystemSetting
+
+    try:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(SystemSetting))
+            settings = result.scalars().all()
+            for setting in settings:
+                os.environ[setting.key] = setting.value
+            logger.info(f"Restored {len(settings)} system settings from DB into os.environ.")
+    except Exception as e:
+        logger.error(f"Failed to restore settings from DB: {e}")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup logic
     await init_db()
+    await restore_settings()
 
     # Initialize Tools
     static_tools = get_static_tools()

@@ -1,4 +1,5 @@
 from .audit import AuditLog
+from .llm_trace import LLMTrace
 from .memory import Memory
 from .memory_skill import MemorySkill, MemorySkillChangelog
 from .plugin import Plugin
@@ -31,4 +32,5 @@ __all__ = [
     "SystemSetting",
     "SkillChangelog",
     "WatchRule",
+    "LLMTrace",
 ]

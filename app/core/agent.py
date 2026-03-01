@@ -1,18 +1,18 @@
 import asyncio
-import json
 import logging
 import os
 import time
 import uuid
 from typing import Literal
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage, message_to_dict
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import StateGraph
 
 from app.core.audit import AuditInterceptor
 from app.core.llm_utils import get_llm_client
 from app.core.session import SessionManager
 from app.core.state import AgentState
+from app.core.trace_logger import trace_logger
 
 logger = logging.getLogger(__name__)
 
@@ -303,31 +303,25 @@ def create_agent_graph(tools: list):
                 messages.insert(0, system_msg)
 
         # Dynamic Tool Routing
-        from app.core.tool_router import CORE_TOOL_NAMES, tool_router
+        from app.core.intent_router import IntentRouter
+        from app.core.tool_router import tool_router
 
-        _wire_log = os.getenv("DEBUG_WIRE_LOG", "false").lower() == "true"
+        last_msg_content = str(messages[-1].content) if messages else "Unknown"
+        prompt_summary = last_msg_content if len(last_msg_content) < 2000 else last_msg_content[:2000]
+        last_human_msg = str(human_msgs[-1].content) if human_msgs else ""
+        try:
+            intent_queries = await IntentRouter().decompose(last_human_msg) if last_human_msg else []
+            if not intent_queries:
+                intent_queries = [last_human_msg] if last_human_msg else [routing_query]
+        except Exception as e:
+            logger.warning(f"Intent decomposition failed: {e}")
+            intent_queries = [last_human_msg] if last_human_msg else [routing_query]
 
-        # --- Flow Trace Logging (Start) ---
-        if _wire_log:
-            last_msg_content = messages[-1].content if messages else "Unknown"
-            if len(str(last_msg_content)) > 50:
-                last_msg_content = str(last_msg_content)[:50] + "..."
-
-            print(f'\\nUser Query: "{last_msg_content}"')
-            print("  │")
-            print("  ▼")
-            print("① call_model (agent.py)")
-            print("  │")
-
-            sys_len = len(messages[0].content) if messages and isinstance(messages[0], SystemMessage) else 0
-            print(f"  ├─ System Prompt Constructed (Length: {sys_len} chars)")
-            print("  │")
-            print(f'  ├─ tool_router.route("{routing_query[:50]}...", role={user_role}, context={current_context})')
-            print("  │   ├─ Embedding Query -> Domain Affinity Scoring -> Collision Check")
+        routing_queries = [f"Context: {current_context} | {q}" for q in intent_queries]
 
         try:
             # Select relevant tools; pass user_role to enforce RBAC at the routing layer
-            current_tools = await tool_router.route(routing_query, role=user_role, context=current_context)
+            current_tools = await tool_router.route_multi(routing_queries, role=user_role, context=current_context)
             if not current_tools:
                 # Fallback: give the LLM all role-permitted tools rather than nothing
                 current_tools = [t for t in tools if tool_router._check_role(t, user_role)]
@@ -344,29 +338,6 @@ def create_agent_graph(tools: list):
         # Bind only selected tools for this turn (not the full registry)
         llm_with_tools = llm.bind_tools(current_tools)
 
-        if _wire_log:
-            n_core = sum(1 for t in current_tools if t.name in CORE_TOOL_NAMES)
-            n_sem = len(current_tools) - n_core
-            print(f"  │   └─ Selected: {n_core} Core + {n_sem} Semantic = {len(current_tools)} Total")
-            print("  │")
-            print(f"  ├─ llm.bind_tools({len(current_tools)} Tools)")
-            print("  │   └─ Converting to OpenAI Function Schemas")
-            print("  │")
-            print("  └─ llm.ainvoke(messages + tools) -> Sending to LLM")
-            print("      │")
-            print("      ▼")
-            print("② LLM Request Body:")
-
-            tool_schemas = llm_with_tools.kwargs.get("tools", [])
-            msgs_dicts = [message_to_dict(m) for m in messages]
-            req_body = {
-                "model": os.getenv("LLM_MODEL", "unknown"),
-                "messages": msgs_dicts[-2:],
-                "tools": [t["function"]["name"] for t in tool_schemas],
-            }
-            print(json.dumps(req_body, ensure_ascii=False, indent=2))
-            print("=" * 60 + "\\n")
-
         try:
             t0 = time.time()
             response = await llm_with_tools.ainvoke(messages)
@@ -379,12 +350,21 @@ def create_agent_graph(tools: list):
                 f"input_msgs={len(messages)})"
             )
 
-            if _wire_log:
-                resp_dict = message_to_dict(response)
-                print("\n" + "✅" * 15 + f" [STRUCTURED] LLM RESPONSE BODY ({latency_ms:.0f}ms) " + "✅" * 15)
-                print(json.dumps(resp_dict, ensure_ascii=False, indent=2))
-                print("=" * 100 + "\n")
-
+            response_summary = str(response.content)
+            asyncio.create_task(
+                trace_logger.log_llm_call(
+                    trace_id=str(state.get("trace_id", uuid.uuid4())),
+                    model=os.getenv("LLM_MODEL", "unknown"),
+                    phase="main",
+                    prompt_summary=prompt_summary,
+                    response_summary=response_summary,
+                    latency_ms=latency_ms,
+                    tools_bound=[t.name for t in current_tools],
+                    tool_calls=[tc for tc in getattr(response, "tool_calls", [])] if hasattr(response, "tool_calls") else [],
+                    session_id=state.get("session_id"),
+                    user_id=user.id if user else None,
+                )
+            )
         except Exception as e:
             logger.error("Error calling LLM provider:", exc_info=True)
             return {"messages": [AIMessage(content=f"Error calling LLM provider: {str(e)}")]}

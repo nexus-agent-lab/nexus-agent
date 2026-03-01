@@ -364,6 +364,92 @@ class SemanticToolRouter:
             logger.error(f"Routing failed: {e}")
             # Fallback: return all ALLOWED tools
             return [t for t in self.all_tools if self._check_role(t, role)]
+    async def route_multi(self, queries: List[str], role: str = "user", context: str = "home") -> List[Any]:
+        """
+        Select relevant tools based on multiple queries, user role, and domain context.
+        Merges results by max-score deduplication.
+        """
+        if not settings.ENABLE_SEMANTIC_ROUTING or self.tool_index is None or not self.embeddings:
+            return [t for t in self.all_tools if self._check_role(t, role)]
+
+        if not queries:
+            return [t for t in self.core_tools if self._check_role(t, role)]
+
+        valid_queries = [q.strip() for q in queries if q and q.strip()]
+        if not valid_queries:
+            return [t for t in self.core_tools if self._check_role(t, role)]
+
+        try:
+            # Embed all queries in batch
+            query_vecs = await self.embeddings.aembed_documents(valid_queries)
+            query_vecs = np.array(query_vecs)  # Shape: (num_queries, D)
+
+            # Cosine Similarity for each query
+            norm_tools = np.linalg.norm(self.tool_index, axis=1)  # Shape: (num_tools,)
+            norm_queries = np.linalg.norm(query_vecs, axis=1)  # Shape: (num_queries,)
+
+            # Avoid division by zero
+            norm_tools[norm_tools == 0] = 1e-9
+            norm_queries[norm_queries == 0] = 1e-9
+
+            # dot product / cosine similarity matrix
+            # Shape: (num_queries, num_tools)
+            scores_matrix = np.dot(query_vecs, self.tool_index.T) / np.outer(norm_queries, norm_tools)
+
+            # Max-score deduplication across queries
+            # For each tool, find its maximum score among all queries
+            max_raw_scores = np.max(scores_matrix, axis=0)  # Shape: (num_tools,)
+
+            # Apply Domain Affinity Multipliers
+            adjusted_results = []
+            for idx, raw_score in enumerate(max_raw_scores):
+                tool = self.semantic_tools[idx]
+                multiplier = self._domain_multiplier(tool, context)
+                adj_score = raw_score * multiplier
+                adjusted_results.append((tool, adj_score, raw_score, idx))
+
+            # Sort by adjusted score
+            adjusted_results.sort(key=lambda x: x[1], reverse=True)
+
+            # Select Top-K
+            k = min(settings.ROUTING_TOP_K, len(self.semantic_tools))
+            threshold = settings.ROUTING_THRESHOLD
+            top_results = adjusted_results[:k]
+
+            selected_semantic = []
+            for tool, adj_score, raw_score, idx in top_results:
+                if not self._check_role(tool, role):
+                    continue
+                if adj_score >= threshold:
+                    selected_semantic.append(tool)
+                    logger.debug(f"Route Multi Match: {tool.name} (adj={adj_score:.4f}, raw={raw_score:.4f})")
+
+            # Always return core tools + selected + discovery (filtered by role)
+            final_core = [t for t in self.core_tools if self._check_role(t, role)]
+
+            discovery_tools = []
+            for tool in self.semantic_tools:
+                metadata = getattr(tool, "metadata", {}) or {}
+                tags = metadata.get("context_tags", [])
+                if context in tags:
+                    name = getattr(tool, "name", "").lower()
+                    if name.startswith(("get_", "list_", "search_", "read_", "query_")):
+                        if tool not in selected_semantic:
+                            discovery_tools.append(tool)
+
+            if len(discovery_tools) > 5:
+                discovery_tools = discovery_tools[:5]
+
+            final_discovery = [t for t in discovery_tools if self._check_role(t, role)]
+
+            final_tools = final_core + selected_semantic + final_discovery
+            unique_tools = {getattr(t, "name", str(t)): t for t in final_tools}
+            return list(unique_tools.values())
+
+        except Exception as e:
+            logger.error(f"Multi-routing failed: {e}")
+            return [t for t in self.all_tools if self._check_role(t, role)]
+
 
 
 tool_router = SemanticToolRouter()
