@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 import uuid
 from typing import Literal
 
@@ -367,13 +368,22 @@ def create_agent_graph(tools: list):
             print("=" * 60 + "\\n")
 
         try:
+            t0 = time.time()
             response = await llm_with_tools.ainvoke(messages)
+            latency_ms = (time.time() - t0) * 1000
+
+            logger.info(
+                f"LLM call completed in {latency_ms:.0f}ms "
+                f"(model={os.getenv('LLM_MODEL', 'unknown')}, "
+                f"tools={len(current_tools)}, "
+                f"input_msgs={len(messages)})"
+            )
 
             if _wire_log:
                 resp_dict = message_to_dict(response)
-                print("\\n" + "✅" * 15 + " [STRUCTURED] LLM RESPONSE BODY " + "✅" * 15)
+                print("\n" + "✅" * 15 + f" [STRUCTURED] LLM RESPONSE BODY ({latency_ms:.0f}ms) " + "✅" * 15)
                 print(json.dumps(resp_dict, ensure_ascii=False, indent=2))
-                print("=" * 100 + "\\n")
+                print("=" * 100 + "\n")
 
         except Exception as e:
             logger.error("Error calling LLM provider:", exc_info=True)

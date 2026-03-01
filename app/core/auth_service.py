@@ -204,10 +204,13 @@ class AuthService:
         # 2. Vertical Gate (Role-based)
         if required_role:
             user_level = ROLE_LEVELS.get(user.role, 0)
-            target_level = ROLE_LEVELS.get(required_role, 50)  # default to user level
+            target_level = ROLE_LEVELS.get(required_role, 50)
             if user_level < target_level:
                 return False
-
+            # Role requirement met. If no group restriction, grant access.
+            if not allowed_groups:
+                return True
+            # Otherwise, fall through to group check below
         # 3. Horizontal Gate (Group-based)
         if allowed_groups:
             user_groups = set(getattr(user, "groups", []) or [])
