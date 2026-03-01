@@ -37,5 +37,19 @@
       "FEISHU_APP_SECRET": { "type": "password", "label": "App Secret", "required": true }
     },
     "allowed_hostnames": ["lark-mcp"]
+  },
+  {
+    "id": "official/playwright",
+    "name": "Web Browser",
+    "description": "Browse websites, take screenshots, and extract web content.",
+    "icon": "🌐",
+    "type": "mcp",
+    "source_url": "http://mcp-playwright:3000/mcp",
+    "required_role": "admin",
+    "context_tags": ["web", "browser", "search", "scrape", "screenshot", "url"],
+    "config": {},
+    "env_schema": {},
+    "bundled_skills": ["web_browsing"],
+    "allowed_hostnames": ["mcp-playwright"]
   }
 ]
