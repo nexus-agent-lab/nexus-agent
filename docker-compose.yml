@@ -144,6 +144,17 @@ services:
       --host 0.0.0.0 
       -p 3000
     restart: unless-stopped
+  mcp-playwright:
+    image: node:20-slim
+    working_dir: /app
+    ports:
+      - "3002:3000"
+    command: >
+      npx -y @anthropic/mcp-playwright
+      --port 3000
+      --host 0.0.0.0
+    restart: unless-stopped
+
 
 networks:
   default:
