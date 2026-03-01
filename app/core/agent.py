@@ -360,7 +360,9 @@ def create_agent_graph(tools: list):
                     response_summary=response_summary,
                     latency_ms=latency_ms,
                     tools_bound=[t.name for t in current_tools],
-                    tool_calls=[tc for tc in getattr(response, "tool_calls", [])] if hasattr(response, "tool_calls") else [],
+                    tool_calls=[tc for tc in getattr(response, "tool_calls", [])]
+                    if hasattr(response, "tool_calls")
+                    else [],
                     session_id=state.get("session_id"),
                     user_id=user.id if user else None,
                 )
