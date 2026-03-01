@@ -41,6 +41,7 @@ logger = logging.getLogger(__name__)
 # Global reference
 agent_graph = None
 
+
 async def restore_settings():
     import os
 
@@ -58,6 +59,7 @@ async def restore_settings():
             logger.info(f"Restored {len(settings)} system settings from DB into os.environ.")
     except Exception as e:
         logger.error(f"Failed to restore settings from DB: {e}")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

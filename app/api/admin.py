@@ -74,12 +74,11 @@ async def get_config(key: str = Query(...)):
 async def get_traces(limit: int = Query(50, ge=1, le=1000)):
     """Get recent LLM call logs."""
     async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(LLMTrace).order_by(LLMTrace.created_at.desc()).limit(limit)
-        )
+        result = await session.execute(select(LLMTrace).order_by(LLMTrace.created_at.desc()).limit(limit))
         traces = result.scalars().all()
 
     return {"traces": traces}
+
 
 @router.post("/mcp/reload", dependencies=[Depends(require_admin)])
 async def reload_mcp():

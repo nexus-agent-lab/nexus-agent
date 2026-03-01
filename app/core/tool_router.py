@@ -364,6 +364,7 @@ class SemanticToolRouter:
             logger.error(f"Routing failed: {e}")
             # Fallback: return all ALLOWED tools
             return [t for t in self.all_tools if self._check_role(t, role)]
+
     async def route_multi(self, queries: List[str], role: str = "user", context: str = "home") -> List[Any]:
         """
         Select relevant tools based on multiple queries, user role, and domain context.
@@ -449,7 +450,6 @@ class SemanticToolRouter:
         except Exception as e:
             logger.error(f"Multi-routing failed: {e}")
             return [t for t in self.all_tools if self._check_role(t, role)]
-
 
 
 tool_router = SemanticToolRouter()

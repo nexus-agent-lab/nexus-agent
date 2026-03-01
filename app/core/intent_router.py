@@ -63,7 +63,7 @@ class IntentRouter:
                 return [user_message]
 
         except json.JSONDecodeError as e:
-            content_str = response.content if 'response' in locals() else "Unknown"
+            content_str = response.content if "response" in locals() else "Unknown"
             logger.error(f"IntentRouter JSON parsing error: {e}. Content: {content_str}")
             return [user_message]
         except Exception as e:
