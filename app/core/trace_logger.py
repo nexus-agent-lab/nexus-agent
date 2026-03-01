@@ -33,13 +33,13 @@ class TraceLogger:
             from app.models.llm_trace import LLMTrace
 
             trace = LLMTrace(
-                trace_id=trace_id,
-                session_id=session_id,
+                trace_id=str(trace_id),
+                session_id=str(session_id) if session_id is not None else "0",
                 user_id=user_id,
                 model=model,
                 phase=phase,
-                prompt_summary=prompt_summary[:2000],
-                response_summary=response_summary[:2000],
+                prompt_summary=prompt_summary[:2000] if prompt_summary else None,
+                response_summary=response_summary[:2000] if response_summary else None,
                 latency_ms=latency_ms,
                 tools_bound=tools_bound,
                 tool_calls=tool_calls,
