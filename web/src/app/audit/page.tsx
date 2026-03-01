@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { History, Shield, Activity, Search, Info, ChevronLeft, ChevronRight } from "lucide-react";
+import { History, Shield, Activity, Search, Info, ChevronLeft, ChevronRight, Cpu, Clock, Terminal } from "lucide-react";
 
 import { verifyAuthToken } from "@/lib/auth";
 import DataTable from "@/components/DataTable";
@@ -15,6 +15,14 @@ interface AuditLog {
   action: string;
   tool_name: string | null;
   status: string;
+  created_at: string;
+}
+interface LLMTraceRecord {
+  id: number;
+  model: string;
+  latency_ms: number;
+  prompt_summary: string;
+  tools_bound: string[] | null;
   created_at: string;
 }
 
@@ -35,6 +43,27 @@ async function getAuditLogs(apiKey: string, skip: number = 0, limit: number = 50
     return await res.json();
   } catch (e) {
     console.error("Failed to fetch audit logs:", e);
+    return [];
+  }
+}
+/**
+ * Fetches LLM traces from the backend.
+ * @param apiKey Admin API key
+ */
+async function getTraces(apiKey: string, limit: number = 20): Promise<LLMTraceRecord[]> {
+  const baseUrl = process.env.API_URL || "http://127.0.0.1:8000";
+  try {
+    const res = await fetch(`${baseUrl}/admin/traces?limit=${limit}`, {
+      headers: {
+        "X-API-Key": apiKey,
+      },
+      cache: "no-store",
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.traces || [];
+  } catch (e) {
+    console.error("Failed to fetch traces:", e);
     return [];
   }
 }
@@ -83,6 +112,7 @@ export default async function AuditPage({
   }
 
   const logs = await getAuditLogs(payload.api_key as string, skip, limit);
+  const traces = await getTraces(payload.api_key as string);
 
   const columns = [
     {
@@ -216,21 +246,82 @@ export default async function AuditPage({
             <WireLogToggle apiKey={payload.api_key as string} />
           </section>
 
-          <section className="space-y-4 opacity-50">
+          <section className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-semibold flex items-center gap-2">
-                <Activity className="h-5 w-5 text-neutral-400" />
+                <Activity className="h-5 w-5 text-indigo-500" />
                 Trace Viewer
               </h2>
-              <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:bg-neutral-800">
-                Coming Soon
+              <span className="text-xs font-medium text-neutral-500">
+                Live
               </span>
             </div>
-            <div className="rounded-xl border border-dashed border-neutral-300 p-8 text-center dark:border-neutral-700">
-              <Info className="mx-auto h-8 w-8 text-neutral-300 dark:text-neutral-600" />
-              <p className="mt-2 text-sm text-neutral-500">
-                LangGraph execution paths and node tracing will be visible here.
-              </p>
+            
+            <div className="space-y-3">
+              {traces.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-neutral-300 p-8 text-center dark:border-neutral-700">
+                  <Info className="mx-auto h-8 w-8 text-neutral-300 dark:text-neutral-600" />
+                  <p className="mt-2 text-sm text-neutral-500">
+                    No traces available yet.
+                  </p>
+                </div>
+              ) : (
+                traces.map((trace) => (
+                  <div key={trace.id} className="group relative rounded-xl border border-neutral-200 bg-white p-4 transition-all hover:border-indigo-200 hover:shadow-sm dark:border-neutral-800 dark:bg-neutral-900/50">
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Cpu className="h-3.5 w-3.5 text-neutral-400" />
+                        <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                          {trace.model}
+                        </span>
+                      </div>
+                      <div className={cn(
+                        "flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold",
+                        trace.latency_ms < 2000 
+                          ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400" 
+                          : trace.latency_ms < 5000 
+                            ? "bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400" 
+                            : "bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400"
+                      )}>
+                        <Clock className="h-3 w-3" />
+                        {(trace.latency_ms / 1000).toFixed(1)}s
+                      </div>
+                    </div>
+                    
+                    <p className="mb-3 line-clamp-2 text-xs text-neutral-600 dark:text-neutral-400">
+                      {trace.prompt_summary || "No prompt summary available"}
+                    </p>
+                    
+                    <div className="flex flex-wrap gap-1.5">
+                      {trace.tools_bound?.slice(0, 5).map((tool) => (
+                        <div key={tool} className="flex items-center gap-1 rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
+                          <Terminal className="h-2.5 w-2.5" />
+                          {tool}
+                        </div>
+                      ))}
+                      {(trace.tools_bound?.length || 0) > 5 && (
+                        <span className="text-[10px] text-neutral-400">
+                          +{(trace.tools_bound?.length || 0) - 5} more
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div className="mt-3 flex items-center justify-between border-t border-neutral-100 pt-2 dark:border-neutral-800">
+                      <span className="text-[10px] text-neutral-400">
+                        {new Date(trace.created_at).toLocaleTimeString(undefined, {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          second: "2-digit",
+                          hour12: false,
+                        })}
+                      </span>
+                      <span className="text-[10px] font-mono text-neutral-400">
+                        #{trace.id}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </section>
         </div>
