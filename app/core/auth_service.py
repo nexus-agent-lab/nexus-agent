@@ -191,43 +191,38 @@ class AuthService:
         """
         Check if user is allowed to use this tool/domain.
         """
-        # Admin bypass
-        if user.role == "admin":
-            return True
-
         policy = user.policy or {}
 
-        # 1. Deny List (User-specific override) - Takes precedence
+        # 1. Deny List (User-specific override) - blocks everyone
         if tool_name in policy.get("deny_tools", []):
             return False
 
-        # 2. Vertical Gate (Role-based)
+        # 2. Admin bypass
+        if user.role == "admin":
+            return True
+
+        # 3. Vertical Gate (Role-based) - Rejections only
         if required_role:
             user_level = ROLE_LEVELS.get(user.role, 0)
             target_level = ROLE_LEVELS.get(required_role, 50)
             if user_level < target_level:
                 return False
-            # Role requirement met. If no group restriction, grant access.
-            if not allowed_groups:
-                return True
-            # Otherwise, fall through to group check below
-        # 3. Horizontal Gate (Group-based)
+
+        # 4. Horizontal Gate (Group-based) - Rejections only
         if allowed_groups:
             user_groups = set(getattr(user, "groups", []) or [])
             if not user_groups.intersection(set(allowed_groups)):
                 return False
-            # If we match a group, we are allowed (unless denied by role above)
-            return True
 
-        # 4. Fallback: Allow Domains (User-specific whitelist)
-        # Default allowed domains for standard users
-        defaults = ["standard", "time", "weather"]
-        allowed = policy.get("allow_domains", defaults)
+        # 5. Domain Sandbox applies to unrestricted tools
+        if not required_role and not allowed_groups:
+            defaults = ["standard", "time", "weather"]
+            allowed = policy.get("allow_domains", defaults)
+            if domain not in allowed:
+                return False
 
-        if domain in allowed:
-            return True
-
-        return False
+        # 6. All checks passed
+        return True
 
     @staticmethod
     def get_allowed_tools(user: User, all_tools: list) -> list:
