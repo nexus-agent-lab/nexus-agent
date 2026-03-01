@@ -2,6 +2,7 @@ import logging
 import os
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlmodel import select
 
 from app.core.auth import require_admin
@@ -78,6 +79,46 @@ async def get_traces(limit: int = Query(50, ge=1, le=1000)):
         traces = result.scalars().all()
 
     return {"traces": traces}
+
+
+@router.get("/traces/grouped", dependencies=[Depends(require_admin)])
+async def get_grouped_traces(limit: int = Query(50, ge=1, le=1000)):
+    """Get LLM traces grouped by trace_id."""
+    async with AsyncSessionLocal() as session:
+        stmt = (
+            select(
+                LLMTrace.trace_id,
+                LLMTrace.session_id,
+                LLMTrace.user_id,
+                func.sum(LLMTrace.latency_ms).label("total_latency_ms"),
+                func.count(LLMTrace.id).label("call_count"),
+                func.max(LLMTrace.created_at).label("created_at"),
+            )
+            .group_by(LLMTrace.trace_id, LLMTrace.session_id, LLMTrace.user_id)
+            .order_by(func.max(LLMTrace.created_at).desc())
+            .limit(limit)
+        )
+        result = await session.execute(stmt)
+        rows = result.all()
+
+        grouped_traces = []
+        for row in rows:
+            # Fetch all traces for this trace_id to include as children
+            child_stmt = select(LLMTrace).where(LLMTrace.trace_id == row.trace_id).order_by(LLMTrace.created_at.asc())
+            child_result = await session.execute(child_stmt)
+            children = child_result.scalars().all()
+
+            grouped_traces.append({
+                "trace_id": row.trace_id,
+                "session_id": row.session_id,
+                "user_id": row.user_id,
+                "total_latency_ms": row.total_latency_ms,
+                "call_count": row.call_count,
+                "created_at": row.created_at,
+                "steps": children,
+            })
+
+    return {"traces": grouped_traces}
 
 
 @router.post("/mcp/reload", dependencies=[Depends(require_admin)])
