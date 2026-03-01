@@ -2,7 +2,7 @@
 name: HomeAssistant
 domain: smart_home
 description: 查询和控制智能家居设备（灯、开关、传感器、空调等）
-intent_keywords: ["温度", "灯", "设备", "状态", "空调", "家居", "客厅", "卧室", "厨房", "阳台"]
+intent_keywords: ["温度", "灯", "设备", "状态", "空调", "家居", "客厅", "卧室", "查温度", "多少度", "冷不冷"]
 priority: high
 mcp_server: homeassistant
 generated_by: placeholder  # Replace with actual generation
@@ -21,6 +21,8 @@ generated_by: placeholder  # Replace with actual generation
 - 查询设备历史状态
 
 ## ⚠️ Critical Rules (MUST FOLLOW)
+
+0. **Tool Prerequisite Rule**: For temperature/state queries, you MUST use a two-step process. First, ALWAYS call list_entities(domain='sensor', search_query='temperature'). Second, use the exact entity_id returned to call get_state(). NEVER guess an entity_id.
 
 1. **盲人规则 (Blindness Rule)**: 你看不见设备列表
    - 在操作任何设备前，**必须先调用** `list_entities` 搜索

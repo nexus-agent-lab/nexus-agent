@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     # Semantic Routing
     ENABLE_SEMANTIC_ROUTING: bool = True
     ROUTING_TOP_K: int = 5
-    ROUTING_THRESHOLD: float = 0.35
+    ROUTING_THRESHOLD: float = 0.30
 
     # Skill Routing
     SKILL_ROUTING_TOP_K: int = 3

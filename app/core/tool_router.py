@@ -234,14 +234,26 @@ class SemanticToolRouter:
         """Calculate domain affinity multiplier based on plugin-declared tags."""
         metadata = getattr(tool, "metadata", {}) or {}
         tags = metadata.get("context_tags", [])
+        domain = self._get_domain(tool).lower()
 
-        if not current_context or current_context == "home":
+        if not current_context:
             current_context = "home"
 
+        # 1. Direct tag match (High confidence)
         if current_context in tags:
             return DOMAIN_AFFINITY["same"]
 
-        return DOMAIN_AFFINITY["cross"]
+        # 2. Domain string fallback for Home Assistant context
+        if current_context == "home":
+            if "homeassistant" in domain or "smart_home" in domain:
+                return DOMAIN_AFFINITY["same"]
+
+            # 3. Penalize only if we KNOW it's a mismatch (e.g. system tools in home context)
+            if "system" in tags or "admin" in tags:
+                return DOMAIN_AFFINITY["cross"]
+
+        # 4. Default to neutral (adjacent) rather than harsh cross-domain penalty
+        return DOMAIN_AFFINITY["adjacent"]
 
     async def route(self, query: str, role: str = "user", context: str = "home") -> List[Any]:
         """
