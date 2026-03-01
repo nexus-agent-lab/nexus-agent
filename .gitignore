@@ -55,3 +55,6 @@ docker-compose.override.yml
 postgres_data/
 
 storage/
+
+# Agent internal state (Sisyphus/OpenCode)
+.sisyphus/

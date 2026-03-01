@@ -34,7 +34,7 @@ Implement the "Fast Brain" (Tier 0 Intent Router) to handle complex, cross-domai
 3. **Integrate into `app/core/agent.py`**: Use `intent_router` before tool selection to build a more accurate tool belt. [DONE]
 
 1. **Create `app/core/intent_router.py`**: A lightweight LLM call (zero tools) to decompose user queries into keywords. [DONE]
-18#NS|2. **Update `app/core/tool_router.py`**: Add `route_multi()` to handle multiple intent strings and merge vector results. [DONE]
+2. **Update `app/core/tool_router.py`**: Add `route_multi()` to handle multiple intent strings and merge vector results. [DONE]
 
 2. **Update `app/core/tool_router.py`**: Add `route_multi()` to handle multiple intent strings and merge vector results.
 3. **Integrate into `app/core/agent.py`**: Use `intent_router` before tool selection to build a more accurate tool belt.
