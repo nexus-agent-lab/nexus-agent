@@ -8,3 +8,4 @@
 - Next.js Server Actions use `cookies` from `next/headers` to pass authentication.
 - `revalidatePath` is imported from `next/cache` to refresh the UI after mutations.
 Verified MemoryActions integration in Cortex UI.
+- The new logic in `auth_service.py:check_tool_permission` ensures that deny lists apply before anything else, admin users bypass other checks, and the domain sandbox applies only to unrestricted tools (where both `required_role` and `allowed_groups` are not present).
