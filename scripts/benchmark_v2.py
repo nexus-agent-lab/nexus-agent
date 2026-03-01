@@ -1,11 +1,12 @@
-import httpx
 import json
 import time
+
+import httpx
 
 # --- CONFIGURATION ---
 OLLAMA_URL = "http://localhost:11434"
 
-MODELS_TO_TEST = ["glm4.7-flash-32k", "qwen3.5:35b-a3b"]#, "qwen3.5:27b"]
+MODELS_TO_TEST = ["glm4.7-flash-32k", "qwen3.5:35b-a3b"]  # , "qwen3.5:27b"]
 
 TOOLS = [
     {

@@ -33,5 +33,7 @@ Currently, even if a plugin is registered with `required_role="user"`, a standar
 - Specifically verify that `michael` (user role) can now call `list_entities` if the plugin is set to `"user"` role.
 
 ## Final Verification
-- [ ] Log shows "michael" successfully executing tools from the Home Assistant domain.
+- [x] Log shows "michael" successfully executing tools from the Home Assistant domain.
+- [x] No more "Permission Denied" for tools where the user meets the role requirement.
+
 - [ ] No more "Permission Denied" for tools where the user meets the role requirement.

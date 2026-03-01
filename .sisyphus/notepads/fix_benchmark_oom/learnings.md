@@ -1,0 +1,2 @@
+- Ollama models can be explicitly unloaded by setting "keep_alive": 0 in an API request to /api/generate.
+- Added unload_model utility to scripts/benchmark_llm.py to prevent OOM when testing large models sequentially.
