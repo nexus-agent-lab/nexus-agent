@@ -108,15 +108,17 @@ async def get_grouped_traces(limit: int = Query(50, ge=1, le=1000)):
             child_result = await session.execute(child_stmt)
             children = child_result.scalars().all()
 
-            grouped_traces.append({
-                "trace_id": row.trace_id,
-                "session_id": row.session_id,
-                "user_id": row.user_id,
-                "total_latency_ms": row.total_latency_ms,
-                "call_count": row.call_count,
-                "created_at": row.created_at,
-                "steps": children,
-            })
+            grouped_traces.append(
+                {
+                    "trace_id": row.trace_id,
+                    "session_id": row.session_id,
+                    "user_id": row.user_id,
+                    "total_latency_ms": row.total_latency_ms,
+                    "call_count": row.call_count,
+                    "created_at": row.created_at,
+                    "steps": children,
+                }
+            )
 
     return {"traces": grouped_traces}
 
