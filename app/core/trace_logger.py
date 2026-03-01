@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 from typing import Any, Dict, List
 
 logger = logging.getLogger("nexus.trace")
@@ -27,6 +28,19 @@ class TraceLogger:
     ):
         if not TraceLogger.is_enabled():
             return
+        # --- stdout wire log (always prints when enabled, independent of DB) ---
+        print(
+            f"\n{'='*60}\n"
+            f"🔌 WIRE LOG | {phase} | {model}\n"
+            f"{'='*60}\n"
+            f"⏱  Latency: {latency_ms:.0f}ms\n"
+            f"🔧 Tools Bound: {', '.join(tools_bound or [])}\n"
+            f"📥 Prompt:  {(prompt_summary or '')[:500]}\n"
+            f"📤 Response: {(response_summary or '')[:500]}\n"
+            f"{'='*60}",
+            file=sys.stdout,
+            flush=True,
+        )
 
         try:
             from app.core.db import AsyncSessionLocal
