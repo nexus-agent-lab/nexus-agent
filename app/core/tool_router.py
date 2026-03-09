@@ -255,6 +255,41 @@ class SemanticToolRouter:
         # 4. Default to neutral (adjacent) rather than harsh cross-domain penalty
         return DOMAIN_AFFINITY["adjacent"]
 
+    def get_skill_bound_tools(self, matched_skills: List[dict], role: str = "user") -> List[Any]:
+        """
+        Force-include tools explicitly required by matched skills.
+        This closes the gap where a skill matches semantically but its MCP tools
+        are filtered out by the vector funnel.
+        """
+        if not matched_skills:
+            return []
+
+        required_names = []
+        for skill in matched_skills:
+            metadata = skill.get("metadata", {}) or {}
+            for tool_name in metadata.get("required_tools", []) or []:
+                if tool_name not in required_names:
+                    required_names.append(tool_name)
+
+        if not required_names:
+            return []
+
+        available_tools = self.core_tools + self.semantic_tools
+        by_name = {getattr(tool, "name", ""): tool for tool in available_tools}
+
+        bound_tools = []
+        for tool_name in required_names:
+            tool = by_name.get(tool_name)
+            if not tool:
+                logger.warning(f"Skill-bound tool '{tool_name}' not found in registered toolset.")
+                continue
+            if not self._check_role(tool, role):
+                logger.warning(f"Skill-bound tool '{tool_name}' filtered by role '{role}'.")
+                continue
+            bound_tools.append(tool)
+
+        return bound_tools
+
     async def route(self, query: str, role: str = "user", context: str = "home") -> List[Any]:
         """
         Select relevant tools based on query, user role, and domain context.
@@ -312,8 +347,8 @@ class SemanticToolRouter:
                             discovery_tools.append(tool)
 
             # Limit discovery tools to avoid token bloat
-            if len(discovery_tools) > 5:
-                discovery_tools = discovery_tools[:5]
+            if len(discovery_tools) > 2:
+                discovery_tools = discovery_tools[:2]
 
             # Collision Detection
             collision_msg = None
@@ -438,8 +473,8 @@ class SemanticToolRouter:
                         if tool not in selected_semantic:
                             discovery_tools.append(tool)
 
-            if len(discovery_tools) > 5:
-                discovery_tools = discovery_tools[:5]
+            if len(discovery_tools) > 2:
+                discovery_tools = discovery_tools[:2]
 
             final_discovery = [t for t in discovery_tools if self._check_role(t, role)]
 

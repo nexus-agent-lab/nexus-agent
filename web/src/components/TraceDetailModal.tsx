@@ -15,7 +15,7 @@ export interface TraceStep {
   response_summary: string | null;
   latency_ms: number | null;
   tools_bound: string[] | null;
-  tool_calls: any[] | null;
+  tool_calls: unknown[] | null;
   created_at: string;
 }
 

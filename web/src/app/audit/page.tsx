@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { History, Shield, Activity, Search, Info, ChevronLeft, ChevronRight } from "lucide-react";
+import { History, Shield, Activity, Search, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { verifyAuthToken } from "@/lib/auth";
 import DataTable from "@/components/DataTable";
@@ -89,7 +89,7 @@ export default async function AuditPage({
   let payload;
   try {
     payload = await verifyAuthToken(token);
-  } catch (e) {
+  } catch {
     redirect("/login");
   }
 
@@ -109,6 +109,11 @@ export default async function AuditPage({
 
   const logs = await getAuditLogs(payload.api_key as string, skip, limit);
   const traces = await getTraces(payload.api_key as string);
+  const formatDuration = (durationMs: number | null) => {
+    if (durationMs === null) return "—";
+    if (durationMs < 1000) return `${durationMs}ms`;
+    return `${(durationMs / 1000).toFixed(1)}s`;
+  };
 
   const columns = [
     {
@@ -131,12 +136,12 @@ export default async function AuditPage({
       cell: (item: AuditLog) => (
         <span className={cn(
           "font-mono text-xs font-medium",
-          !item.duration_ms ? "text-neutral-400" :
+          item.duration_ms === null ? "text-neutral-400" :
           item.duration_ms < 1000 ? "text-emerald-600 dark:text-emerald-400" :
           item.duration_ms < 3000 ? "text-amber-600 dark:text-amber-400" :
           "text-rose-600 dark:text-rose-400"
         )}>
-          {item.duration_ms ? `${item.duration_ms}ms` : "—"}
+          {formatDuration(item.duration_ms)}
         </span>
       ),
     },
@@ -200,7 +205,7 @@ export default async function AuditPage({
 
       <div className="flex items-center gap-1 rounded-xl bg-neutral-100 p-1 dark:bg-neutral-800 w-fit">
         <Link
-          href="?tab=audit"
+          href="/audit?tab=audit&page=1"
           className={cn(
             "rounded-lg px-4 py-2 text-sm font-medium transition-all",
             activeTab === "audit"
@@ -208,10 +213,10 @@ export default async function AuditPage({
               : "text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
           )}
         >
-          Audit Logs
+          Tool Executions
         </Link>
         <Link
-          href="?tab=traces"
+          href="/audit?tab=traces"
           className={cn(
             "rounded-lg px-4 py-2 text-sm font-medium transition-all",
             activeTab === "traces"
@@ -219,136 +224,69 @@ export default async function AuditPage({
               : "text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
           )}
         >
-          Traces
+          LLM Traces
         </Link>
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-3">
-        {/* Main Content Area */}
-        <div className="lg:col-span-2 space-y-4">
-          {activeTab === "audit" ? (
-            <>
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold flex items-center gap-2">
-                  <History className="h-5 w-5 text-indigo-500" />
-                  Audit Logs
-                </h2>
-                <div className="flex items-center gap-2 rounded-lg bg-neutral-100 px-3 py-1.5 dark:bg-neutral-800">
-                  <Search className="h-4 w-4 text-neutral-500" />
-                  <input
-                    type="text"
-                    placeholder="Filter logs..."
-                    className="bg-transparent text-sm outline-none placeholder:text-neutral-500"
-                  />
-                </div>
-              </div>
-              <DataTable columns={columns} data={logs} />
-              
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-neutral-500">
-                  Showing {logs.length} logs
-                </p>
-                <div className="flex items-center gap-2">
-                  <Link
-                    href={`/audit?tab=audit&page=${Math.max(1, page - 1)}`}
-                    className={cn(
-                      "flex items-center gap-1 rounded-lg border border-neutral-200 px-3 py-1 text-sm font-medium transition-colors hover:bg-neutral-100 dark:border-neutral-800 dark:hover:bg-neutral-800",
-                      page <= 1 && "pointer-events-none opacity-50"
-                    )}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    Previous
-                  </Link>
-                  <span className="text-sm font-medium">Page {page}</span>
-                  <Link
-                    href={`/audit?tab=audit&page=${page + 1}`}
-                    className={cn(
-                      "flex items-center gap-1 rounded-lg border border-neutral-200 px-3 py-1 text-sm font-medium transition-colors hover:bg-neutral-100 dark:border-neutral-800 dark:hover:bg-neutral-800",
-                      logs.length < limit && "pointer-events-none opacity-50"
-                    )}
-                  >
-                    Next
-                    <ChevronRight className="h-4 w-4" />
-                  </Link>
-                </div>
-              </div>
-            </>
-          ) : (
-            <TraceViewer initialTraces={traces} />
-          )}
-        </div>
+      {activeTab === "audit" ? (
+        <section className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-xl font-semibold flex items-center gap-2">
+              <History className="h-5 w-5 text-indigo-500" />
+              Tool Executions
+            </h2>
+            <div className="flex items-center gap-2 rounded-lg bg-neutral-100 px-3 py-1.5 dark:bg-neutral-800">
+              <Search className="h-4 w-4 text-neutral-500" />
+              <input
+                type="text"
+                placeholder="Filter logs..."
+                className="bg-transparent text-sm outline-none placeholder:text-neutral-500"
+              />
+            </div>
+          </div>
+          <DataTable columns={columns} data={logs} />
 
-        {/* Sidebar Diagnostics */}
-        <div className="space-y-6">
-          <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-neutral-500">
+              Showing {logs.length} logs
+            </p>
+            <div className="flex items-center gap-2">
+              <Link
+                href={`/audit?tab=audit&page=${Math.max(1, page - 1)}`}
+                className={cn(
+                  "flex items-center gap-1 rounded-lg border border-neutral-200 px-3 py-1 text-sm font-medium transition-colors hover:bg-neutral-100 dark:border-neutral-800 dark:hover:bg-neutral-800",
+                  page <= 1 && "pointer-events-none opacity-50"
+                )}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Previous
+              </Link>
+              <span className="text-sm font-medium">Page {page}</span>
+              <Link
+                href={`/audit?tab=audit&page=${page + 1}`}
+                className={cn(
+                  "flex items-center gap-1 rounded-lg border border-neutral-200 px-3 py-1 text-sm font-medium transition-colors hover:bg-neutral-100 dark:border-neutral-800 dark:hover:bg-neutral-800",
+                  logs.length < limit && "pointer-events-none opacity-50"
+                )}
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </Link>
+            </div>
+          </div>
+        </section>
+      ) : (
+        <section className="space-y-6">
+          <div className="space-y-3">
             <h2 className="text-xl font-semibold flex items-center gap-2">
               <Activity className="h-5 w-5 text-indigo-500" />
-              LLM Debug
+              LLM Traces
             </h2>
             <WireLogToggle apiKey={payload.api_key as string} />
-          </section>
-
-          {activeTab === "audit" && (
-            <section className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold flex items-center gap-2 text-neutral-900 dark:text-neutral-100">
-                  <Activity className="h-5 w-5 text-indigo-500" />
-                  Recent Traces
-                </h2>
-              </div>
-              
-              <div className="space-y-3">
-                {traces.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-neutral-300 p-8 text-center dark:border-neutral-700">
-                    <Info className="mx-auto h-8 w-8 text-neutral-300 dark:text-neutral-600" />
-                    <p className="mt-2 text-sm text-neutral-500">
-                      No traces available yet.
-                    </p>
-                  </div>
-                ) : (
-                  traces.slice(0, 3).map((trace) => (
-                    <Link 
-                        key={trace.trace_id} 
-                        href="?tab=traces"
-                        className="group block relative rounded-xl border border-neutral-200 bg-white p-4 transition-all hover:border-indigo-200 hover:shadow-sm dark:border-neutral-800 dark:bg-neutral-900/50"
-                      >
-                        <div className="mb-2 flex items-center justify-between">
-                          <div className="flex items-center gap-2 text-xs font-bold text-neutral-700 dark:text-neutral-300">
-                            <span className="font-mono text-neutral-400">#{trace.trace_id.slice(0, 6)}</span>
-                          </div>
-                          <div className={cn(
-                            "text-[10px] font-bold",
-                            trace.total_latency_ms < 2000 ? "text-emerald-500" : "text-amber-500"
-                          )}>
-                            {(trace.total_latency_ms / 1000).toFixed(1)}s
-                          </div>
-                        </div>
-                        
-                        <p className="mb-2 line-clamp-1 text-[11px] text-neutral-500 dark:text-neutral-400">
-                          {trace.steps[0]?.prompt_summary || "No summary"}
-                        </p>
-
-                        <div className="flex items-center justify-between pt-1">
-                          <span className="text-[10px] text-neutral-400">
-                            {trace.call_count} steps
-                          </span>
-                          <span className="text-[10px] text-indigo-500 font-bold">
-                            View details
-                          </span>
-                        </div>
-                      </Link>
-                  ))
-                )}
-                {traces.length > 3 && (
-                  <Link href="?tab=traces" className="block text-center text-xs font-bold text-neutral-500 hover:text-indigo-500 transition-colors">
-                    View all {traces.length} traces
-                  </Link>
-                )}
-              </div>
-            </section>
-          )}
-        </div>
-      </div>
+          </div>
+          <TraceViewer initialTraces={traces} />
+        </section>
+      )}
     </div>
   );
 }

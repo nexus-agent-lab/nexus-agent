@@ -3,6 +3,7 @@ name: WebBrowsing
 domain: web
 description: Browse websites, extract content, and take screenshots
 intent_keywords: ["browse", "website", "url", "screenshot", "scrape", "web", "page", "search online"]
+required_tools: ["browser_navigate", "browser_extract", "browser_screenshot"]
 priority: medium
 mcp_server: playwright
 ---

@@ -3,6 +3,7 @@ name: HomeAssistant
 domain: smart_home
 description: 查询和控制智能家居设备（灯、开关、传感器、空调等）
 intent_keywords: ["温度", "灯", "设备", "状态", "空调", "家居", "客厅", "卧室", "查温度", "多少度", "冷不冷"]
+required_tools: ["list_entities", "get_entity", "entity_action", "call_service_tool", "search_entities_tool", "get_history"]
 priority: high
 mcp_server: homeassistant
 generated_by: placeholder  # Replace with actual generation
@@ -46,6 +47,12 @@ generated_by: placeholder  # Replace with actual generation
    - 调用 `list_entities` 时，显式提供 `domain` 以减少噪音
    - 不要依赖 API 的默认值，总是显式声明关键参数
 
+6. **Null 参数禁令 (Null Argument Ban)**: 不要传递空参数
+   - ❌ 错误: `list_entities(domain="sensor", search_query="temperature", limit=null, detailed=null)`
+   - ❌ 错误: `list_entities(limit=null)`
+   - ✅ 正确: 省略未知的可选参数，让工具默认值生效
+   - 规则: 如果某个参数没有明确值，就不要传这个字段，不要传 `null` / `None`
+
 ## 📝 Examples (Few-Shot Learning)
 
 ### Example 1: 开灯请求
@@ -65,6 +72,11 @@ generated_by: placeholder  # Replace with actual generation
 2. 如果结果太多，用 `python_sandbox` 过滤
 3. 获取关键传感器的状态
 4. 用自然语言总结: "客厅温度 23°C，卧室 22°C"
+
+**Allowed Call Shape**:
+- `list_entities(domain="sensor", search_query="temperature")`
+- 如果用户指定房间: `list_entities(domain="sensor", search_query="卧室 temperature")`
+- 不要附带 `limit=null`、`detailed=null`、空字符串或其他未确定参数
 
 ### Example 3: 空调温度调节
 **User**: "把卧室空调调到 24 度"
@@ -93,6 +105,7 @@ Parameters:
 Common pitfalls:
   - 返回数据过大时直接输出 → 必须用 python_sandbox 过滤
   - 假设设备名称格式 → 实际可能是中文或自定义名称
+  - 传 `limit=null` 或 `detailed=null` → 会触发参数校验失败，未知参数必须省略
 ```
 
 ### search_entities_tool (Global Search)

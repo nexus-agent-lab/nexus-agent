@@ -20,6 +20,6 @@ class AgentState(TypedDict):
     retry_count: int = 0  # Track retries for current step
     search_count: int = 0  # Track tool search retries (Tier 2)
     active_tool_names: Optional[List[str]] = None  # Explicitly selected tools for current turn
-
-    reflexions: Optional[List[str]] = []  # Stored self-reflections
-    retry_count: int = 0  # Track retries for current step
+    intent_queries: Optional[List[str]] = None  # Cached fast-brain decomposition for the current user turn
+    llm_call_count: int = 0  # Count main LLM calls in the current graph run
+    tool_call_count: int = 0  # Count tool invocations in the current graph run

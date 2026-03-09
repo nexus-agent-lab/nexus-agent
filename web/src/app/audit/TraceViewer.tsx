@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Activity, Clock, Cpu, Info, Search, Terminal, ChevronRight, Hash, User, MessageSquare } from "lucide-react";
+import { Activity, Clock, Info, Search, ChevronRight, Hash, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import TraceDetailModal, { GroupedTrace } from "@/components/TraceDetailModal";
 
@@ -24,14 +24,14 @@ const TraceViewer: React.FC<TraceViewerProps> = ({ initialTraces }) => {
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
         <h2 className="text-xl font-bold flex items-center gap-2 text-neutral-900 dark:text-neutral-100">
           <Activity className="h-5 w-5 text-indigo-500" />
-          Execution Traces
+          Request Groups
         </h2>
         
         <div className="relative w-full sm:w-64">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400" />
           <input
             type="text"
-            placeholder="Search traces..."
+            placeholder="Search request groups..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-4 py-2 bg-neutral-100 dark:bg-neutral-800 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none placeholder:text-neutral-500 transition-all"

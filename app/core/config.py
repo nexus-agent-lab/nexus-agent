@@ -22,12 +22,17 @@ class Settings(BaseSettings):
 
     # Semantic Routing
     ENABLE_SEMANTIC_ROUTING: bool = True
-    ROUTING_TOP_K: int = 5
+    ROUTING_TOP_K: int = 3
     ROUTING_THRESHOLD: float = 0.30
 
     # Skill Routing
     SKILL_ROUTING_TOP_K: int = 3
     SKILL_ROUTING_THRESHOLD: float = 0.30
+
+    # Agent Graph
+    AGENT_RECURSION_LIMIT: int = 50
+    ENABLE_FAST_BRAIN: bool = False
+    FAST_BRAIN_TIMEOUT_SECONDS: int = 5
 
     # Voice
     STT_BASE_URL: str = "http://host.docker.internal:9191/v1"

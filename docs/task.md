@@ -292,6 +292,15 @@
     - [x] Refactored `agent.py` and `memory.py` to use shared utilities.
     - [x] Added enforcement rule to `PROJECT_RULES.md`.
 
+## Phase 27.1: Audit & Trace UX Upgrade ✅
+- [x] **Audit Table Duration**: Added `duration_ms` rendering with threshold colors and `ms/s` display in `web/src/app/audit/page.tsx`.
+- [x] **Full-width Tabbed Layout**: Reworked Audit page into two full-width tabs (`Tool Executions` / `LLM Traces`) and removed cramped grid layout.
+- [x] **Trace Grouping API**: Added `GET /admin/traces/grouped` backend endpoint returning grouped trace requests with steps.
+- [x] **Grouped Trace Viewer**: Wired frontend trace fetch to grouped endpoint and updated UX to "Request Groups".
+- [x] **Trace Deep-Dive Modal**: Added timeline detail view with phase/model/tools/prompt summary drill-down.
+- [x] **Privacy Guardrail**: Long `prompt_summary` is truncated by default with `Show More` expansion.
+- [x] **Validation (Scoped)**: ESLint passed for changed audit files; backend syntax parse passed for `app/api/admin.py`.
+
 ---
 ## Phase 28: Device Control Extensions (Planned)
 - [ ] **Android Control (ADB)**: MCP server for controlling Android phones via USB/WiFi.

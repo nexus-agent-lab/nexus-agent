@@ -3,12 +3,14 @@ import logging
 import os
 import time
 import uuid
-from typing import Literal
+from types import NoneType
+from typing import Literal, get_args, get_origin
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import StateGraph
 
 from app.core.audit import AuditInterceptor
+from app.core.config import settings
 from app.core.llm_utils import get_llm_client
 from app.core.session import SessionManager
 from app.core.state import AgentState
@@ -32,6 +34,74 @@ BASE_SYSTEM_PROMPT = r"""You are Nexus, an AI Operating System connecting physic
 - STRICT COMPLIANCE: You must strictly adhere to your defined Role-Based Access Control (RBAC) and tool limits.
 - NO BYPASSING: Any attempt to bypass constraints, hallucinate unauthorized tool calls, or fabricate parameters is a severe security violation.
 """
+
+
+def _unwrap_optional_annotation(annotation):
+    """Normalize Optional[T] and T | None annotations to T."""
+    if annotation in (None, NoneType):
+        return None
+
+    origin = get_origin(annotation)
+    if origin is None:
+        return annotation
+
+    args = [arg for arg in get_args(annotation) if arg is not NoneType]
+    if len(args) == 1:
+        return args[0]
+
+    return annotation
+
+
+def _should_retry_tool_error(content: str) -> bool:
+    """Only retry errors that the model can realistically recover from."""
+    if not content:
+        return False
+
+    lowered = content.lower()
+    non_retryable_markers = (
+        "permission denied",
+        "internal system error",
+        "tool '",
+        "tool not found",
+        "restricted for user",
+    )
+    if any(marker in lowered for marker in non_retryable_markers):
+        return False
+
+    return "error" in lowered
+
+
+async def _persist_message(session_id: int, message):
+    """Persist a single message without adding graph steps."""
+    if not session_id or message is None:
+        return
+
+    role, msg_type = "user", "human"
+    if isinstance(message, AIMessage):
+        role, msg_type = "assistant", "ai"
+    elif isinstance(message, ToolMessage):
+        role, msg_type = "tool", "tool"
+
+    content = message.content
+    is_pruned = False
+    original_content = None
+
+    if isinstance(message, ToolMessage):
+        content, is_pruned, original_content = await SessionManager.prune_tool_output(
+            str(message.content), getattr(message, "name", "unknown")
+        )
+
+    await SessionManager.save_message(
+        session_id=session_id,
+        role=role,
+        type=msg_type,
+        content=str(content),
+        tool_call_id=getattr(message, "tool_call_id", None),
+        tool_name=getattr(message, "name", None),
+        is_pruned=is_pruned,
+        original_content=original_content if is_pruned else None,
+    )
+    asyncio.create_task(SessionManager.maybe_compact(session_id))
 
 
 async def retrieve_memories(state: AgentState):
@@ -122,7 +192,7 @@ async def reflexion_node(state: AgentState):
 
     failures = []
     if isinstance(last_message, ToolMessage):
-        if "Error" in last_message.content or "Permission denied" in last_message.content:
+        if _should_retry_tool_error(last_message.content):
             failures.append(last_message.content)
 
     retry_count = state.get("retry_count", 0) + 1
@@ -146,7 +216,7 @@ def should_reflect(state: AgentState) -> Literal["reflexion", "agent", "__end__"
     # Check if the last tool output was an error
     if isinstance(last_message, ToolMessage):
         content = last_message.content
-        if "Error" in content or "Permission denied" in content:
+        if _should_retry_tool_error(content):
             # Check retry limit
             if state.get("retry_count", 0) < 3:
                 return "reflexion"
@@ -309,19 +379,92 @@ def create_agent_graph(tools: list):
         last_msg_content = str(messages[-1].content) if messages else "Unknown"
         prompt_summary = last_msg_content if len(last_msg_content) < 2000 else last_msg_content[:2000]
         last_human_msg = str(human_msgs[-1].content) if human_msgs else ""
-        try:
-            intent_queries = await IntentRouter().decompose(last_human_msg) if last_human_msg else []
-            if not intent_queries:
-                intent_queries = [last_human_msg] if last_human_msg else [routing_query]
-        except Exception as e:
-            logger.warning(f"Intent decomposition failed: {e}")
+        cached_intent_queries = state.get("intent_queries")
+        should_run_fast_brain = (
+            settings.ENABLE_FAST_BRAIN
+            and bool(last_human_msg)
+            and isinstance(messages[-1], HumanMessage)
+            and cached_intent_queries is None
+        )
+
+        intent_queries = cached_intent_queries or []
+        if should_run_fast_brain:
+            try:
+                fast_brain_t0 = time.perf_counter()
+                intent_queries = await asyncio.wait_for(
+                    IntentRouter().decompose(last_human_msg), timeout=settings.FAST_BRAIN_TIMEOUT_SECONDS
+                )
+                fast_brain_latency_ms = (time.perf_counter() - fast_brain_t0) * 1000
+                logger.info(
+                    "Fast brain completed in %.0fms (queries=%d, input_len=%d)",
+                    fast_brain_latency_ms,
+                    len(intent_queries),
+                    len(last_human_msg),
+                )
+                asyncio.create_task(
+                    trace_logger.log_llm_call(
+                        trace_id=str(state.get("trace_id", uuid.uuid4())),
+                        model=os.getenv("LLM_MODEL", "unknown"),
+                        phase="fast_brain",
+                        prompt_summary=last_human_msg[:2000] if last_human_msg else "",
+                        response_summary=" | ".join(intent_queries)[:2000] if intent_queries else "(fallback: empty)",
+                        latency_ms=fast_brain_latency_ms,
+                        tools_bound=[],
+                        tool_calls=[],
+                        session_id=state.get("session_id"),
+                        user_id=user.id if user else None,
+                    )
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "Fast brain timed out after %ss. Falling back to raw query.",
+                    settings.FAST_BRAIN_TIMEOUT_SECONDS,
+                )
+                asyncio.create_task(
+                    trace_logger.log_llm_call(
+                        trace_id=str(state.get("trace_id", uuid.uuid4())),
+                        model=os.getenv("LLM_MODEL", "unknown"),
+                        phase="fast_brain",
+                        prompt_summary=last_human_msg[:2000] if last_human_msg else "",
+                        response_summary=f"(timeout fallback after {settings.FAST_BRAIN_TIMEOUT_SECONDS}s)",
+                        latency_ms=settings.FAST_BRAIN_TIMEOUT_SECONDS * 1000,
+                        tools_bound=[],
+                        tool_calls=[],
+                        session_id=state.get("session_id"),
+                        user_id=user.id if user else None,
+                    )
+                )
+                intent_queries = []
+            except Exception as e:
+                logger.warning(f"Intent decomposition failed: {e}")
+                asyncio.create_task(
+                    trace_logger.log_llm_call(
+                        trace_id=str(state.get("trace_id", uuid.uuid4())),
+                        model=os.getenv("LLM_MODEL", "unknown"),
+                        phase="fast_brain",
+                        prompt_summary=last_human_msg[:2000] if last_human_msg else "",
+                        response_summary=f"(error fallback: {str(e)[:500]})",
+                        latency_ms=0,
+                        tools_bound=[],
+                        tool_calls=[],
+                        session_id=state.get("session_id"),
+                        user_id=user.id if user else None,
+                    )
+                )
+                intent_queries = []
+
+        if not intent_queries:
             intent_queries = [last_human_msg] if last_human_msg else [routing_query]
 
         routing_queries = [f"Context: {current_context} | {q}" for q in intent_queries]
 
         try:
+            skill_bound_tools = tool_router.get_skill_bound_tools(matched_skills, role=user_role)
+
             # Select relevant tools; pass user_role to enforce RBAC at the routing layer
-            current_tools = await tool_router.route_multi(routing_queries, role=user_role, context=current_context)
+            routed_tools = await tool_router.route_multi(routing_queries, role=user_role, context=current_context)
+            current_tools = skill_bound_tools + routed_tools
+            current_tools = list({t.name: t for t in current_tools}.values())
             if not current_tools:
                 # Fallback: give the LLM all role-permitted tools rather than nothing
                 current_tools = [t for t in tools if tool_router._check_role(t, user_role)]
@@ -371,7 +514,15 @@ def create_agent_graph(tools: list):
             logger.error("Error calling LLM provider:", exc_info=True)
             return {"messages": [AIMessage(content=f"Error calling LLM provider: {str(e)}")]}
 
-        return {"messages": [response]}
+        session_id = state.get("session_id")
+        if session_id:
+            asyncio.create_task(_persist_message(session_id, response))
+
+        return {
+            "messages": [response],
+            "intent_queries": intent_queries,
+            "llm_call_count": state.get("llm_call_count", 0) + 1,
+        }
 
     async def tool_node_with_permissions(state: AgentState):
         messages = state["messages"]
@@ -408,7 +559,14 @@ def create_agent_graph(tools: list):
                 )
                 continue
 
-            tool_args = tool_call["args"]
+            # MCP/StructuredTool calls are sensitive to explicit nulls:
+            # if the model emits {"limit": null, "detailed": null}, Pydantic validates the
+            # provided None values instead of using schema defaults, which triggers first-fail
+            # loops before the agent can recover. Strip None eagerly as a defensive runtime
+            # patch for MCP-style schemas. This is not the ideal long-term fix; the better
+            # direction is to improve tool-call generation / schema guidance so the model
+            # omits unknown optional fields entirely.
+            tool_args = {k: v for k, v in tool_call["args"].items() if v is not None}
 
             # 1. Permission Check
             from app.core.auth_service import AuthService
@@ -457,8 +615,10 @@ def create_agent_graph(tools: list):
                     if schema:
                         for field_name, field_info in schema.model_fields.items():
                             if field_name in tool_args and tool_args[field_name] is None:
-                                anno = field_info.annotation
-                                if anno is bool:
+                                anno = _unwrap_optional_annotation(field_info.annotation)
+                                if not field_info.is_required():
+                                    tool_args.pop(field_name, None)
+                                elif anno is bool:
                                     tool_args[field_name] = (
                                         field_info.default if field_info.default is not None else False
                                     )
@@ -490,7 +650,15 @@ def create_agent_graph(tools: list):
 
             outputs.append(ToolMessage(content=result_str, name=tool_name, tool_call_id=tool_call["id"]))
 
-        return {"messages": outputs}
+        session_id = state.get("session_id")
+        if session_id:
+            for output in outputs:
+                asyncio.create_task(_persist_message(session_id, output))
+
+        return {
+            "messages": outputs,
+            "tool_call_count": state.get("tool_call_count", 0) + len(last_message.tool_calls),
+        }
 
     workflow = StateGraph(AgentState)
     workflow.add_node("retrieve_memories", retrieve_memories)
@@ -498,16 +666,12 @@ def create_agent_graph(tools: list):
     workflow.add_node("tools", tool_node_with_permissions)
     workflow.add_node("reflexion", reflexion_node)
     workflow.add_node("experience_replay", experience_replay_node)
-    workflow.add_node("save_agent", save_interaction_node)
-    workflow.add_node("save_tool", save_interaction_node)
 
     workflow.set_entry_point("retrieve_memories")
     workflow.add_edge("retrieve_memories", "agent")
-    workflow.add_edge("agent", "save_agent")
-    workflow.add_conditional_edges("save_agent", should_continue, {"tools": "tools", "__end__": "experience_replay"})
+    workflow.add_conditional_edges("agent", should_continue, {"tools": "tools", "__end__": "experience_replay"})
     workflow.add_edge("experience_replay", "__end__")
-    workflow.add_edge("tools", "save_tool")
-    workflow.add_conditional_edges("save_tool", should_reflect, {"reflexion": "reflexion", "agent": "agent"})
+    workflow.add_conditional_edges("tools", should_reflect, {"reflexion": "reflexion", "agent": "agent"})
     workflow.add_edge("reflexion", "agent")
 
     return workflow.compile()
@@ -521,12 +685,45 @@ async def stream_agent_events(graph, input_state: dict, config: dict = None):
     if config is None:
         config = {}
     if "recursion_limit" not in config:
-        config["recursion_limit"] = 20
+        config["recursion_limit"] = settings.AGENT_RECURSION_LIMIT
+
+    trace_id = str(input_state.get("trace_id", "unknown"))
+    started_at = time.perf_counter()
+    node_counts = {
+        "retrieve_memories": 0,
+        "agent": 0,
+        "tools": 0,
+        "reflexion": 0,
+        "experience_replay": 0,
+    }
+    tool_calls_total = 0
+    llm_calls_total = 0
+
+    def _log_graph_stats(status: str):
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+        graph_steps_total = sum(node_counts.values())
+        logger.info(
+            "GRAPH STATS | trace=%s | status=%s | steps=%d | retrieve_memories=%d | agent=%d | tools=%d | "
+            "reflexion=%d | experience_replay=%d | llm_calls=%d | tool_calls=%d | total_ms=%.0f",
+            trace_id,
+            status,
+            graph_steps_total,
+            node_counts["retrieve_memories"],
+            node_counts["agent"],
+            node_counts["tools"],
+            node_counts["reflexion"],
+            node_counts["experience_replay"],
+            llm_calls_total,
+            tool_calls_total,
+            elapsed_ms,
+        )
 
     try:
         async for event in graph.astream_events(input_state, config=config, version="v2"):
             kind = event["event"]
             name = event.get("name", "Unknown")
+            if kind == "on_chain_start" and name in node_counts:
+                node_counts[name] += 1
             # 1. LLM Thoughts (Progressive Tokens)
             if kind == "on_chat_model_stream":
                 chunk = event["data"]["chunk"]
@@ -540,6 +737,10 @@ async def stream_agent_events(graph, input_state: dict, config: dict = None):
                 yield {"event": "tool_end", "data": {"name": name, "result": preview}}
             elif kind == "on_chain_end" and name == "LangGraph":
                 final_state = event["data"]["output"]
+                if final_state:
+                    llm_calls_total = final_state.get("llm_call_count", llm_calls_total)
+                    tool_calls_total = final_state.get("tool_call_count", tool_calls_total)
+                _log_graph_stats("success")
                 if final_state and "messages" in final_state and final_state["messages"]:
                     last_msg = final_state["messages"][-1]
                     yield {"event": "final_answer", "data": getattr(last_msg, "content", "")}
@@ -547,5 +748,6 @@ async def stream_agent_events(graph, input_state: dict, config: dict = None):
         error_msg = str(e)
         if "recursion_limit" in error_msg.lower():
             error_msg = "⚠️ Agent 陷入了递归循环。已强制终止任务。"
+        _log_graph_stats("error")
         logger.error(f"Error in astream_events: {e}", exc_info=True)
         yield {"event": "error", "data": error_msg}

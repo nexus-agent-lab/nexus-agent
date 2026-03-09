@@ -93,8 +93,9 @@ class MCPManager:
                             if k not in conf:
                                 conf[k] = v
 
-                        # Override url/source_url if not defined in DB
-                        if not p.source_url and "source_url" in catalog_entry:
+                        # Catalog manifest is the runtime source of truth for official plugin endpoints.
+                        # This prevents stale DB rows (e.g. old /mcp URLs) from breaking MCP connections.
+                        if "source_url" in catalog_entry:
                             p.source_url = catalog_entry["source_url"]
 
                         # Inject allowed hostnames
@@ -396,10 +397,15 @@ class MCPManager:
 
     async def cleanup(self):
         async with self._lock:
-            await self.exit_stack.aclose()
+            old_exit_stack = self.exit_stack
+            self.exit_stack = AsyncExitStack()
             self.sessions.clear()
             self.tools.clear()
             self._initialized = False
+            try:
+                await old_exit_stack.aclose()
+            except RuntimeError as e:
+                logger.warning(f"MCP cleanup skipped stack close due to task-bound context issue: {e}")
 
 
 # Global accessor
