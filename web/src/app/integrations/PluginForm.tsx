@@ -39,7 +39,7 @@ export default function PluginForm({ apiKey, onSuccess }: PluginFormProps) {
   const fetchCatalog = async () => {
     setLoadingCatalog(true);
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
       const response = await fetch(`${backendUrl}/plugins/catalog`, {
         headers: {
           "X-API-Key": apiKey,

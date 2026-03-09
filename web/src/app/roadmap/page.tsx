@@ -17,7 +17,7 @@ interface Suggestion {
   created_at: string;
 }
 
-const API_URL = process.env.API_URL || "http://127.0.0.1:8000";
+const API_URL = process.env.API_URL || "http://127.0.0.1:8000/api";
 
 async function getSuggestions(apiKey: string, status?: string) {
   const url = status ? `${API_URL}/roadmap/?status=${status}` : `${API_URL}/roadmap/`;

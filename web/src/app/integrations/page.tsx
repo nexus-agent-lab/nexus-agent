@@ -23,7 +23,7 @@ interface Plugin {
 }
 
 async function getPlugins(apiKey: string): Promise<Plugin[]> {
-  const baseUrl = process.env.API_URL || "http://127.0.0.1:8000";
+  const baseUrl = process.env.API_URL || "http://127.0.0.1:8000/api";
   try {
     const res = await fetch(`${baseUrl}/plugins/`, {
       headers: {

@@ -43,7 +43,7 @@ export default function EditPluginButton({ plugin, apiKey }: EditPluginButtonPro
   const fetchSchema = async () => {
     setFetchingSchema(true);
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
       const response = await fetch(`${backendUrl}/plugins/${plugin.id}/schema`, {
         headers: {
           "X-API-Key": apiKey,

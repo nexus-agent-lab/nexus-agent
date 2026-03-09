@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { verifyAuthToken } from "@/lib/auth";
 
-const API_URL = process.env.API_URL || "http://127.0.0.1:8000";
+const API_URL = process.env.API_URL || "http://127.0.0.1:8000/api";
 
 async function getApiKey() {
   const cookieStore = await cookies();

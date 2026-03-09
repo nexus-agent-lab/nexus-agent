@@ -18,7 +18,7 @@ interface User {
 }
 
 async function getUser(userId: string, apiKey: string): Promise<User | null> {
-  const baseUrl = process.env.API_URL || "http://127.0.0.1:8000";
+  const baseUrl = process.env.API_URL || "http://127.0.0.1:8000/api";
   try {
     const res = await fetch(`${baseUrl}/users/${userId}`, {
       headers: {

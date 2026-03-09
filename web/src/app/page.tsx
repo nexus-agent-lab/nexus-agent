@@ -21,7 +21,7 @@ async function getPlugins(): Promise<Plugin[]> {
   // We use the scaffolded endpoint. Note that we handle potential connection errors
   // since the backend might not be running.
   try {
-    const baseUrl = process.env.API_URL || 'http://127.0.0.1:8000';
+    const baseUrl = process.env.API_URL || 'http://127.0.0.1:8000/api';
     const res = await fetch(`${baseUrl}/plugins/`, {
       // Revalidate frequently or set to no-store for real-time marketplace data
       cache: 'no-store',

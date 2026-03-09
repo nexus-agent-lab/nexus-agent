@@ -57,7 +57,7 @@ interface Changelog {
   reviewed_at?: string;
 }
 
-const API_URL = process.env.API_URL || "http://127.0.0.1:8000";
+const API_URL = process.env.API_URL || "http://127.0.0.1:8000/api";
 
 /**
  * Fetch data from backend with API key.

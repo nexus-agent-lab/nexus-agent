@@ -21,7 +21,7 @@ interface NetworkStatusResponse {
 }
 
 async function getNetworkStatus(apiKey: string): Promise<NetworkStatusResponse> {
-  const baseUrl = process.env.API_URL || "http://127.0.0.1:8000";
+  const baseUrl = process.env.API_URL || "http://127.0.0.1:8000/api";
   try {
     const res = await fetch(`${baseUrl}/system/network`, {
       headers: {

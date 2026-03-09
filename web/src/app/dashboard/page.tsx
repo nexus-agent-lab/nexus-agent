@@ -43,7 +43,7 @@ interface AuditLog {
 
 async function getSystemHealth(apiKey: string): Promise<SystemHealth | null> {
   try {
-    const baseUrl = process.env.API_URL || 'http://127.0.0.1:8000';
+    const baseUrl = process.env.API_URL || 'http://127.0.0.1:8000/api';
     const res = await fetch(`${baseUrl}/system/health`, { 
       headers: { "X-API-Key": apiKey },
       cache: 'no-store' 
@@ -57,7 +57,7 @@ async function getSystemHealth(apiKey: string): Promise<SystemHealth | null> {
 
 async function getDatabaseStatus(apiKey: string): Promise<DatabaseStatus | null> {
   try {
-    const baseUrl = process.env.API_URL || 'http://127.0.0.1:8000';
+    const baseUrl = process.env.API_URL || 'http://127.0.0.1:8000/api';
     const res = await fetch(`${baseUrl}/system/database`, { 
       headers: { "X-API-Key": apiKey },
       cache: 'no-store' 
@@ -71,7 +71,7 @@ async function getDatabaseStatus(apiKey: string): Promise<DatabaseStatus | null>
 
 async function getRedisStatus(apiKey: string): Promise<RedisStatus | null> {
   try {
-    const baseUrl = process.env.API_URL || 'http://127.0.0.1:8000';
+    const baseUrl = process.env.API_URL || 'http://127.0.0.1:8000/api';
     const res = await fetch(`${baseUrl}/system/redis`, { 
       headers: { "X-API-Key": apiKey },
       cache: 'no-store' 
@@ -85,7 +85,7 @@ async function getRedisStatus(apiKey: string): Promise<RedisStatus | null> {
 
 async function getAuditLogs(apiKey: string): Promise<AuditLog[]> {
   try {
-    const baseUrl = process.env.API_URL || 'http://127.0.0.1:8000';
+    const baseUrl = process.env.API_URL || 'http://127.0.0.1:8000/api';
     const res = await fetch(`${baseUrl}/audit?limit=5`, { 
       headers: { "X-API-Key": apiKey },
       cache: 'no-store' 

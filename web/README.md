@@ -18,7 +18,7 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 ## Architecture
 
-This Next.js app is the primary user interface, gradually deprecating Streamlit. It fetches data from the backend (typically on `http://127.0.0.1:8000`).
+This Next.js app is the primary user interface, gradually deprecating Streamlit. It fetches data from the backend (typically on `http://127.0.0.1:8000/api`).
 
 - **App Router:** Routing and API requests.
 - **Tailwind CSS:** Utility-first styling.

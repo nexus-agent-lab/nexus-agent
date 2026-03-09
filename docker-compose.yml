@@ -69,7 +69,7 @@ services:
     volumes:
       - .:/app
     environment:
-      - API_URL=http://nexus-app:8000 # Changed from localhost because networks are decoupled
+      - API_URL=http://nexus-app:8000/api
       - DATABASE_URL=postgresql+asyncpg://nexus:nexus_password@postgres:5432/nexus_db
       
       # LLM Configuration (For Skill Generation & Local Tools)
@@ -109,8 +109,8 @@ services:
       context: ./web
       dockerfile: Dockerfile
     environment:
-      - API_URL=http://nexus-app:8000
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - API_URL=http://nexus-app:8000/api
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api
       - JWT_SECRET=${JWT_SECRET:-super-secret-default-key-1234}
     depends_on:
       - nexus-app

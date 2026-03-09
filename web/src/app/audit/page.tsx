@@ -26,7 +26,7 @@ interface AuditLog {
  * @param apiKey Admin API key
  */
 async function getAuditLogs(apiKey: string, skip: number = 0, limit: number = 50): Promise<AuditLog[]> {
-  const baseUrl = process.env.API_URL || "http://127.0.0.1:8000";
+  const baseUrl = process.env.API_URL || "http://127.0.0.1:8000/api";
   try {
     const res = await fetch(`${baseUrl}/audit?skip=${skip}&limit=${limit}`, {
       headers: {
@@ -47,7 +47,7 @@ async function getAuditLogs(apiKey: string, skip: number = 0, limit: number = 50
  * @param apiKey Admin API key
  */
 async function getTraces(apiKey: string, limit: number = 20): Promise<GroupedTrace[]> {
-  const baseUrl = process.env.API_URL || "http://127.0.0.1:8000";
+  const baseUrl = process.env.API_URL || "http://127.0.0.1:8000/api";
   try {
     const res = await fetch(`${baseUrl}/admin/traces/grouped?limit=${limit}`, {
       headers: {

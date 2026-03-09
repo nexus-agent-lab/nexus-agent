@@ -17,7 +17,7 @@ export default function ViewSkillButton({ pluginId, apiKey }: ViewSkillButtonPro
   const fetchSkill = async () => {
     setLoading(true);
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
       const response = await fetch(`${backendUrl}/plugins/${pluginId}/skill`, {
         headers: {
           "X-API-Key": apiKey,

@@ -5,7 +5,7 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
-from fastapi import Depends, FastAPI, File, UploadFile
+from fastapi import APIRouter, Depends, FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage
@@ -128,7 +128,14 @@ async def lifespan(app: FastAPI):
     await stop_mcp()
 
 
-app = FastAPI(title="Nexus Agent API", version="2.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="Nexus Agent API",
+    version="2.0.0",
+    lifespan=lifespan,
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
+)
 
 # Configure CORS
 app.add_middleware(
@@ -139,19 +146,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register API routers
-app.include_router(skills_router)
-app.include_router(plugins_router)
-app.include_router(secrets_router)
-app.include_router(skills_learning_router)
-app.include_router(admin_router)
-app.include_router(telemetry_router)
-app.include_router(secure_input_router)
-app.include_router(memskills_router)
-app.include_router(roadmap_router)
-app.include_router(users_router)
-app.include_router(memories_router)
-app.include_router(auth_router)
+api_router = APIRouter(prefix="/api")
+
+# Register API routers under /api
+api_router.include_router(skills_router)
+api_router.include_router(plugins_router)
+api_router.include_router(secrets_router)
+api_router.include_router(skills_learning_router)
+api_router.include_router(admin_router)
+api_router.include_router(telemetry_router)
+api_router.include_router(secure_input_router)
+api_router.include_router(memskills_router)
+api_router.include_router(roadmap_router)
+api_router.include_router(users_router)
+api_router.include_router(memories_router)
+api_router.include_router(auth_router)
 
 
 class ChatRequest(BaseModel):
@@ -165,12 +174,12 @@ class ChatResponse(BaseModel):
     trace_id: str
 
 
-@app.get("/")
+@api_router.get("/")
 async def root():
     return {"message": "Nexus Agent is running"}
 
 
-@app.post("/chat", response_model=ChatResponse)
+@api_router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, current_user: User = Depends(get_current_user)):
     user_message = HumanMessage(content=request.message)
     trace_id = uuid.uuid4()
@@ -191,7 +200,7 @@ async def chat(request: ChatRequest, current_user: User = Depends(get_current_us
     return ChatResponse(response=response_text, trace_id=str(trace_id))
 
 
-@app.post("/chat/stream")
+@api_router.post("/chat/stream")
 async def chat_stream(request: ChatRequest, current_user: User = Depends(get_current_user)):
     user_message = HumanMessage(content=request.message)
     trace_id = uuid.uuid4()
@@ -213,7 +222,7 @@ async def chat_stream(request: ChatRequest, current_user: User = Depends(get_cur
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-@app.post("/voice", response_model=ChatResponse)
+@api_router.post("/voice", response_model=ChatResponse)
 async def voice_chat(file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
     """
     1. Upload Audio
@@ -239,3 +248,6 @@ async def voice_chat(file: UploadFile = File(...), current_user: User = Depends(
     response_text = last_message.content
 
     return ChatResponse(response=response_text, trace_id=str(trace_id))
+
+
+app.include_router(api_router)
