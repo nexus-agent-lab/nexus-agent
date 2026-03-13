@@ -837,6 +837,7 @@ Completed in branch:
 - worker skeleton files for `skill_worker`, `code_worker`, and `reviewer_worker`
 - compatibility hooks from the main agent into worker preparation steps
 - dispatcher-owned compatibility execution boundary for tool calls
+- worker-specific execution entrypoints now exist for `skill_worker` and `code_worker`
 - execution mode tracking in state and logs
 
 Still remaining:

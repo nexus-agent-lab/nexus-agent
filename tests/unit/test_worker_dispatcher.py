@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import patch
+
+import pytest
 
 from app.core.worker_dispatcher import WorkerDispatcher
 
@@ -35,8 +36,8 @@ class DummyTool:
 
 @pytest.mark.asyncio
 async def test_execute_tool_call_permission_denied():
-    with patch("app.core.worker_dispatcher.AuthService.check_tool_permission", return_value=False):
-        with patch("app.core.worker_dispatcher.AuditInterceptor", DummyAuditInterceptor):
+    with patch("app.core.worker_graphs.shared_execution.AuthService.check_tool_permission", return_value=False):
+        with patch("app.core.worker_graphs.shared_execution.AuditInterceptor", DummyAuditInterceptor):
             patch_result = await WorkerDispatcher.execute_tool_call(
                 {"selected_worker": "skill_worker", "selected_skill": "homeassistant"},
                 tool_name="dummy_tool",
@@ -51,12 +52,13 @@ async def test_execute_tool_call_permission_denied():
     assert "Permission denied" in patch_result["message"].content
     assert patch_result["outcome"]["status"] == "error"
     assert patch_result["classification"]["category"] == "permission_denied"
+    assert patch_result["execution_mode"] == "skill_execute"
 
 
 @pytest.mark.asyncio
 async def test_execute_tool_call_success():
-    with patch("app.core.worker_dispatcher.AuthService.check_tool_permission", return_value=True):
-        with patch("app.core.worker_dispatcher.AuditInterceptor", DummyAuditInterceptor):
+    with patch("app.core.worker_graphs.shared_execution.AuthService.check_tool_permission", return_value=True):
+        with patch("app.core.worker_graphs.shared_execution.AuditInterceptor", DummyAuditInterceptor):
             patch_result = await WorkerDispatcher.execute_tool_call(
                 {"selected_worker": "code_worker", "selected_skill": None, "context": "work"},
                 tool_name="python_sandbox",
@@ -73,3 +75,4 @@ async def test_execute_tool_call_success():
     assert patch_result["message"].content == "ok"
     assert patch_result["outcome"]["status"] == "success"
     assert patch_result["classification"]["category"] == "success"
+    assert patch_result["execution_mode"] == "code_execute"

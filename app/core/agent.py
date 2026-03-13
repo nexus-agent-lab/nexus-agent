@@ -723,7 +723,9 @@ def create_agent_graph(tools: list):
             last_classification = execution_patch.get("classification")
 
             if last_outcome:
-                review_decision = await WorkerDispatcher.prepare_review({**state, "last_classification": last_classification})
+                review_decision = await WorkerDispatcher.prepare_review(
+                    {**state, "last_classification": last_classification}
+                )
                 trace_logger.log_wire_event(
                     "tool_result",
                     trace_id=str(state.get("trace_id", "")),
@@ -731,6 +733,7 @@ def create_agent_graph(tools: list):
                     details={
                         "tool_name": tool_name,
                         "selected_worker": state.get("selected_worker"),
+                        "execution_mode": execution_patch.get("execution_mode"),
                         "review_mode": review_decision.get("execution_mode"),
                         "selected_skill": state.get("selected_skill"),
                         "status": last_outcome.get("status"),

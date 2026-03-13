@@ -5,6 +5,7 @@ from typing import Any
 from app.core.state import AgentState
 from app.core.tool_catalog import ToolCatalog
 from app.core.trace_logger import trace_logger
+from app.core.worker_graphs.shared_execution import ToolExecutionPatch, execute_tool_call_generic
 
 
 def prepare_skill_worker_tools(state: AgentState, available_tools: list[Any], matched_skills: list[dict]) -> list[Any]:
@@ -45,3 +46,34 @@ async def run_skill_worker_step(state: AgentState, available_tools: list[Any], m
         "selected_worker": "skill_worker",
         "active_tool_names": [getattr(tool, "name", str(tool)) for tool in tools],
     }
+
+
+async def execute_skill_worker_tool_call(
+    state: AgentState,
+    *,
+    tool_name: str,
+    tool_call_id: str,
+    tool_args: dict[str, Any],
+    tool_to_call: Any,
+    user: Any,
+    trace_id: Any,
+) -> ToolExecutionPatch:
+    trace_logger.log_wire_event(
+        "skill_worker.execute",
+        trace_id=str(state.get("trace_id", "")),
+        summary="Dispatching tool call through skill worker.",
+        details={
+            "selected_skill": state.get("selected_skill"),
+            "tool_name": tool_name,
+        },
+    )
+    return await execute_tool_call_generic(
+        state,
+        tool_name=tool_name,
+        tool_call_id=tool_call_id,
+        tool_args=tool_args,
+        tool_to_call=tool_to_call,
+        user=user,
+        trace_id=trace_id,
+        execution_mode="skill_execute",
+    )
