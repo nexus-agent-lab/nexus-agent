@@ -28,6 +28,8 @@ class AgentState(TypedDict):
     reflexions: Optional[List[str]] = []  # Stored self-reflections
     retry_count: int = 0  # Track retries for current step
     search_count: int = 0  # Track tool search retries (Tier 2)
+    attempts_by_tool: Optional[dict[str, int]] = None  # Count attempts by normalized tool fingerprint
+    blocked_fingerprints: Optional[List[str]] = None  # Fingerprints blocked after repeated failures
     active_tool_names: Optional[List[str]] = None  # Explicitly selected tools for current turn
     intent_queries: Optional[List[str]] = None  # Cached fast-brain decomposition for the current user turn
     last_outcome: Optional[ToolExecutionOutcome] = None  # Last normalized tool execution outcome

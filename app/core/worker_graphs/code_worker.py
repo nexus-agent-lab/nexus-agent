@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.core.result_classifier import ResultClassification
 from app.core.state import AgentState
 from app.core.tool_catalog import ToolCatalog
+from app.core.tool_executor import ToolExecutionOutcome, build_tool_fingerprint
+from app.core.tool_metadata import get_tool_metadata
 from app.core.trace_logger import trace_logger
 from app.core.worker_graphs.shared_execution import ToolExecutionPatch, execute_tool_call_generic
 
@@ -52,6 +55,48 @@ async def execute_code_worker_tool_call(
     user: Any,
     trace_id: Any,
 ) -> ToolExecutionPatch:
+    fingerprint = build_tool_fingerprint(tool_name, args=tool_args, selected_skill=state.get("selected_skill"))
+    if fingerprint in (state.get("blocked_fingerprints") or []):
+        blocked_message = (
+            "Error: Repeated code execution was blocked after previous failures. "
+            "Generate a different fix instead of re-running the same code."
+        )
+        outcome = ToolExecutionOutcome(
+            tool_name=tool_name,
+            worker="code_worker",
+            status="error",
+            raw_text=blocked_message,
+            structured_data=None,
+            exception_text=blocked_message,
+            latency_ms=0,
+            fingerprint=fingerprint,
+            metadata=get_tool_metadata(tool_to_call),
+        )
+        classification = ResultClassification(
+            category="non_retryable_runtime_error",
+            retryable=False,
+            should_switch_worker=False,
+            requires_handoff=True,
+            user_facing_summary="Repeated code execution was blocked after previous failures.",
+            debug_summary=blocked_message,
+            suggested_next_action="handoff",
+        )
+        trace_logger.log_wire_event(
+            "code_worker.blocked",
+            trace_id=str(state.get("trace_id", "")),
+            summary="Blocked repeated code execution fingerprint.",
+            details={
+                "tool_name": tool_name,
+                "fingerprint": fingerprint[:12],
+            },
+        )
+        return ToolExecutionPatch(
+            message=None,
+            outcome=outcome,
+            classification=classification,
+            execution_mode="code_blocked",
+        )
+
     trace_logger.log_wire_event(
         "code_worker.execute",
         trace_id=str(state.get("trace_id", "")),
@@ -59,6 +104,7 @@ async def execute_code_worker_tool_call(
         details={
             "tool_name": tool_name,
             "selected_worker": state.get("selected_worker") or "code_worker",
+            "fingerprint": fingerprint[:12],
         },
     )
     return await execute_tool_call_generic(

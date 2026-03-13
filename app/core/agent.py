@@ -665,6 +665,8 @@ def create_agent_graph(tools: list):
         outputs = []
         last_outcome = None
         last_classification = None
+        attempts_by_tool = dict(state.get("attempts_by_tool") or {})
+        blocked_fingerprints = list(state.get("blocked_fingerprints") or [])
 
         # Should not happen based on edge logic, but safety check
         if not last_message.tool_calls:
@@ -723,6 +725,29 @@ def create_agent_graph(tools: list):
             last_classification = execution_patch.get("classification")
 
             if last_outcome:
+                fingerprint = last_outcome.get("fingerprint")
+                if fingerprint:
+                    attempts_by_tool[fingerprint] = attempts_by_tool.get(fingerprint, 0) + 1
+                    if (
+                        state.get("selected_worker") == "code_worker"
+                        and last_classification
+                        and last_classification.get("category") == "retryable_runtime_error"
+                        and attempts_by_tool[fingerprint] >= 2
+                        and fingerprint not in blocked_fingerprints
+                    ):
+                        blocked_fingerprints.append(fingerprint)
+                        trace_logger.log_wire_event(
+                            "code_worker.blocklist",
+                            trace_id=str(state.get("trace_id", "")),
+                            summary="Blocked code fingerprint after repeated runtime failures.",
+                            details={
+                                "fingerprint": fingerprint[:12],
+                                "attempts": attempts_by_tool[fingerprint],
+                                "tool_name": tool_name,
+                            },
+                        )
+
+            if last_outcome:
                 review_decision = await WorkerDispatcher.prepare_review(
                     {**state, "last_classification": last_classification}
                 )
@@ -754,6 +779,8 @@ def create_agent_graph(tools: list):
             "messages": outputs,
             "last_outcome": last_outcome,
             "last_classification": last_classification,
+            "attempts_by_tool": attempts_by_tool,
+            "blocked_fingerprints": blocked_fingerprints,
             "tool_call_count": state.get("tool_call_count", 0) + len(last_message.tool_calls),
         }
 
