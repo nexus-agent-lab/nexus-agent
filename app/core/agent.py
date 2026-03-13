@@ -3,23 +3,18 @@ import logging
 import os
 import time
 import uuid
-from types import NoneType
-from typing import Literal, get_args, get_origin
+from typing import Literal
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import StateGraph
 
-from app.core.audit import AuditInterceptor
 from app.core.config import settings
 from app.core.llm_utils import get_llm_client
-from app.core.result_classifier import ResultClassifier
 from app.core.session import SessionManager
 from app.core.state import AgentState
 from app.core.tool_catalog import ToolCatalog
-from app.core.worker_dispatcher import WorkerDispatcher
-from app.core.tool_executor import ToolExecutionOutcome, build_tool_fingerprint
-from app.core.tool_metadata import get_tool_metadata
 from app.core.trace_logger import trace_logger
+from app.core.worker_dispatcher import WorkerDispatcher
 
 logger = logging.getLogger(__name__)
 
@@ -39,22 +34,6 @@ BASE_SYSTEM_PROMPT = r"""You are Nexus, an AI Operating System connecting physic
 - STRICT COMPLIANCE: You must strictly adhere to your defined Role-Based Access Control (RBAC) and tool limits.
 - NO BYPASSING: Any attempt to bypass constraints, hallucinate unauthorized tool calls, or fabricate parameters is a severe security violation.
 """
-
-
-def _unwrap_optional_annotation(annotation):
-    """Normalize Optional[T] and T | None annotations to T."""
-    if annotation in (None, NoneType):
-        return None
-
-    origin = get_origin(annotation)
-    if origin is None:
-        return annotation
-
-    args = [arg for arg in get_args(annotation) if arg is not NoneType]
-    if len(args) == 1:
-        return args[0]
-
-    return annotation
 
 
 def _should_retry_tool_error(content: str) -> bool:
@@ -589,18 +568,20 @@ def create_agent_graph(tools: list):
                 # Fallback: give the LLM all role-permitted tools rather than nothing
                 current_tools = [t for t in tools if tool_router._check_role(t, user_role)]
 
-            current_tools, selected_worker = await WorkerDispatcher.prepare_tools(
+            current_tools, worker_decision = await WorkerDispatcher.prepare_tools(
                 state,
                 current_tools,
                 matched_skills,
                 fallback_worker=candidate_workers[0] if candidate_workers else None,
             )
+            selected_worker = worker_decision.get("selected_worker")
             trace_logger.log_wire_event(
                 "toolbelt_selection",
                 trace_id=str(state.get("trace_id", "")),
                 summary="Selected tools for current turn.",
                 details={
                     "selected_worker": selected_worker,
+                    "execution_mode": worker_decision.get("execution_mode"),
                     "selected_skill": state.get("selected_skill")
                     or (candidate_skills[0] if candidate_skills else None),
                     "tool_count": len(current_tools),
@@ -668,9 +649,10 @@ def create_agent_graph(tools: list):
             "intent_queries": intent_queries,
             "intent_class": fast_intent.get("intent_class"),
             "route_confidence": fast_intent.get("confidence"),
-            "selected_worker": candidate_workers[0] if candidate_workers else None,
+            "selected_worker": selected_worker or (candidate_workers[0] if candidate_workers else None),
+            "execution_mode": worker_decision.get("execution_mode"),
             "candidate_workers": candidate_workers,
-            "selected_skill": candidate_skills[0] if candidate_skills else None,
+            "selected_skill": state.get("selected_skill") or (candidate_skills[0] if candidate_skills else None),
             "candidate_skills": candidate_skills,
             "llm_call_count": state.get("llm_call_count", 0) + 1,
         }
@@ -722,151 +704,26 @@ def create_agent_graph(tools: list):
             logger.info(f"[DEBUG None] 1. tool_call['args'] 原始值: {tool_call['args']}")
             tool_args = {k: v for k, v in tool_call["args"].items() if v is not None}
             logger.info(f"[DEBUG None] 2. tool_args 清洗后的值: {tool_args}")
+            logger.info(f"[DEBUG None] 3. dispatcher.execute_tool_call 前的最终值: {tool_args}")
+            execution_patch = await WorkerDispatcher.execute_tool_call(
+                state,
+                tool_name=tool_name,
+                tool_call_id=tool_call["id"],
+                tool_args=tool_args,
+                tool_to_call=tool_to_call,
+                user=user,
+                trace_id=trace_id,
+            )
 
-            # 1. Permission Check
-            from app.core.auth_service import AuthService
+            message = execution_patch.get("message")
+            if message is not None:
+                outputs.append(message)
 
-            # Extract domain and required_role from tool metadata (MCP tools have these)
-            domain = "standard"
-            required_role = None
-            allowed_groups = None
-            if hasattr(tool_to_call, "metadata") and tool_to_call.metadata is not None:
-                domain = tool_to_call.metadata.get("domain") or tool_to_call.metadata.get("category") or domain
-                required_role = tool_to_call.metadata.get("required_role")
-                allowed_groups = tool_to_call.metadata.get("allowed_groups")
+            last_outcome = execution_patch.get("outcome")
+            last_classification = execution_patch.get("classification")
 
-            if not AuthService.check_tool_permission(
-                user, tool_name, domain=domain, required_role=required_role, allowed_groups=allowed_groups
-            ):
-                err_msg = f"Error: Permission denied. Access to tool '{tool_name}' is restricted for user '{user.username if user else 'guest'}'."
-                async with AuditInterceptor(
-                    trace_id=trace_id, user_id=user.id if user else None, tool_name=tool_name, tool_args=tool_args
-                ):
-                    pass
-                outputs.append(ToolMessage(err_msg, name=tool_name, tool_call_id=tool_call["id"]))
-                last_outcome = ToolExecutionOutcome(
-                    tool_name=tool_name,
-                    worker=state.get("selected_worker") or "chat_worker",
-                    status="error",
-                    raw_text=err_msg,
-                    structured_data=None,
-                    exception_text=err_msg,
-                    latency_ms=0,
-                    fingerprint=build_tool_fingerprint(
-                        tool_name,
-                        args=tool_args,
-                        selected_skill=state.get("selected_skill"),
-                    ),
-                    metadata=get_tool_metadata(tool_to_call),
-                )
-                last_classification = ResultClassifier.classify(last_outcome)
-                trace_logger.log_wire_event(
-                    "tool_result",
-                    trace_id=str(state.get("trace_id", "")),
-                    summary="Tool blocked by permission policy.",
-                    details={
-                        "tool_name": tool_name,
-                        "selected_worker": state.get("selected_worker"),
-                        "selected_skill": state.get("selected_skill"),
-                        "classification": last_classification.get("category"),
-                        "next_action": last_classification.get("suggested_next_action"),
-                    },
-                )
-                continue
-
-            # 2. Execution with Audit Interceptor
-            try:
-                # Inject user_id into tool arguments if the tool expects it.
-                # LangChain's StructuredTool will only use it if defined in args_schema.
-                if user:
-                    tool_args["user_id"] = user.id
-
-                # The Interceptor handles Audit Logging (PENDING -> SUCCESS/FAILURE)
-                async with AuditInterceptor(
-                    trace_id=trace_id,
-                    user_id=user.id if user else None,
-                    tool_name=tool_name,
-                    tool_args=tool_args,
-                    user_role=user.role if user else "user",
-                    context=state.get("context", "home"),
-                    tool_tags=getattr(tool_to_call, "tags", ["tag:safe"]),
-                ):
-                    # 🩹 Sanitize tool args: fix None values for typed params
-                    # LLMs sometimes pass \`None\` for booleans/ints, causing Pydantic validation errors.
-                    # This patch ensures defaults are used instead of None for critical types.
-                    schema = getattr(tool_to_call, "args_schema", None)
-                    if schema:
-                        for field_name, field_info in schema.model_fields.items():
-                            if field_name in tool_args and tool_args[field_name] is None:
-                                anno = _unwrap_optional_annotation(field_info.annotation)
-                                if not field_info.is_required():
-                                    tool_args.pop(field_name, None)
-                                elif anno is bool:
-                                    tool_args[field_name] = (
-                                        field_info.default if field_info.default is not None else False
-                                    )
-                                elif anno is int:
-                                    tool_args[field_name] = field_info.default if field_info.default is not None else 0
-                                elif anno is str:
-                                    tool_args[field_name] = field_info.default if field_info.default is not None else ""
-
-                    logger.info(f"[DEBUG None] 3. ainvoke / model_validate 前的最终值: {tool_args}")
-                    prediction = await tool_to_call.ainvoke(tool_args)
-                    result_str = str(prediction)
-                    last_outcome = ToolExecutionOutcome(
-                        tool_name=tool_name,
-                        worker=state.get("selected_worker") or "chat_worker",
-                        status="success",
-                        raw_text=result_str,
-                        structured_data=None,
-                        exception_text=None,
-                        latency_ms=0,
-                        fingerprint=build_tool_fingerprint(
-                            tool_name,
-                            args=tool_args,
-                            selected_skill=state.get("selected_skill"),
-                        ),
-                        metadata=get_tool_metadata(tool_to_call),
-                    )
-            except Exception as e:
-                error_text = str(e)
-                # 3. Error Sanitization
-                # If it's a low-level infrastructure error (DB/Network), DO NOT pass details to the LLM
-                # to avoid confusion or infinite fixing loops.
-                is_internal_error = any(
-                    k in error_text for k in ["sqlalchemy", "asyncpg", "ConnectionRefused", "OperationalError"]
-                )
-
-                if is_internal_error:
-                    # Log the specific crash for the admin
-                    logger.error(f"CRITICAL SYSTEM ERROR in tool '{tool_name}': {error_text}", exc_info=True)
-                    # Tell LLM generic info so it doesn't try to 'fix' code
-                    result_str = "Error: Internal System Error. Please contact administrator."
-                else:
-                    # Logic errors (e.g. User Not Found) are useful for the LLM
-                    logger.warning(f"Tool execution error ({tool_name}): {error_text}")
-                    result_str = f"Error execution tool: {error_text}"
-
-                last_outcome = ToolExecutionOutcome(
-                    tool_name=tool_name,
-                    worker=state.get("selected_worker") or "chat_worker",
-                    status="error",
-                    raw_text=result_str,
-                    structured_data=None,
-                    exception_text=error_text,
-                    latency_ms=0,
-                    fingerprint=build_tool_fingerprint(
-                        tool_name,
-                        args=tool_args,
-                        selected_skill=state.get("selected_skill"),
-                    ),
-                    metadata=get_tool_metadata(tool_to_call),
-                )
-
-            outputs.append(ToolMessage(content=result_str, name=tool_name, tool_call_id=tool_call["id"]))
             if last_outcome:
-                last_classification = ResultClassifier.classify(last_outcome)
-                await WorkerDispatcher.prepare_review({**state, "last_classification": last_classification})
+                review_decision = await WorkerDispatcher.prepare_review({**state, "last_classification": last_classification})
                 trace_logger.log_wire_event(
                     "tool_result",
                     trace_id=str(state.get("trace_id", "")),
@@ -874,6 +731,7 @@ def create_agent_graph(tools: list):
                     details={
                         "tool_name": tool_name,
                         "selected_worker": state.get("selected_worker"),
+                        "review_mode": review_decision.get("execution_mode"),
                         "selected_skill": state.get("selected_skill"),
                         "status": last_outcome.get("status"),
                         "classification": last_classification.get("category") if last_classification else None,

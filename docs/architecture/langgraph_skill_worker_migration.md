@@ -18,6 +18,65 @@ This design is intended to solve the current failure modes:
 
 ---
 
+## 1.1 Current Migration Status
+
+This document is both:
+
+1.  the target architecture description
+2.  the current migration status record for the `codex/langgraph-migration-plan` branch
+
+### Current Stage
+
+The project is currently in a **compatibility-stage migration**:
+
+- the old main agent loop is still the runtime entry point
+- several new LangGraph-oriented contracts and routing layers are already wired in
+- worker-specific execution is only partially separated
+- reviewer enforcement is not yet mandatory
+
+### Already Landed
+
+- `IntentGate` is wired before the older routing path.
+- skill-driven routing hints are supported through `SkillLoader.load_routing_hints()`
+- `AgentState` already carries worker and skill routing context
+- tool execution now produces normalized runtime artifacts:
+  - `last_outcome`
+  - `last_classification`
+- reflection / retry logic now prefers structured classification over raw string matching
+- worker-aware toolbelt selection is active through `ToolCatalog` and `WorkerDispatcher`
+- worker skeletons exist and are lightly connected:
+  - `skill_worker`
+  - `code_worker`
+  - `reviewer_worker`
+- flow-oriented tracing has been added so logs show routing and recovery decisions
+
+### Not Finished Yet
+
+- `tool_node_with_permissions` is still the shared execution node for all workers
+- `skill_worker` and `code_worker` are not yet full execution subgraphs
+- `reviewer_worker` is still a compatibility hook, not a hard gate
+- retry budgets are not yet enforced by worker-native graph transitions
+- MCP-registered tools do not yet all provide explicit metadata under the new contract
+- fallback `_infer_*` helpers still exist and should shrink further over time
+
+### Current Runtime Shape
+
+Today the runtime flow is approximately:
+
+1.  load context and memory
+2.  run `IntentGate`
+3.  run existing skill routing and optional fast-brain escalation
+4.  build a worker-aware toolbelt via `ToolCatalog` and `WorkerDispatcher`
+5.  bind tools to the main model call
+6.  execute tools through the shared tool node
+7.  normalize the tool result into `ToolExecutionOutcome`
+8.  classify the result into `ResultClassification`
+9.  decide whether to continue, reflect, or recover using compatibility logic
+
+This means the migration is already structurally meaningful, but it is **not yet the final supervisor + worker-subgraph architecture**.
+
+---
+
 ## 2. Core Principle
 
 **The LangGraph core should understand capabilities, workers, and execution outcomes. It should not understand MCP protocol internals.**
@@ -707,6 +766,8 @@ Goal:
 
 - Introduce capability metadata, execution outcome, and result classification without fully replacing the current graph.
 
+Status: `Mostly complete`
+
 Tasks:
 
 1. Add metadata contract support to tool registration.
@@ -714,11 +775,26 @@ Tasks:
 3. Add `result_classifier`.
 4. Replace raw string error interpretation where possible.
 
+Completed in branch:
+
+- `tool_metadata.py`
+- `tool_executor.py`
+- `result_classifier.py`
+- runtime state fields for `last_outcome` and `last_classification`
+- compatibility integration inside the existing agent flow
+
+Still remaining:
+
+- complete explicit metadata coverage for MCP-registered tools
+- reduce dependence on `_infer_*` fallback helpers
+
 ### Phase 2: Fast Intent Gate
 
 Goal:
 
 - Replace default LLM-first routing with deterministic routing plus selective escalation.
+
+Status: `Mostly complete`
 
 Tasks:
 
@@ -726,11 +802,26 @@ Tasks:
 2. Introduce `selected_worker`, `selected_skill`, and routing confidence into state.
 3. Keep LLM intent routing only as an escalation path.
 
+Completed in branch:
+
+- `intent_gate.py`
+- new state fields for worker/skill routing
+- skill-driven routing hints via `SkillLoader.load_routing_hints()`
+- selective LLM escalation behavior in the existing main path
+
+Still remaining:
+
+- enrich routing hints schema
+- improve weighting and ranking of skill matches
+- remove more business-domain fallback heuristics from core routing
+
 ### Phase 3: Worker Subgraphs
 
 Goal:
 
 - Split the monolithic `agent` node into supervisor plus worker subgraphs.
+
+Status: `In progress`
 
 Tasks:
 
@@ -739,17 +830,93 @@ Tasks:
 3. Introduce `reviewer_worker`.
 4. Move execution and verification logic out of the monolithic main node.
 
+Completed in branch:
+
+- `tool_catalog.py`
+- `worker_dispatcher.py`
+- worker skeleton files for `skill_worker`, `code_worker`, and `reviewer_worker`
+- compatibility hooks from the main agent into worker preparation steps
+- dispatcher-owned compatibility execution boundary for tool calls
+- execution mode tracking in state and logs
+
+Still remaining:
+
+- move real execution branching out of the shared tool node
+- give `skill_worker` its own discovery/read/act/verify loop
+- give `code_worker` its own execute/classify/repair/verify loop
+- promote dispatcher from prepare-only boundary to execution-path boundary
+
 ### Phase 4: Reviewer Enforcement + Offline Feedback Loop
 
 Goal:
 
 - Enforce real stop conditions and feed normalized failures into Designer.
 
+Status: `Not started`
+
 Tasks:
 
 1. Make reviewer mandatory for risky and multi-step flows.
 2. Persist normalized classification data.
 3. Upgrade Designer to analyze shared classification categories.
+
+---
+
+## 14.1 Implementation Checklist
+
+### Completed
+
+- architecture document established and updated during migration
+- deterministic intent gate integrated into the main loop
+- skill-driven routing hints integrated
+- worker- and skill-aware state fields added
+- normalized tool outcome and result classification integrated into runtime
+- reflection logic upgraded to prefer structured classification
+- worker-aware tool filtering extracted into `ToolCatalog`
+- `WorkerDispatcher` added as a compatibility boundary
+- worker skeleton modules created and connected at prepare-time
+- flow-aware tracing added for routing, toolbelt selection, result classification, and reflexion
+- unit tests added for:
+  - skill routing hints
+  - intent gate
+  - tool metadata
+  - tool catalog
+
+### In Progress
+
+- converting worker prepare hooks into real worker execution paths
+- moving from shared execution to worker-specific execution semantics
+- expanding explicit metadata coverage
+- reducing core fallback inference logic
+
+### Not Started
+
+- mandatory reviewer gate
+- graph-native retry budgets and stop conditions
+- true handoff node for repeated non-recoverable failures
+- designer feedback loop driven by normalized runtime categories
+- full removal of business-integration-specific inference from core code
+
+---
+
+## 14.2 Recommended Next Steps
+
+1.  Split the shared execution node by worker semantics.
+    - `skill_worker` should own discovery/read/act/verify behavior
+    - `code_worker` should own execute/repair/verify behavior
+
+2.  Promote `reviewer_worker` from context hook to enforced gate.
+
+3.  Push metadata authority outward.
+    - prefer skill metadata
+    - prefer plugin / registration metadata
+    - keep core fallback only for a very small set of system-reserved capabilities such as `python_sandbox` and browser/playwright
+
+4.  Replace compatibility-style recovery with graph-native control.
+    - worker budgets
+    - fingerprint blocking
+    - switch-worker transitions
+    - handoff transitions
 
 ---
 
