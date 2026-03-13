@@ -53,7 +53,7 @@ async def test_execute_tool_call_permission_denied():
     assert "Permission denied" in patch_result["message"].content
     assert patch_result["outcome"]["status"] == "error"
     assert patch_result["classification"]["category"] == "permission_denied"
-    assert patch_result["execution_mode"] == "skill_execute"
+    assert patch_result["execution_mode"] == "skill_read"
 
 
 @pytest.mark.asyncio
@@ -136,3 +136,45 @@ async def test_execute_tool_call_blocks_repeated_code_fingerprint():
     assert patch_result["classification"]["category"] == "non_retryable_runtime_error"
     assert patch_result["classification"]["requires_handoff"] is True
     assert patch_result["execution_mode"] == "code_blocked"
+
+
+@pytest.mark.asyncio
+async def test_skill_worker_dispatch_marks_discovery_tools():
+    with patch("app.core.worker_graphs.shared_execution.AuthService.check_tool_permission", return_value=True):
+        with patch("app.core.worker_graphs.shared_execution.AuditInterceptor", DummyAuditInterceptor):
+            patch_result = await WorkerDispatcher.execute_tool_call(
+                {"selected_worker": "skill_worker", "selected_skill": "web_browsing"},
+                tool_name="list_available_tools",
+                tool_call_id="call-5",
+                tool_args={},
+                tool_to_call=DummyTool(
+                    name="list_available_tools",
+                    metadata={"preferred_worker": "skill_worker", "operation_kind": "discover"},
+                    result="[]",
+                ),
+                user=DummyUser(),
+                trace_id="trace-5",
+            )
+
+    assert patch_result["execution_mode"] == "skill_discover"
+
+
+@pytest.mark.asyncio
+async def test_skill_worker_dispatch_marks_action_tools():
+    with patch("app.core.worker_graphs.shared_execution.AuthService.check_tool_permission", return_value=True):
+        with patch("app.core.worker_graphs.shared_execution.AuditInterceptor", DummyAuditInterceptor):
+            patch_result = await WorkerDispatcher.execute_tool_call(
+                {"selected_worker": "skill_worker", "selected_skill": "homeassistant"},
+                tool_name="watch_entity",
+                tool_call_id="call-6",
+                tool_args={"entity_id": "light.kitchen"},
+                tool_to_call=DummyTool(
+                    name="watch_entity",
+                    metadata={"preferred_worker": "skill_worker", "operation_kind": "act"},
+                    result="ok",
+                ),
+                user=DummyUser(),
+                trace_id="trace-6",
+            )
+
+    assert patch_result["execution_mode"] == "skill_act"

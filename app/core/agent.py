@@ -815,6 +815,7 @@ def create_agent_graph(tools: list):
             "messages": outputs,
             "last_outcome": last_outcome,
             "last_classification": last_classification,
+            "execution_mode": execution_patch.get("execution_mode") if last_outcome else state.get("execution_mode"),
             "attempts_by_worker": attempts_by_worker,
             "attempts_by_tool": attempts_by_tool,
             "blocked_fingerprints": blocked_fingerprints,

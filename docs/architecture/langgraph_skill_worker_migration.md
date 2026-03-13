@@ -141,6 +141,12 @@ Files:
 - `app/core/tool_catalog.py`
 - `app/core/tool_executor.py`
 
+Integration rule:
+
+- `MCPManager` should stay protocol-focused.
+- It should discover tools, map schemas, preserve defaults, and attach metadata.
+- It should not own orchestration policy, retry policy, or worker branching logic.
+
 ### 3.2 Core Orchestration Layer
 
 Owns:
@@ -214,6 +220,12 @@ The graph should never hardcode `homeassistant` as a worker. It should select:
 
 - `selected_worker = "skill_worker"`
 - `selected_skill = "homeassistant"`
+
+Current migration note:
+
+- `skill_worker` execution now emits mode-level tags such as `skill_discover`, `skill_read`, `skill_act`, and `skill_verify`.
+- These modes come from metadata `operation_kind`, not from MCP server names.
+- This creates a stable bridge toward future worker-native branching.
 
 ### 4.2 `code_worker`
 
@@ -318,6 +330,112 @@ class ToolCapabilityMetadata(TypedDict, total=False):
 `MCPManager` and static tool registration should both populate the same metadata shape.
 
 This prevents special-case branching for MCP vs local tools later in the graph.
+
+### Metadata Authority Order
+
+The graph should prefer metadata in this order:
+
+1.  explicit tool registration metadata
+2.  skill-derived routing hints and skill metadata
+3.  plugin or MCP manifest metadata
+4.  temporary `_infer_*` fallback logic
+
+This keeps routing and recovery grounded in declared capability instead of guessed capability.
+
+---
+
+## 5.1 MCP and Skill Optimization Strategy
+
+The current architecture gets better as MCP and skill metadata become more explicit.
+
+### Next Optimization Targets
+
+1.  **Improve MCP registration metadata**
+    - MCP tools should explicitly provide:
+      - `capability_domain`
+      - `operation_kind`
+      - `preferred_worker`
+      - `side_effect`
+      - `requires_verification`
+      - `retry_policy`
+
+2.  **Strengthen skill metadata**
+    - Skills should define:
+      - `routing_hints.keywords`
+      - `routing_hints.discovery_keywords`
+      - `required_tools`
+      - `preferred_worker`
+      - optional verification expectations
+
+3.  **Shrink core inference**
+    - Core fallback inference should remain only for a very small set of system-reserved capabilities.
+    - Optional integrations should not rely on tool-name guessing.
+
+4.  **Keep responsibilities separate**
+    - MCP handles connection and schema transport.
+    - Skills describe usage policy and routing cues.
+    - The graph handles routing, retries, verification, and stopping conditions.
+
+### Why This Matters for the Current Architecture
+
+- Better metadata makes `IntentGate` faster and more accurate.
+- Better `operation_kind` metadata makes `skill_worker` routing more meaningful.
+- Better `preferred_worker` metadata reduces cross-domain tool hallucination.
+- Better retry and verification metadata lets the graph enforce real boundaries.
+
+---
+
+## 5.2 Adding a New MCP or Skill
+
+When adding a new MCP-backed integration or a new skill, the strongest path is:
+
+1.  **Register tools cleanly**
+    - Ensure the MCP server exposes stable tool names and typed argument schemas.
+    - Preserve server-provided defaults where possible.
+
+2.  **Attach graph-facing metadata**
+    - For each tool, define:
+      - `preferred_worker`
+      - `operation_kind`
+      - `capability_domain`
+      - `side_effect`
+      - `requires_verification`
+
+3.  **Create or extend a skill card**
+    - Add:
+      - `intent_keywords`
+      - `discovery_keywords`
+      - `required_tools`
+      - `preferred_worker`
+      - optional future `routing_hints`
+
+4.  **Keep business policy out of the core graph**
+    - Do not hardcode a new integration into `agent.py`.
+    - Do not add integration-specific retry behavior directly to the supervisor.
+    - Prefer metadata and skill rules instead.
+
+5.  **Choose the correct worker**
+    - side-effectful business tooling -> `skill_worker`
+    - code or script execution -> `code_worker`
+    - read-heavy retrieval -> `research_worker`
+
+### Minimum Checklist for a New Integration
+
+- The MCP schema exposes useful defaults and typed fields.
+- Tool metadata is explicit enough that `_infer_*` is only fallback.
+- The skill card includes routing hints or equivalent metadata.
+- At least one test covers worker selection or execution mode.
+- Risky actions declare verification needs.
+
+### Example Outcome
+
+If a future browser MCP is added correctly:
+
+- the MCP layer only exposes browser tools and schemas
+- the browser skill declares routing hints and required tools
+- the graph routes to `skill_worker`
+- `skill_worker` marks calls as `skill_discover`, `skill_read`, or `skill_act`
+- verification policy is enforced from metadata rather than prompt-only guidance
 
 ---
 
@@ -838,6 +956,7 @@ Completed in branch:
 - compatibility hooks from the main agent into worker preparation steps
 - dispatcher-owned compatibility execution boundary for tool calls
 - worker-specific execution entrypoints now exist for `skill_worker` and `code_worker`
+- `skill_worker` execution now differentiates `discover/read/act/verify` modes from metadata
 - execution mode tracking in state and logs
 
 Still remaining:

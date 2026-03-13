@@ -4,6 +4,7 @@ from typing import Any
 
 from app.core.state import AgentState
 from app.core.tool_catalog import ToolCatalog
+from app.core.tool_metadata import get_tool_metadata
 from app.core.trace_logger import trace_logger
 from app.core.worker_graphs.shared_execution import ToolExecutionPatch, execute_tool_call_generic
 
@@ -58,6 +59,17 @@ async def execute_skill_worker_tool_call(
     user: Any,
     trace_id: Any,
 ) -> ToolExecutionPatch:
+    metadata = get_tool_metadata(tool_to_call)
+    operation_kind = metadata.get("operation_kind", "read")
+    execution_mode = {
+        "discover": "skill_discover",
+        "read": "skill_read",
+        "act": "skill_act",
+        "verify": "skill_verify",
+        "notify": "skill_act",
+        "transform": "skill_act",
+    }.get(operation_kind, "skill_execute")
+
     trace_logger.log_wire_event(
         "skill_worker.execute",
         trace_id=str(state.get("trace_id", "")),
@@ -65,6 +77,8 @@ async def execute_skill_worker_tool_call(
         details={
             "selected_skill": state.get("selected_skill"),
             "tool_name": tool_name,
+            "operation_kind": operation_kind,
+            "execution_mode": execution_mode,
         },
     )
     return await execute_tool_call_generic(
@@ -75,5 +89,5 @@ async def execute_skill_worker_tool_call(
         tool_to_call=tool_to_call,
         user=user,
         trace_id=trace_id,
-        execution_mode="skill_execute",
+        execution_mode=execution_mode,
     )
