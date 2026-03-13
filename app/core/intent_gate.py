@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Literal, TypedDict
+from typing import TypedDict
 
 from langchain_core.messages import HumanMessage, SystemMessage
 

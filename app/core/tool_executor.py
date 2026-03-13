@@ -31,7 +31,9 @@ def _normalize_args(args: dict[str, Any] | None) -> dict[str, Any]:
     return {key: value for key, value in sorted(args.items()) if value is not None}
 
 
-def build_tool_fingerprint(tool_name: str, args: dict[str, Any] | None = None, selected_skill: str | None = None) -> str:
+def build_tool_fingerprint(
+    tool_name: str, args: dict[str, Any] | None = None, selected_skill: str | None = None
+) -> str:
     """Create a stable fingerprint for duplicate-failure detection."""
 
     payload = {

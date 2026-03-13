@@ -777,3 +777,27 @@ This migration adopts the following decisions:
 5.  `designer.py` should consume the same classification vocabulary for offline improvement.
 6.  Intent routing becomes hybrid: deterministic first, selective LLM second.
 7.  Verification and handoff become graph-level behavior, not just prompt instructions.
+
+### 16.1 Long-Term Metadata Authority
+
+The current `_infer_*` helpers in code are migration fallbacks, not long-term sources of truth.
+
+Target end state:
+
+1.  **Core system capabilities may remain explicitly modeled**
+    - examples: `python_sandbox`, browser / playwright-style core browsing capability
+2.  **Business or optional integrations must not be hardcoded in the core**
+    - examples: Home Assistant, Feishu, external admin or business plugins
+3.  **Tool and capability authority should come from registration metadata**
+    - skill metadata
+    - plugin manifest metadata
+    - tool registration metadata
+4.  **Inference should shrink over time**
+    - keep only minimal fallback behavior for core built-in capabilities
+    - remove domain guessing for optional integrations as metadata coverage improves
+
+Browser automation is an important example of why this matters:
+
+- browser / playwright capabilities may be delivered through MCP
+- they should still behave like first-class system capabilities
+- the core graph should consume explicit capability metadata rather than guessing from tool names
