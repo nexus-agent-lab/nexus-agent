@@ -340,8 +340,10 @@ class MCPManager:
         required = schema.get("required", [])
         properties = schema.get("properties", {})
         for field_name, field_info in properties.items():
-            field_type = str
             t = field_info.get("type", "string")
+
+            # Basic type mapping
+            field_type = str
             if t == "integer":
                 field_type = int
             elif t == "number":
@@ -351,10 +353,13 @@ class MCPManager:
             elif t == "array":
                 field_type = List[Any]
 
+            # Extract actual default if provided by the MCP server schema
+            default_val = field_info.get("default", None)
+
             if field_name in required:
                 fields[field_name] = (field_type, ...)
             else:
-                fields[field_name] = (Optional[field_type], None)
+                fields[field_name] = (Optional[field_type], default_val)
 
         model_config = None
         if not properties:

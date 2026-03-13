@@ -58,6 +58,11 @@ def _should_retry_tool_error(content: str) -> bool:
 def _should_retry_classification(state: AgentState) -> bool:
     """Prefer normalized result classification over raw tool text when available."""
     classification = state.get("last_classification") or {}
+    selected_worker = state.get("selected_worker")
+    attempts_by_worker = state.get("attempts_by_worker") or {}
+    if selected_worker == "code_worker" and attempts_by_worker.get("code_worker", 0) >= 3:
+        return False
+
     if classification:
         if classification.get("requires_handoff"):
             return False
@@ -232,6 +237,11 @@ async def reflexion_node(state: AgentState):
 def should_reflect(state: AgentState) -> Literal["reflexion", "agent", "__end__"]:
     messages = state["messages"]
     last_message = messages[-1]
+    selected_worker = state.get("selected_worker")
+    attempts_by_worker = state.get("attempts_by_worker") or {}
+
+    if selected_worker == "code_worker" and attempts_by_worker.get("code_worker", 0) >= 3:
+        return "agent"
 
     if _should_retry_classification(state):
         if state.get("retry_count", 0) < 3:
@@ -665,6 +675,7 @@ def create_agent_graph(tools: list):
         outputs = []
         last_outcome = None
         last_classification = None
+        attempts_by_worker = dict(state.get("attempts_by_worker") or {})
         attempts_by_tool = dict(state.get("attempts_by_tool") or {})
         blocked_fingerprints = list(state.get("blocked_fingerprints") or [])
 
@@ -725,11 +736,36 @@ def create_agent_graph(tools: list):
             last_classification = execution_patch.get("classification")
 
             if last_outcome:
+                selected_worker = state.get("selected_worker") or "chat_worker"
+                if last_classification and last_classification.get("category") == "retryable_runtime_error":
+                    attempts_by_worker[selected_worker] = attempts_by_worker.get(selected_worker, 0) + 1
+                    if selected_worker == "code_worker" and attempts_by_worker[selected_worker] >= 3:
+                        last_classification = {
+                            **last_classification,
+                            "retryable": False,
+                            "requires_handoff": True,
+                            "suggested_next_action": "handoff",
+                            "user_facing_summary": "Code execution failed repeatedly and now needs intervention.",
+                            "debug_summary": (
+                                last_classification.get("debug_summary")
+                                or "Code execution failed repeatedly and exhausted retry budget."
+                            ),
+                        }
+                        trace_logger.log_wire_event(
+                            "code_worker.budget",
+                            trace_id=str(state.get("trace_id", "")),
+                            summary="Code worker retry budget exhausted.",
+                            details={
+                                "attempts": attempts_by_worker[selected_worker],
+                                "tool_name": tool_name,
+                            },
+                        )
+
                 fingerprint = last_outcome.get("fingerprint")
                 if fingerprint:
                     attempts_by_tool[fingerprint] = attempts_by_tool.get(fingerprint, 0) + 1
                     if (
-                        state.get("selected_worker") == "code_worker"
+                        selected_worker == "code_worker"
                         and last_classification
                         and last_classification.get("category") == "retryable_runtime_error"
                         and attempts_by_tool[fingerprint] >= 2
@@ -779,6 +815,7 @@ def create_agent_graph(tools: list):
             "messages": outputs,
             "last_outcome": last_outcome,
             "last_classification": last_classification,
+            "attempts_by_worker": attempts_by_worker,
             "attempts_by_tool": attempts_by_tool,
             "blocked_fingerprints": blocked_fingerprints,
             "tool_call_count": state.get("tool_call_count", 0) + len(last_message.tool_calls),
