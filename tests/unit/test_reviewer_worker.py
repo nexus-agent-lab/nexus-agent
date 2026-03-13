@@ -17,7 +17,7 @@ async def test_reviewer_worker_marks_verify_action_as_required():
 
 
 @pytest.mark.asyncio
-async def test_reviewer_worker_marks_non_verify_classification_pending():
+async def test_reviewer_worker_marks_complete_success_as_passed():
     result = await run_reviewer_worker_step(
         {
             "last_classification": {"category": "success", "suggested_next_action": "complete"},
@@ -25,4 +25,20 @@ async def test_reviewer_worker_marks_non_verify_classification_pending():
         }
     )
 
-    assert result["verification_status"] == "pending"
+    assert result["verification_status"] == "passed"
+
+
+@pytest.mark.asyncio
+async def test_reviewer_worker_marks_handoff_as_failed():
+    result = await run_reviewer_worker_step(
+        {
+            "last_classification": {
+                "category": "non_retryable_runtime_error",
+                "suggested_next_action": "handoff",
+                "requires_handoff": True,
+            },
+            "execution_mode": "skill_act",
+        }
+    )
+
+    assert result["verification_status"] == "failed"

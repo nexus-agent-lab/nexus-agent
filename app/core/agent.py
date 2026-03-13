@@ -266,6 +266,8 @@ def should_continue(state: AgentState) -> Literal["tools", "agent", "__end__"]:
     last_message = messages[-1]
     if last_message.tool_calls:
         return "tools"
+    if state.get("verification_status") == "failed" and state.get("llm_call_count", 0) < 3:
+        return "agent"
     if state.get("verification_status") == "required" and state.get("llm_call_count", 0) < 3:
         return "agent"
     return "__end__"
@@ -827,7 +829,9 @@ def create_agent_graph(tools: list):
             "last_outcome": last_outcome,
             "last_classification": last_classification,
             "execution_mode": execution_patch.get("execution_mode") if last_outcome else state.get("execution_mode"),
-            "verification_status": review_decision.get("verification_status") if last_outcome else state.get("verification_status"),
+            "verification_status": review_decision.get("verification_status")
+            if last_outcome
+            else state.get("verification_status"),
             "attempts_by_worker": attempts_by_worker,
             "attempts_by_tool": attempts_by_tool,
             "blocked_fingerprints": blocked_fingerprints,

@@ -18,6 +18,10 @@ async def run_reviewer_worker_step(state: AgentState) -> dict:
     verification_status = None
     if next_action == "verify" or execution_mode == "skill_verify":
         verification_status = "required"
+    elif classification.get("requires_handoff") or next_action == "handoff":
+        verification_status = "failed"
+    elif classification.get("category") == "success" and next_action == "complete":
+        verification_status = "passed"
     elif classification:
         verification_status = "pending"
 

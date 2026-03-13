@@ -77,3 +77,23 @@ def test_should_continue_ends_after_verification_retry_budget():
     }
 
     assert should_continue(state) == "__end__"
+
+
+def test_should_continue_loops_when_verification_failed():
+    state = {
+        "messages": [AIMessage(content="Verification failed", tool_calls=[])],
+        "verification_status": "failed",
+        "llm_call_count": 1,
+    }
+
+    assert should_continue(state) == "agent"
+
+
+def test_should_continue_ends_when_verification_passed():
+    state = {
+        "messages": [AIMessage(content="Verified", tool_calls=[])],
+        "verification_status": "passed",
+        "llm_call_count": 1,
+    }
+
+    assert should_continue(state) == "__end__"
