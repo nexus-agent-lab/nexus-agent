@@ -22,6 +22,7 @@ class AgentState(TypedDict):
     route_confidence: Optional[float] = None  # Fast routing confidence score
     selected_worker: Optional[str] = None  # Current preferred worker
     candidate_workers: Optional[List[str]] = None  # Worker candidates from fast routing
+    execution_mode: Optional[str] = None  # Dispatcher-selected execution mode
     selected_skill: Optional[str] = None  # Preferred skill selected for this turn
     candidate_skills: Optional[List[str]] = None  # Skill candidates from fast routing
     reflexions: Optional[List[str]] = []  # Stored self-reflections

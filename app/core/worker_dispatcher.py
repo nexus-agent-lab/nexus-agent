@@ -13,7 +13,9 @@ from app.core.worker_graphs.skill_worker import execute_skill_worker_tool_call, 
 
 class WorkerExecutionDecision(TypedDict, total=False):
     selected_worker: str | None
-    execution_mode: Literal["direct", "skill_prepare", "code_prepare", "review_prepare", "skill_execute", "code_execute"]
+    execution_mode: Literal[
+        "direct", "skill_prepare", "code_prepare", "review_prepare", "skill_execute", "code_execute"
+    ]
     active_tool_names: list[str]
 
 

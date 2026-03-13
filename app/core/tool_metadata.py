@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any, Literal, TypedDict
 
-
 CAPABILITY_DOMAINS = {
     "home_automation",
     "code_execution",
@@ -71,10 +70,7 @@ DEFAULT_TOOL_METADATA: ToolCapabilityMetadata = {
 
 def _infer_capability_domain(tool_name: str, metadata: dict[str, Any]) -> str:
     domain = str(
-        metadata.get("capability_domain")
-        or metadata.get("domain")
-        or metadata.get("category")
-        or "generic"
+        metadata.get("capability_domain") or metadata.get("domain") or metadata.get("category") or "generic"
     ).lower()
 
     if tool_name == "python_sandbox":

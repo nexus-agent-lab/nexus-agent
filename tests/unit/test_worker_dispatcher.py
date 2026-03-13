@@ -76,3 +76,27 @@ async def test_execute_tool_call_success():
     assert patch_result["outcome"]["status"] == "success"
     assert patch_result["classification"]["category"] == "success"
     assert patch_result["execution_mode"] == "code_execute"
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_call_classifies_python_sandbox_text_errors():
+    with patch("app.core.worker_graphs.shared_execution.AuthService.check_tool_permission", return_value=True):
+        with patch("app.core.worker_graphs.shared_execution.AuditInterceptor", DummyAuditInterceptor):
+            patch_result = await WorkerDispatcher.execute_tool_call(
+                {"selected_worker": "code_worker", "selected_skill": None, "context": "work"},
+                tool_name="python_sandbox",
+                tool_call_id="call-3",
+                tool_args={"code": "raise ValueError('boom')"},
+                tool_to_call=DummyTool(
+                    name="python_sandbox",
+                    metadata={"preferred_worker": "code_worker", "capability_domain": "code_execution"},
+                    result="Execution Error:\nTraceback (most recent call last):\nValueError: boom",
+                ),
+                user=DummyUser(),
+                trace_id="trace-3",
+            )
+
+    assert patch_result["outcome"]["status"] == "success"
+    assert patch_result["classification"]["category"] == "retryable_runtime_error"
+    assert patch_result["classification"]["suggested_next_action"] == "retry_same_worker"
+    assert patch_result["execution_mode"] == "code_execute"

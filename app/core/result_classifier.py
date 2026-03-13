@@ -40,6 +40,19 @@ def _contains(text: str, *needles: str) -> bool:
     return any(needle in lowered for needle in needles)
 
 
+def _looks_like_code_execution_error(raw_text: str, metadata: dict) -> bool:
+    if metadata.get("capability_domain") != "code_execution":
+        return False
+
+    return _contains(
+        raw_text,
+        "execution error:",
+        "sandbox error:",
+        "traceback (most recent call last)",
+        "error: execution timed out",
+    )
+
+
 class ResultClassifier:
     """Deterministic first-pass result classifier for graph branching."""
 
@@ -51,6 +64,17 @@ class ResultClassifier:
         debug_summary = raw_text or exception_text or "Unknown tool result"
 
         if outcome.get("status") == "success":
+            if _looks_like_code_execution_error(raw_text, metadata):
+                return ResultClassification(
+                    category="retryable_runtime_error",
+                    retryable=True,
+                    should_switch_worker=False,
+                    requires_handoff=False,
+                    user_facing_summary="Code execution failed with a repairable runtime error.",
+                    debug_summary=debug_summary,
+                    suggested_next_action="retry_same_worker",
+                )
+
             if _contains(raw_text, "permission denied", "restricted for user"):
                 return ResultClassification(
                     category="permission_denied",

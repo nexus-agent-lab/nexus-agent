@@ -3,8 +3,8 @@ from typing import Callable, List
 
 from langchain_core.tools import tool
 
-from app.core.tool_metadata import build_tool_metadata
 from app.core.decorators import require_role
+from app.core.tool_metadata import build_tool_metadata
 from app.tools.admin_tools import broadcast_notification, restart_system, view_system_logs
 from app.tools.automation import list_watch_rules, watch_entity
 from app.tools.learning_tools import learn_skill_rule
