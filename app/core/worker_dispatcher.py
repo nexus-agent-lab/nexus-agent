@@ -27,6 +27,7 @@ class WorkerExecutionDecision(TypedDict, total=False):
         "code_blocked",
     ]
     active_tool_names: list[str]
+    verification_status: str | None
 
 
 class WorkerDispatcher:
@@ -134,4 +135,5 @@ class WorkerDispatcher:
             selected_worker=review_patch.get("selected_worker"),
             execution_mode="review_prepare",
             active_tool_names=[],
+            verification_status=review_patch.get("verification_status"),
         )

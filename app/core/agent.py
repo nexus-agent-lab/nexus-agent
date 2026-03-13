@@ -261,11 +261,13 @@ def should_reflect(state: AgentState) -> Literal["reflexion", "agent", "__end__"
     return "agent"
 
 
-def should_continue(state: AgentState) -> Literal["tools", "__end__"]:
+def should_continue(state: AgentState) -> Literal["tools", "agent", "__end__"]:
     messages = state["messages"]
     last_message = messages[-1]
     if last_message.tool_calls:
         return "tools"
+    if state.get("verification_status") == "required" and state.get("llm_call_count", 0) < 3:
+        return "agent"
     return "__end__"
 
 
@@ -399,6 +401,15 @@ def create_agent_graph(tools: list):
         from app.core.tool_router import tool_router
 
         prompt_with_skills = base_prompt_with_context
+        if state.get("verification_status") == "required":
+            messages.append(
+                SystemMessage(
+                    content=(
+                        "VERIFICATION REQUIRED: Do not finalize yet. "
+                        "Use an appropriate read/verify/discovery tool to confirm the previous action result."
+                    )
+                )
+            )
 
         t0_skills = time.perf_counter()
         matched_skills = await tool_router.route_skills(routing_query, role=user_role)
@@ -816,6 +827,7 @@ def create_agent_graph(tools: list):
             "last_outcome": last_outcome,
             "last_classification": last_classification,
             "execution_mode": execution_patch.get("execution_mode") if last_outcome else state.get("execution_mode"),
+            "verification_status": review_decision.get("verification_status") if last_outcome else state.get("verification_status"),
             "attempts_by_worker": attempts_by_worker,
             "attempts_by_tool": attempts_by_tool,
             "blocked_fingerprints": blocked_fingerprints,
@@ -831,7 +843,11 @@ def create_agent_graph(tools: list):
 
     workflow.set_entry_point("retrieve_memories")
     workflow.add_edge("retrieve_memories", "agent")
-    workflow.add_conditional_edges("agent", should_continue, {"tools": "tools", "__end__": "experience_replay"})
+    workflow.add_conditional_edges(
+        "agent",
+        should_continue,
+        {"tools": "tools", "agent": "agent", "__end__": "experience_replay"},
+    )
     workflow.add_edge("experience_replay", "__end__")
     workflow.add_conditional_edges("tools", should_reflect, {"reflexion": "reflexion", "agent": "agent"})
     workflow.add_edge("reflexion", "agent")

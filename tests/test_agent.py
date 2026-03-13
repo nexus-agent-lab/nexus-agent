@@ -3,9 +3,9 @@ Tests for the agent graph and decision-making logic.
 """
 
 import pytest
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
-from app.core.agent import create_agent_graph
+from app.core.agent import create_agent_graph, should_continue
 from app.models.user import User
 
 
@@ -57,3 +57,23 @@ class TestAgentMemory:
         result = await retrieve_memories(state)
         assert "memories" in result
         assert isinstance(result["memories"], list)
+
+
+def test_should_continue_loops_when_verification_required():
+    state = {
+        "messages": [AIMessage(content="Need verification", tool_calls=[])],
+        "verification_status": "required",
+        "llm_call_count": 1,
+    }
+
+    assert should_continue(state) == "agent"
+
+
+def test_should_continue_ends_after_verification_retry_budget():
+    state = {
+        "messages": [AIMessage(content="Still no verify call", tool_calls=[])],
+        "verification_status": "required",
+        "llm_call_count": 3,
+    }
+
+    assert should_continue(state) == "__end__"

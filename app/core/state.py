@@ -35,5 +35,6 @@ class AgentState(TypedDict):
     intent_queries: Optional[List[str]] = None  # Cached fast-brain decomposition for the current user turn
     last_outcome: Optional[ToolExecutionOutcome] = None  # Last normalized tool execution outcome
     last_classification: Optional[ResultClassification] = None  # Last normalized result classification
+    verification_status: Optional[str] = None  # Reviewer-facing verification requirement
     llm_call_count: int = 0  # Count main LLM calls in the current graph run
     tool_call_count: int = 0  # Count tool invocations in the current graph run

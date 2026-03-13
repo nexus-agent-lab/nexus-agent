@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
-from app.core.worker_graphs.skill_worker import prepare_skill_worker_tools
 from app.core.tool_catalog import ToolCatalog
+from app.core.worker_graphs.skill_worker import prepare_skill_worker_tools
 
 
 def _tool(name: str, metadata: dict | None = None):
