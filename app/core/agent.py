@@ -19,6 +19,9 @@ from app.core.tool_catalog import ToolCatalog
 from app.core.tool_executor import ToolExecutionOutcome, build_tool_fingerprint
 from app.core.tool_metadata import get_tool_metadata
 from app.core.trace_logger import trace_logger
+from app.core.worker_graphs.code_worker import run_code_worker_step
+from app.core.worker_graphs.reviewer_worker import run_reviewer_worker_step
+from app.core.worker_graphs.skill_worker import run_skill_worker_step
 
 logger = logging.getLogger(__name__)
 
@@ -588,14 +591,23 @@ def create_agent_graph(tools: list):
                 # Fallback: give the LLM all role-permitted tools rather than nothing
                 current_tools = [t for t in tools if tool_router._check_role(t, user_role)]
 
-            current_tools = ToolCatalog(current_tools).filter_for_worker(state.get("selected_worker"), matched_skills)
+            selected_worker = state.get("selected_worker") or (candidate_workers[0] if candidate_workers else None)
+            if selected_worker == "skill_worker":
+                worker_patch = await run_skill_worker_step(state, current_tools, matched_skills)
+                current_tools = ToolCatalog(current_tools).tools_by_names(worker_patch.get("active_tool_names", []))
+            elif selected_worker == "code_worker":
+                worker_patch = await run_code_worker_step(state, current_tools)
+                current_tools = ToolCatalog(current_tools).tools_by_names(worker_patch.get("active_tool_names", []))
+            else:
+                current_tools = ToolCatalog(current_tools).filter_for_worker(selected_worker, matched_skills)
             trace_logger.log_wire_event(
                 "toolbelt_selection",
                 trace_id=str(state.get("trace_id", "")),
                 summary="Selected tools for current turn.",
                 details={
-                    "selected_worker": state.get("selected_worker") or (candidate_workers[0] if candidate_workers else None),
-                    "selected_skill": state.get("selected_skill") or (candidate_skills[0] if candidate_skills else None),
+                    "selected_worker": selected_worker,
+                    "selected_skill": state.get("selected_skill")
+                    or (candidate_skills[0] if candidate_skills else None),
                     "tool_count": len(current_tools),
                     "tools": [tool.name for tool in current_tools],
                 },
@@ -638,7 +650,8 @@ def create_agent_graph(tools: list):
                     tool_calls=[tc for tc in getattr(response, "tool_calls", [])]
                     if hasattr(response, "tool_calls")
                     else [],
-                    selected_worker=state.get("selected_worker") or (candidate_workers[0] if candidate_workers else None),
+                    selected_worker=state.get("selected_worker")
+                    or (candidate_workers[0] if candidate_workers else None),
                     selected_skill=state.get("selected_skill") or (candidate_skills[0] if candidate_skills else None),
                     intent_class=fast_intent.get("intent_class"),
                     route_confidence=fast_intent.get("confidence"),
@@ -858,6 +871,7 @@ def create_agent_graph(tools: list):
             outputs.append(ToolMessage(content=result_str, name=tool_name, tool_call_id=tool_call["id"]))
             if last_outcome:
                 last_classification = ResultClassifier.classify(last_outcome)
+                await run_reviewer_worker_step({**state, "last_classification": last_classification})
                 trace_logger.log_wire_event(
                     "tool_result",
                     trace_id=str(state.get("trace_id", "")),
@@ -868,7 +882,9 @@ def create_agent_graph(tools: list):
                         "selected_skill": state.get("selected_skill"),
                         "status": last_outcome.get("status"),
                         "classification": last_classification.get("category") if last_classification else None,
-                        "next_action": last_classification.get("suggested_next_action") if last_classification else None,
+                        "next_action": last_classification.get("suggested_next_action")
+                        if last_classification
+                        else None,
                         "fingerprint": (last_outcome.get("fingerprint") or "")[:12],
                     },
                 )
