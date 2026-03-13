@@ -236,6 +236,38 @@ class SkillLoader:
         return skills
 
     @classmethod
+    def load_routing_hints(cls, role: str = "user") -> List[Dict]:
+        """
+        Load skill routing hints for deterministic intent gating.
+
+        Backward compatibility:
+        - Uses explicit `routing_hints` if present in metadata.
+        - Falls back to existing `intent_keywords` / `required_tools` metadata.
+        """
+        registry = cls.load_registry_with_metadata(role=role)
+        hints: List[Dict] = []
+
+        for entry in registry:
+            metadata = entry.get("metadata", {}) or {}
+            routing_hints = metadata.get("routing_hints")
+
+            if isinstance(routing_hints, dict):
+                hint = dict(routing_hints)
+            else:
+                hint = {
+                    "keywords": metadata.get("intent_keywords", []) or [],
+                    "discovery_keywords": metadata.get("discovery_keywords", []) or [],
+                    "preferred_worker": metadata.get("preferred_worker", "skill_worker"),
+                    "capability_domain": metadata.get("domain", "generic"),
+                }
+
+            hint["skill_name"] = entry.get("name", metadata.get("name"))
+            hint["required_tools"] = metadata.get("required_tools", []) or []
+            hints.append(hint)
+
+        return hints
+
+    @classmethod
     def _extract_metadata(cls, content: str) -> Dict:
         """
         Extract YAML frontmatter from skill card.

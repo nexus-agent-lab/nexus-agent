@@ -12,8 +12,11 @@ from langgraph.graph import StateGraph
 from app.core.audit import AuditInterceptor
 from app.core.config import settings
 from app.core.llm_utils import get_llm_client
+from app.core.result_classifier import ResultClassifier
 from app.core.session import SessionManager
 from app.core.state import AgentState
+from app.core.tool_executor import ToolExecutionOutcome, build_tool_fingerprint
+from app.core.tool_metadata import get_tool_metadata
 from app.core.trace_logger import trace_logger
 
 logger = logging.getLogger(__name__)
@@ -69,6 +72,28 @@ def _should_retry_tool_error(content: str) -> bool:
         return False
 
     return "error" in lowered
+
+
+def _should_retry_classification(state: AgentState) -> bool:
+    """Prefer normalized result classification over raw tool text when available."""
+    classification = state.get("last_classification") or {}
+    if classification:
+        if classification.get("requires_handoff"):
+            return False
+        if classification.get("retryable"):
+            return True
+
+        next_action = classification.get("suggested_next_action")
+        return next_action in {"retry_same_worker", "run_discovery", "switch_worker"}
+
+    return False
+
+
+def _dedupe_tools_by_name(tool_list: list) -> list:
+    unique = {}
+    for tool in tool_list:
+        unique[getattr(tool, "name", str(tool))] = tool
+    return list(unique.values())
 
 
 async def _persist_message(session_id: int, message):
@@ -128,10 +153,12 @@ async def retrieve_memories(state: AgentState):
     if len(last_user_msg) < 10 or last_user_msg.strip().lower() in SKIP_PATTERNS:
         return {"memories": []}
 
+    import time
+    t0 = time.perf_counter()
     memories = await memory_manager.search_memory(user_id=user.id, query=last_user_msg)
     memory_strings = [f"[{m.memory_type}] {m.content}" for m in memories]
 
-    logger.info(f"Retrieved {len(memory_strings)} memories for query '{last_user_msg}': {memory_strings}")
+    logger.info(f"Retrieved {len(memory_strings)} memories for query '{last_user_msg}' in {(time.perf_counter() - t0)*1000:.0f}ms")
 
     return {"memories": memory_strings}
 
@@ -191,6 +218,10 @@ async def reflexion_node(state: AgentState):
     last_message = messages[-1]
 
     failures = []
+    classification = state.get("last_classification") or {}
+    if classification:
+        failures.append(classification.get("debug_summary") or classification.get("user_facing_summary") or "Unknown failure")
+
     if isinstance(last_message, ToolMessage):
         if _should_retry_tool_error(last_message.content):
             failures.append(last_message.content)
@@ -212,6 +243,11 @@ async def reflexion_node(state: AgentState):
 def should_reflect(state: AgentState) -> Literal["reflexion", "agent", "__end__"]:
     messages = state["messages"]
     last_message = messages[-1]
+
+    if _should_retry_classification(state):
+        if state.get("retry_count", 0) < 3:
+            return "reflexion"
+        return "agent"
 
     # Check if the last tool output was an error
     if isinstance(last_message, ToolMessage):
@@ -296,6 +332,52 @@ def create_agent_graph(tools: list):
     if mcp_instructions:
         dynamic_system_prompt += f"\\n## SPECIFIC DOMAIN RULES\\n{mcp_instructions}\\n"
 
+    def _filter_tools_for_worker(current_tools: list, selected_worker: str | None, matched_skills: list[dict]) -> list:
+        """
+        Conservative worker-aware tool filtering.
+
+        This is intentionally narrow for `code_worker` and softer for other
+        workers so we can reduce tool confusion without breaking existing flows.
+        """
+        if not current_tools or not selected_worker:
+            return current_tools
+
+        from app.core.tool_router import CORE_TOOL_NAMES
+
+        core_tools = [tool for tool in current_tools if getattr(tool, "name", "") in CORE_TOOL_NAMES]
+        skill_required_names = []
+        for skill in matched_skills or []:
+            metadata = skill.get("metadata", {}) or {}
+            for tool_name in metadata.get("required_tools", []) or []:
+                if tool_name not in skill_required_names:
+                    skill_required_names.append(tool_name)
+
+        skill_tools = [tool for tool in current_tools if getattr(tool, "name", "") in skill_required_names]
+
+        if selected_worker == "code_worker":
+            filtered = [
+                tool
+                for tool in current_tools
+                if getattr(tool, "name", "") in CORE_TOOL_NAMES or getattr(tool, "name", "") == "python_sandbox"
+            ]
+            return _dedupe_tools_by_name(filtered or current_tools)
+
+        if selected_worker == "skill_worker" and skill_tools:
+            return _dedupe_tools_by_name(core_tools + skill_tools)
+
+        if selected_worker == "research_worker":
+            filtered = []
+            for tool in current_tools:
+                metadata = get_tool_metadata(tool)
+                operation_kind = metadata.get("operation_kind")
+                if getattr(tool, "name", "") in CORE_TOOL_NAMES:
+                    filtered.append(tool)
+                elif not metadata.get("side_effect", False) and operation_kind in {"discover", "read", "verify"}:
+                    filtered.append(tool)
+            return _dedupe_tools_by_name(filtered or current_tools)
+
+        return current_tools
+
     async def call_model(state: AgentState):
         messages = list(state["messages"])
         user = state.get("user")
@@ -329,12 +411,45 @@ def create_agent_graph(tools: list):
             context_parts.append(content)
 
         routing_query = f"Context: {current_context} | " + " | ".join(context_parts)
+        last_human_msg = str(human_msgs[-1].content) if human_msgs else ""
+
+        # 1.5 Fast Intent Gate
+        from app.core.intent_gate import IntentGate
+
+        previous_error_category = None
+        if state.get("last_classification"):
+            previous_error_category = state["last_classification"].get("category")
+
+        skill_hints = SkillLoader.load_routing_hints(role=user_role)
+        fast_intent = IntentGate().classify_fast(
+            last_human_msg,
+            available_skills=skill_hints,
+            previous_error_category=previous_error_category,
+            context=current_context,
+        )
+        candidate_workers = fast_intent.get("candidate_workers", [])
+        candidate_skills = fast_intent.get("candidate_skills", [])
 
         # 2. Skill Routing (Hierarchical L0/L1/L2)
         from app.core.tool_router import tool_router
 
         prompt_with_skills = base_prompt_with_context
+        
+        t0_skills = time.perf_counter()
         matched_skills = await tool_router.route_skills(routing_query, role=user_role)
+        if candidate_skills:
+            registry_by_name = {entry["name"]: entry for entry in SkillLoader.load_registry_with_metadata(role=user_role)}
+            hinted_skills = [registry_by_name[name] for name in candidate_skills if name in registry_by_name]
+            matched_skills = hinted_skills + matched_skills
+            deduped_skills = []
+            seen_skill_names = set()
+            for skill in matched_skills:
+                skill_name = skill.get("name")
+                if skill_name and skill_name not in seen_skill_names:
+                    seen_skill_names.add(skill_name)
+                    deduped_skills.append(skill)
+            matched_skills = deduped_skills
+        logger.info(f"[TIMING] route_skills took {(time.perf_counter() - t0_skills)*1000:.0f}ms")
 
         if matched_skills:
             active_rules = []
@@ -378,13 +493,13 @@ def create_agent_graph(tools: list):
 
         last_msg_content = str(messages[-1].content) if messages else "Unknown"
         prompt_summary = last_msg_content if len(last_msg_content) < 2000 else last_msg_content[:2000]
-        last_human_msg = str(human_msgs[-1].content) if human_msgs else ""
         cached_intent_queries = state.get("intent_queries")
         should_run_fast_brain = (
             settings.ENABLE_FAST_BRAIN
             and bool(last_human_msg)
             and isinstance(messages[-1], HumanMessage)
             and cached_intent_queries is None
+            and fast_intent.get("needs_llm_escalation", False)
         )
 
         intent_queries = cached_intent_queries or []
@@ -462,12 +577,17 @@ def create_agent_graph(tools: list):
             skill_bound_tools = tool_router.get_skill_bound_tools(matched_skills, role=user_role)
 
             # Select relevant tools; pass user_role to enforce RBAC at the routing layer
+            t0_route = time.perf_counter()
             routed_tools = await tool_router.route_multi(routing_queries, role=user_role, context=current_context)
+            logger.info(f"[TIMING] route_multi took {(time.perf_counter() - t0_route)*1000:.0f}ms")
+            
             current_tools = skill_bound_tools + routed_tools
-            current_tools = list({t.name: t for t in current_tools}.values())
+            current_tools = _dedupe_tools_by_name(current_tools)
             if not current_tools:
                 # Fallback: give the LLM all role-permitted tools rather than nothing
                 current_tools = [t for t in tools if tool_router._check_role(t, user_role)]
+
+            current_tools = _filter_tools_for_worker(current_tools, state.get("selected_worker"), matched_skills)
 
             if search_count >= 3:
                 current_tools = [t for t in current_tools if t.name != "request_more_tools"]
@@ -521,6 +641,12 @@ def create_agent_graph(tools: list):
         return {
             "messages": [response],
             "intent_queries": intent_queries,
+            "intent_class": fast_intent.get("intent_class"),
+            "route_confidence": fast_intent.get("confidence"),
+            "selected_worker": candidate_workers[0] if candidate_workers else None,
+            "candidate_workers": candidate_workers,
+            "selected_skill": candidate_skills[0] if candidate_skills else None,
+            "candidate_skills": candidate_skills,
             "llm_call_count": state.get("llm_call_count", 0) + 1,
         }
 
@@ -530,6 +656,8 @@ def create_agent_graph(tools: list):
         user = state.get("user")
         trace_id = state.get("trace_id", uuid.uuid4())
         outputs = []
+        last_outcome = None
+        last_classification = None
 
         # Should not happen based on edge logic, but safety check
         if not last_message.tool_calls:
@@ -566,7 +694,9 @@ def create_agent_graph(tools: list):
             # patch for MCP-style schemas. This is not the ideal long-term fix; the better
             # direction is to improve tool-call generation / schema guidance so the model
             # omits unknown optional fields entirely.
+            logger.info(f"[DEBUG None] 1. tool_call['args'] 原始值: {tool_call['args']}")
             tool_args = {k: v for k, v in tool_call["args"].items() if v is not None}
+            logger.info(f"[DEBUG None] 2. tool_args 清洗后的值: {tool_args}")
 
             # 1. Permission Check
             from app.core.auth_service import AuthService
@@ -589,6 +719,22 @@ def create_agent_graph(tools: list):
                 ):
                     pass
                 outputs.append(ToolMessage(err_msg, name=tool_name, tool_call_id=tool_call["id"]))
+                last_outcome = ToolExecutionOutcome(
+                    tool_name=tool_name,
+                    worker=state.get("selected_worker") or "chat_worker",
+                    status="error",
+                    raw_text=err_msg,
+                    structured_data=None,
+                    exception_text=err_msg,
+                    latency_ms=0,
+                    fingerprint=build_tool_fingerprint(
+                        tool_name,
+                        args=tool_args,
+                        selected_skill=state.get("selected_skill"),
+                    ),
+                    metadata=get_tool_metadata(tool_to_call),
+                )
+                last_classification = ResultClassifier.classify(last_outcome)
                 continue
 
             # 2. Execution with Audit Interceptor
@@ -627,8 +773,24 @@ def create_agent_graph(tools: list):
                                 elif anno is str:
                                     tool_args[field_name] = field_info.default if field_info.default is not None else ""
 
+                    logger.info(f"[DEBUG None] 3. ainvoke / model_validate 前的最终值: {tool_args}")
                     prediction = await tool_to_call.ainvoke(tool_args)
                     result_str = str(prediction)
+                    last_outcome = ToolExecutionOutcome(
+                        tool_name=tool_name,
+                        worker=state.get("selected_worker") or "chat_worker",
+                        status="success",
+                        raw_text=result_str,
+                        structured_data=None,
+                        exception_text=None,
+                        latency_ms=0,
+                        fingerprint=build_tool_fingerprint(
+                            tool_name,
+                            args=tool_args,
+                            selected_skill=state.get("selected_skill"),
+                        ),
+                        metadata=get_tool_metadata(tool_to_call),
+                    )
             except Exception as e:
                 error_text = str(e)
                 # 3. Error Sanitization
@@ -648,7 +810,25 @@ def create_agent_graph(tools: list):
                     logger.warning(f"Tool execution error ({tool_name}): {error_text}")
                     result_str = f"Error execution tool: {error_text}"
 
+                last_outcome = ToolExecutionOutcome(
+                    tool_name=tool_name,
+                    worker=state.get("selected_worker") or "chat_worker",
+                    status="error",
+                    raw_text=result_str,
+                    structured_data=None,
+                    exception_text=error_text,
+                    latency_ms=0,
+                    fingerprint=build_tool_fingerprint(
+                        tool_name,
+                        args=tool_args,
+                        selected_skill=state.get("selected_skill"),
+                    ),
+                    metadata=get_tool_metadata(tool_to_call),
+                )
+
             outputs.append(ToolMessage(content=result_str, name=tool_name, tool_call_id=tool_call["id"]))
+            if last_outcome:
+                last_classification = ResultClassifier.classify(last_outcome)
 
         session_id = state.get("session_id")
         if session_id:
@@ -657,6 +837,8 @@ def create_agent_graph(tools: list):
 
         return {
             "messages": outputs,
+            "last_outcome": last_outcome,
+            "last_classification": last_classification,
             "tool_call_count": state.get("tool_call_count", 0) + len(last_message.tool_calls),
         }
 
