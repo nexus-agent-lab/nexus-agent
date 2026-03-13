@@ -97,3 +97,13 @@ def test_should_continue_ends_when_verification_passed():
     }
 
     assert should_continue(state) == "__end__"
+
+
+def test_should_continue_ends_after_failed_handoff_report():
+    state = {
+        "messages": [AIMessage(content="Reported failure", tool_calls=[])],
+        "verification_status": "failed",
+        "llm_call_count": 2,
+    }
+
+    assert should_continue(state) == "__end__"

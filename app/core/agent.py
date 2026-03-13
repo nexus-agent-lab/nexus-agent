@@ -266,7 +266,7 @@ def should_continue(state: AgentState) -> Literal["tools", "agent", "__end__"]:
     last_message = messages[-1]
     if last_message.tool_calls:
         return "tools"
-    if state.get("verification_status") == "failed" and state.get("llm_call_count", 0) < 3:
+    if state.get("verification_status") == "failed" and state.get("llm_call_count", 0) < 2:
         return "agent"
     if state.get("verification_status") == "required" and state.get("llm_call_count", 0) < 3:
         return "agent"
@@ -403,6 +403,16 @@ def create_agent_graph(tools: list):
         from app.core.tool_router import tool_router
 
         prompt_with_skills = base_prompt_with_context
+        if state.get("verification_status") == "failed":
+            messages.append(
+                SystemMessage(
+                    content=(
+                        "VERIFICATION FAILED: Do not continue trying tools. "
+                        "Explain briefly what failed, why it could not be verified, "
+                        "and what user intervention or next step is needed."
+                    )
+                )
+            )
         if state.get("verification_status") == "required":
             messages.append(
                 SystemMessage(
@@ -590,6 +600,9 @@ def create_agent_graph(tools: list):
             if not current_tools:
                 # Fallback: give the LLM all role-permitted tools rather than nothing
                 current_tools = [t for t in tools if tool_router._check_role(t, user_role)]
+
+            if state.get("verification_status") == "failed":
+                current_tools = []
 
             current_tools, worker_decision = await WorkerDispatcher.prepare_tools(
                 state,
