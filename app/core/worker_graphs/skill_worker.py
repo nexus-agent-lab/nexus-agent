@@ -5,8 +5,39 @@ from typing import Any
 from app.core.state import AgentState
 from app.core.tool_catalog import ToolCatalog
 from app.core.tool_metadata import get_tool_metadata
+from app.core.tool_router import CORE_TOOL_NAMES
 from app.core.trace_logger import trace_logger
 from app.core.worker_graphs.shared_execution import ToolExecutionPatch, execute_tool_call_generic
+
+
+def _filter_tools_for_skill_mode(state: AgentState, tools: list[Any]) -> tuple[list[Any], str]:
+    intent_class = state.get("intent_class")
+    classification = state.get("last_classification") or {}
+    next_action = classification.get("suggested_next_action")
+
+    if intent_class == "skill_discovery" or next_action == "run_discovery":
+        filtered = []
+        for tool in tools:
+            metadata = get_tool_metadata(tool)
+            operation_kind = metadata.get("operation_kind")
+            if getattr(tool, "name", "") in CORE_TOOL_NAMES:
+                filtered.append(tool)
+            elif operation_kind in {"discover", "read", "verify"} and not metadata.get("side_effect", False):
+                filtered.append(tool)
+        return filtered or tools, "discovery"
+
+    if next_action == "verify":
+        filtered = []
+        for tool in tools:
+            metadata = get_tool_metadata(tool)
+            operation_kind = metadata.get("operation_kind")
+            if getattr(tool, "name", "") in CORE_TOOL_NAMES:
+                filtered.append(tool)
+            elif operation_kind in {"verify", "read"} and not metadata.get("side_effect", False):
+                filtered.append(tool)
+        return filtered or tools, "verify"
+
+    return tools, "default"
 
 
 def prepare_skill_worker_tools(state: AgentState, available_tools: list[Any], matched_skills: list[dict]) -> list[Any]:
@@ -20,6 +51,7 @@ def prepare_skill_worker_tools(state: AgentState, available_tools: list[Any], ma
     selected_worker = state.get("selected_worker") or "skill_worker"
     catalog = ToolCatalog(available_tools)
     tools = catalog.filter_for_worker(selected_worker, matched_skills)
+    tools, toolbelt_mode = _filter_tools_for_skill_mode(state, tools)
 
     trace_logger.log_wire_event(
         "skill_worker.prepare",
@@ -28,6 +60,7 @@ def prepare_skill_worker_tools(state: AgentState, available_tools: list[Any], ma
         details={
             "selected_skill": selected_skill,
             "selected_worker": selected_worker,
+            "toolbelt_mode": toolbelt_mode,
             "tool_count": len(tools),
             "tools": [getattr(tool, "name", str(tool)) for tool in tools],
         },
