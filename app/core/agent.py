@@ -411,17 +411,44 @@ def should_reflect(state: AgentState) -> Literal["reflexion", "repair", "agent",
         if _should_retry_tool_error(content):
             tool_error_retryable = True
 
-    return WorkerDispatcher.route_after_tool(
+    route = WorkerDispatcher.route_after_tool(
         state,
         classification_retryable=classification_retryable,
         tool_error_retryable=tool_error_retryable,
     )
+    trace_logger.log_wire_event(
+        "tool_route",
+        trace_id=str(state.get("trace_id", "")),
+        summary="Dispatcher selected post-tool route.",
+        details={
+            "selected_worker": state.get("selected_worker"),
+            "next_execution_hint": state.get("next_execution_hint"),
+            "classification_retryable": classification_retryable,
+            "tool_error_retryable": tool_error_retryable,
+            "route": route,
+        },
+    )
+    return route
 
 
 def should_continue(state: AgentState) -> Literal["tools", "agent", "verify", "report", "__end__"]:
     messages = state["messages"]
     last_message = messages[-1]
-    return WorkerDispatcher.route_after_agent(state, has_tool_calls=bool(last_message.tool_calls))
+    route = WorkerDispatcher.route_after_agent(state, has_tool_calls=bool(last_message.tool_calls))
+    trace_logger.log_wire_event(
+        "agent_route",
+        trace_id=str(state.get("trace_id", "")),
+        summary="Dispatcher selected post-agent route.",
+        details={
+            "selected_worker": state.get("selected_worker"),
+            "verification_status": state.get("verification_status"),
+            "next_execution_hint": state.get("next_execution_hint"),
+            "llm_call_count": state.get("llm_call_count"),
+            "has_tool_calls": bool(last_message.tool_calls),
+            "route": route,
+        },
+    )
+    return route
 
 
 async def report_failure_node(state: AgentState):
@@ -511,7 +538,22 @@ async def clarify_followup_node(state: AgentState):
 def route_after_review(
     state: AgentState,
 ) -> Literal["reflexion", "repair", "agent", "verify", "clarify", "report", "__end__"]:
-    return WorkerDispatcher.route_after_review(state, fallback_route=should_reflect(state))
+    fallback_route = should_reflect(state)
+    route = WorkerDispatcher.route_after_review(state, fallback_route=fallback_route)
+    trace_logger.log_wire_event(
+        "review_route",
+        trace_id=str(state.get("trace_id", "")),
+        summary="Dispatcher selected post-review route.",
+        details={
+            "selected_worker": state.get("selected_worker"),
+            "verification_status": state.get("verification_status"),
+            "next_execution_hint": state.get("next_execution_hint"),
+            "classification": (state.get("last_classification") or {}).get("category"),
+            "fallback_route": fallback_route,
+            "route": route,
+        },
+    )
+    return route
 
 
 async def experience_replay_node(state: AgentState):
