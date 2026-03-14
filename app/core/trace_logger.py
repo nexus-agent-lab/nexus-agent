@@ -23,6 +23,11 @@ class TraceLogger:
         tool_calls: List[Dict[str, Any]] = None,
         routing_queries: List[str] = None,
         matched_tools: List[str] = None,
+        selected_worker: str = None,
+        selected_skill: str = None,
+        intent_class: str = None,
+        route_confidence: float = None,
+        classification: str = None,
         session_id: str = None,
         user_id: int = None,
     ):
@@ -34,6 +39,11 @@ class TraceLogger:
             f"🔌 WIRE LOG | {phase} | {model}\n"
             f"{'=' * 60}\n"
             f"⏱  Latency: {latency_ms:.0f}ms\n"
+            f"🧭 Intent: {intent_class or '-'}"
+            f" | Worker: {selected_worker or '-'}"
+            f" | Skill: {selected_skill or '-'}"
+            f" | Route: {route_confidence if route_confidence is not None else '-'}\n"
+            f"🧪 Classification: {classification or '-'}\n"
             f"🔧 Tools Bound: {', '.join(tools_bound or [])}\n"
             f"📥 Prompt:  {(prompt_summary or '')[:500]}\n"
             f"📤 Response: {(response_summary or '')[:500]}\n"
@@ -67,6 +77,46 @@ class TraceLogger:
 
         except Exception as e:
             logger.error(f"Failed to write LLM trace: {e}")
+
+    @staticmethod
+    def log_wire_event(
+        stage: str,
+        *,
+        trace_id: str | None = None,
+        summary: str | None = None,
+        details: Dict[str, Any] | None = None,
+    ):
+        """
+        Human-readable stage log for following graph flow in stdout.
+
+        This is intentionally lightweight and does not write to DB.
+        """
+        if not TraceLogger.is_enabled():
+            return
+
+        lines = [
+            f"🔌 FLOW | {stage}",
+        ]
+        if trace_id:
+            lines.append(f"🧵 Trace: {trace_id}")
+        if summary:
+            lines.append(f"📝 Summary: {summary}")
+        if details:
+            for key, value in details.items():
+                if value in (None, "", [], {}):
+                    continue
+                rendered = value
+                if isinstance(value, list):
+                    rendered = ", ".join(str(item) for item in value[:12])
+                elif isinstance(value, dict):
+                    rendered = ", ".join(f"{k}={v}" for k, v in list(value.items())[:8])
+                lines.append(f"• {key}: {rendered}")
+
+        print(
+            f"\n{'-' * 60}\n" + "\n".join(lines) + f"\n{'-' * 60}",
+            file=sys.stdout,
+            flush=True,
+        )
 
 
 trace_logger = TraceLogger()

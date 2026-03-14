@@ -77,6 +77,18 @@ priority: high
         assert isinstance(metadata, dict)
         assert len(metadata) == 0
 
+    def test_load_routing_hints_uses_existing_intent_keywords(self):
+        hints = SkillLoader.load_routing_hints()
+
+        assert isinstance(hints, list)
+        assert hints
+
+        homeassistant_hint = next((hint for hint in hints if hint.get("skill_name") == "homeassistant"), None)
+        assert homeassistant_hint is not None
+        assert "keywords" in homeassistant_hint
+        assert isinstance(homeassistant_hint["keywords"], list)
+        assert homeassistant_hint.get("preferred_worker") == "skill_worker"
+
     @pytest.mark.asyncio
     async def test_save_and_delete_skill(self):
         """Should save and delete skill cards."""

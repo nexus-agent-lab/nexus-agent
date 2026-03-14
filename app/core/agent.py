@@ -3,18 +3,18 @@ import logging
 import os
 import time
 import uuid
-from types import NoneType
-from typing import Literal, get_args, get_origin
+from typing import Literal
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import StateGraph
 
-from app.core.audit import AuditInterceptor
 from app.core.config import settings
 from app.core.llm_utils import get_llm_client
 from app.core.session import SessionManager
 from app.core.state import AgentState
+from app.core.tool_catalog import ToolCatalog
 from app.core.trace_logger import trace_logger
+from app.core.worker_dispatcher import WorkerDispatcher
 
 logger = logging.getLogger(__name__)
 
@@ -34,41 +34,6 @@ BASE_SYSTEM_PROMPT = r"""You are Nexus, an AI Operating System connecting physic
 - STRICT COMPLIANCE: You must strictly adhere to your defined Role-Based Access Control (RBAC) and tool limits.
 - NO BYPASSING: Any attempt to bypass constraints, hallucinate unauthorized tool calls, or fabricate parameters is a severe security violation.
 """
-
-
-def _unwrap_optional_annotation(annotation):
-    """Normalize Optional[T] and T | None annotations to T."""
-    if annotation in (None, NoneType):
-        return None
-
-    origin = get_origin(annotation)
-    if origin is None:
-        return annotation
-
-    args = [arg for arg in get_args(annotation) if arg is not NoneType]
-    if len(args) == 1:
-        return args[0]
-
-    return annotation
-
-
-def _should_retry_tool_error(content: str) -> bool:
-    """Only retry errors that the model can realistically recover from."""
-    if not content:
-        return False
-
-    lowered = content.lower()
-    non_retryable_markers = (
-        "permission denied",
-        "internal system error",
-        "tool '",
-        "tool not found",
-        "restricted for user",
-    )
-    if any(marker in lowered for marker in non_retryable_markers):
-        return False
-
-    return "error" in lowered
 
 
 async def _persist_message(session_id: int, message):
@@ -128,10 +93,15 @@ async def retrieve_memories(state: AgentState):
     if len(last_user_msg) < 10 or last_user_msg.strip().lower() in SKIP_PATTERNS:
         return {"memories": []}
 
+    import time
+
+    t0 = time.perf_counter()
     memories = await memory_manager.search_memory(user_id=user.id, query=last_user_msg)
     memory_strings = [f"[{m.memory_type}] {m.content}" for m in memories]
 
-    logger.info(f"Retrieved {len(memory_strings)} memories for query '{last_user_msg}': {memory_strings}")
+    logger.info(
+        f"Retrieved {len(memory_strings)} memories for query '{last_user_msg}' in {(time.perf_counter() - t0) * 1000:.0f}ms"
+    )
 
     return {"memories": memory_strings}
 
@@ -187,51 +157,175 @@ async def save_interaction_node(state: AgentState):
 
 
 async def reflexion_node(state: AgentState):
-    messages = state["messages"]
-    last_message = messages[-1]
-
-    failures = []
-    if isinstance(last_message, ToolMessage):
-        if _should_retry_tool_error(last_message.content):
-            failures.append(last_message.content)
-
+    classification = state.get("last_classification") or {}
     retry_count = state.get("retry_count", 0) + 1
-
-    critique = (
-        f"REFLECTION (Attempt {retry_count}/3): The previous tool execution failed with: {failures}. "
-        f"Please analyze why this happened (e.g., wrong arguments, missing permissions) "
-        f"and try a different approach or correct the arguments. "
-        f"Do not repeat the exact same invalid call."
+    patch, failures = WorkerDispatcher.build_reflexion_patch(state, retry_count=retry_count)
+    trace_logger.log_wire_event(
+        "reflexion",
+        trace_id=str(state.get("trace_id", "")),
+        summary="Entering reflexion step.",
+        details={
+            "retry_count": retry_count,
+            "last_classification": classification.get("category"),
+            "failures": failures,
+        },
     )
-
-    reflexion_msg = SystemMessage(content=critique)
-
-    return {"messages": [reflexion_msg], "retry_count": retry_count, "reflexions": [critique]}
+    return patch
 
 
-def should_reflect(state: AgentState) -> Literal["reflexion", "agent", "__end__"]:
+async def repair_followup_node(state: AgentState):
+    retry_count = state.get("retry_count", 0) + 1
+    trace_logger.log_wire_event(
+        "repair_followup",
+        trace_id=str(state.get("trace_id", "")),
+        summary="Preparing explicit code repair follow-up path.",
+        details={
+            "selected_worker": state.get("selected_worker"),
+            "retry_count": retry_count,
+            "classification": (state.get("last_classification") or {}).get("category"),
+            "next_execution_hint": state.get("next_execution_hint"),
+        },
+    )
+    return WorkerDispatcher.build_repair_followup_patch(state, retry_count=retry_count)
+
+
+def should_reflect(state: AgentState) -> Literal["reflexion", "repair", "agent", "report", "__end__"]:
+    route, retry_state = WorkerDispatcher.route_after_tool_with_runtime(state)
+    trace_logger.log_wire_event(
+        "tool_route",
+        trace_id=str(state.get("trace_id", "")),
+        summary="Dispatcher selected post-tool route.",
+        details={
+            "selected_worker": state.get("selected_worker"),
+            "next_execution_hint": state.get("next_execution_hint"),
+            "classification_retryable": retry_state["classification_retryable"],
+            "tool_error_retryable": retry_state["tool_error_retryable"],
+            "route": route,
+        },
+    )
+    return route
+
+
+def should_continue(state: AgentState) -> Literal["tools", "agent", "verify", "report", "__end__"]:
     messages = state["messages"]
     last_message = messages[-1]
+    route = WorkerDispatcher.route_after_agent(state, has_tool_calls=bool(last_message.tool_calls))
+    trace_logger.log_wire_event(
+        "agent_route",
+        trace_id=str(state.get("trace_id", "")),
+        summary="Dispatcher selected post-agent route.",
+        details={
+            "selected_worker": state.get("selected_worker"),
+            "verification_status": state.get("verification_status"),
+            "next_execution_hint": state.get("next_execution_hint"),
+            "llm_call_count": state.get("llm_call_count"),
+            "has_tool_calls": bool(last_message.tool_calls),
+            "route": route,
+        },
+    )
+    return route
 
-    # Check if the last tool output was an error
-    if isinstance(last_message, ToolMessage):
-        content = last_message.content
-        if _should_retry_tool_error(content):
-            # Check retry limit
-            if state.get("retry_count", 0) < 3:
-                return "reflexion"
-            else:
-                return "agent"
 
-    return "agent"
+async def report_failure_node(state: AgentState):
+    trace_logger.log_wire_event(
+        "report_failure",
+        trace_id=str(state.get("trace_id", "")),
+        summary="Rendering deterministic failure report.",
+        details={
+            "selected_worker": state.get("selected_worker"),
+            "next_execution_hint": state.get("next_execution_hint"),
+            "classification": (state.get("last_classification") or {}).get("category"),
+        },
+    )
+    return WorkerDispatcher.build_report_failure_patch(state)
 
 
-def should_continue(state: AgentState) -> Literal["tools", "__end__"]:
-    messages = state["messages"]
-    last_message = messages[-1]
-    if last_message.tool_calls:
-        return "tools"
-    return "__end__"
+async def reviewer_gate_node(state: AgentState):
+    if not state.get("last_outcome"):
+        return {}
+
+    review_decision = await WorkerDispatcher.prepare_review(state)
+    execution_history = list(state.get("execution_history") or [])
+    if execution_history:
+        execution_history[-1] = WorkerDispatcher.annotate_execution_history_entry(
+            execution_history[-1],
+            review_decision=review_decision,
+            next_execution_hint=state.get("next_execution_hint"),
+        )
+
+    classification = state.get("last_classification") or {}
+    trace_logger.log_wire_event(
+        "reviewer_gate",
+        trace_id=str(state.get("trace_id", "")),
+        summary="Evaluating reviewer gate transition.",
+        details={
+            "selected_worker": state.get("selected_worker"),
+            "verification_status": review_decision.get("verification_status"),
+            "next_execution_hint": state.get("next_execution_hint"),
+            "classification": classification.get("category"),
+            "next_action": classification.get("suggested_next_action"),
+            "review_mode": review_decision.get("execution_mode"),
+        },
+    )
+    return {
+        "execution_history": execution_history,
+        "verification_status": review_decision.get("verification_status"),
+    }
+
+
+async def verify_followup_node(state: AgentState):
+    verify_context = WorkerDispatcher.build_verify_context(state)
+    trace_logger.log_wire_event(
+        "verify_followup",
+        trace_id=str(state.get("trace_id", "")),
+        summary="Preparing explicit verify follow-up path.",
+        details={
+            "selected_worker": state.get("selected_worker"),
+            "verification_status": state.get("verification_status"),
+            "previous_hint": state.get("next_execution_hint"),
+            "verify_reason": verify_context.get("reason"),
+            "verify_category": verify_context.get("category"),
+        },
+    )
+    return WorkerDispatcher.build_verify_followup_patch(state)
+
+
+async def clarify_followup_node(state: AgentState):
+    classification = state.get("last_classification") or {}
+    trace_logger.log_wire_event(
+        "clarify_followup",
+        trace_id=str(state.get("trace_id", "")),
+        summary="Preparing explicit clarification follow-up path.",
+        details={
+            "selected_worker": state.get("selected_worker"),
+            "selected_skill": state.get("selected_skill"),
+            "classification": classification.get("category"),
+            "next_action": classification.get("suggested_next_action"),
+        },
+    )
+    return WorkerDispatcher.build_clarify_followup_patch()
+
+
+def route_after_review(
+    state: AgentState,
+) -> Literal["reflexion", "repair", "agent", "verify", "clarify", "report", "__end__"]:
+    route, review_state = WorkerDispatcher.route_after_review_with_runtime(state)
+    trace_logger.log_wire_event(
+        "review_route",
+        trace_id=str(state.get("trace_id", "")),
+        summary="Dispatcher selected post-review route.",
+        details={
+            "selected_worker": state.get("selected_worker"),
+            "verification_status": state.get("verification_status"),
+            "next_execution_hint": state.get("next_execution_hint"),
+            "classification": (state.get("last_classification") or {}).get("category"),
+            "fallback_route": review_state["fallback_route"],
+            "classification_retryable": review_state["classification_retryable"],
+            "tool_error_retryable": review_state["tool_error_retryable"],
+            "route": route,
+        },
+    )
+    return route
 
 
 async def experience_replay_node(state: AgentState):
@@ -249,31 +343,17 @@ async def experience_replay_node(state: AgentState):
     if retry_count == 0 and search_count == 0:
         return {}
 
-    # Logic: If the last message is from the assistant and it's successful,
-    # we summarize the 'lesson learned'.
-    last_msg = messages[-1]
-    if not isinstance(last_msg, AIMessage) or not last_msg.content:
-        return {}
-
-    user = state.get("user")
-    if not user:
-        return {}
-
     try:
         from app.core.memory import memory_manager
 
-        lesson = None
-        if search_count > 0:
-            lesson = f"ROUTING LESSON: Query '{messages[0].content[:50]}...' required additional tool searching. Ensure prerequisite discovery tools are loaded."
-        elif retry_count > 0:
-            lesson = f"ROUTING LESSON: Query '{messages[0].content[:50]}...' failed initially and required reflexion. Check tool arguments and permissions."
-
-        if lesson:
+        replay_payload = WorkerDispatcher.prepare_experience_replay(state)
+        if replay_payload:
+            lesson = replay_payload["lesson"]
             logger.info(f"Saving JIT Experience: {lesson}")
             await memory_manager.add_memory(
-                user_id=user.id,
+                user_id=replay_payload["user_id"],
                 content=lesson,
-                memory_type="preference",
+                memory_type=replay_payload["memory_type"],
             )
     except Exception as e:
         logger.error(f"Experience Replay failed: {e}")
@@ -329,12 +409,70 @@ def create_agent_graph(tools: list):
             context_parts.append(content)
 
         routing_query = f"Context: {current_context} | " + " | ".join(context_parts)
+        last_human_msg = str(human_msgs[-1].content) if human_msgs else ""
+
+        # 1.5 Fast Intent Gate
+        from app.core.intent_gate import IntentGate
+
+        previous_error_category = None
+        if state.get("last_classification"):
+            previous_error_category = state["last_classification"].get("category")
+
+        skill_hints = SkillLoader.load_routing_hints(role=user_role)
+        fast_intent = IntentGate().classify_fast(
+            last_human_msg,
+            available_skills=skill_hints,
+            previous_error_category=previous_error_category,
+            context=current_context,
+        )
+        candidate_workers = fast_intent.get("candidate_workers", [])
+        candidate_skills = fast_intent.get("candidate_skills", [])
+        trace_logger.log_wire_event(
+            "intent_gate",
+            trace_id=str(state.get("trace_id", "")),
+            summary=fast_intent.get("reason"),
+            details={
+                "intent_class": fast_intent.get("intent_class"),
+                "candidate_workers": candidate_workers,
+                "candidate_skills": candidate_skills,
+                "confidence": fast_intent.get("confidence"),
+                "needs_llm_escalation": fast_intent.get("needs_llm_escalation"),
+            },
+        )
 
         # 2. Skill Routing (Hierarchical L0/L1/L2)
         from app.core.tool_router import tool_router
 
         prompt_with_skills = base_prompt_with_context
+        for instruction in WorkerDispatcher.build_followup_instructions(state):
+            messages.append(SystemMessage(content=instruction))
+
+        t0_skills = time.perf_counter()
         matched_skills = await tool_router.route_skills(routing_query, role=user_role)
+        if candidate_skills:
+            registry_by_name = {
+                entry["name"]: entry for entry in SkillLoader.load_registry_with_metadata(role=user_role)
+            }
+            hinted_skills = [registry_by_name[name] for name in candidate_skills if name in registry_by_name]
+            matched_skills = hinted_skills + matched_skills
+            deduped_skills = []
+            seen_skill_names = set()
+            for skill in matched_skills:
+                skill_name = skill.get("name")
+                if skill_name and skill_name not in seen_skill_names:
+                    seen_skill_names.add(skill_name)
+                    deduped_skills.append(skill)
+            matched_skills = deduped_skills
+        logger.info(f"[TIMING] route_skills took {(time.perf_counter() - t0_skills) * 1000:.0f}ms")
+        trace_logger.log_wire_event(
+            "skill_routing",
+            trace_id=str(state.get("trace_id", "")),
+            summary="Skill routing completed.",
+            details={
+                "matched_skills": [skill.get("name") for skill in matched_skills],
+                "selected_skill_hint": candidate_skills[0] if candidate_skills else None,
+            },
+        )
 
         if matched_skills:
             active_rules = []
@@ -378,13 +516,13 @@ def create_agent_graph(tools: list):
 
         last_msg_content = str(messages[-1].content) if messages else "Unknown"
         prompt_summary = last_msg_content if len(last_msg_content) < 2000 else last_msg_content[:2000]
-        last_human_msg = str(human_msgs[-1].content) if human_msgs else ""
         cached_intent_queries = state.get("intent_queries")
         should_run_fast_brain = (
             settings.ENABLE_FAST_BRAIN
             and bool(last_human_msg)
             and isinstance(messages[-1], HumanMessage)
             and cached_intent_queries is None
+            and fast_intent.get("needs_llm_escalation", False)
         )
 
         intent_queries = cached_intent_queries or []
@@ -411,6 +549,11 @@ def create_agent_graph(tools: list):
                         latency_ms=fast_brain_latency_ms,
                         tools_bound=[],
                         tool_calls=[],
+                        selected_worker=candidate_workers[0] if candidate_workers else None,
+                        selected_skill=candidate_skills[0] if candidate_skills else None,
+                        intent_class=fast_intent.get("intent_class"),
+                        route_confidence=fast_intent.get("confidence"),
+                        classification=previous_error_category,
                         session_id=state.get("session_id"),
                         user_id=user.id if user else None,
                     )
@@ -430,6 +573,11 @@ def create_agent_graph(tools: list):
                         latency_ms=settings.FAST_BRAIN_TIMEOUT_SECONDS * 1000,
                         tools_bound=[],
                         tool_calls=[],
+                        selected_worker=candidate_workers[0] if candidate_workers else None,
+                        selected_skill=candidate_skills[0] if candidate_skills else None,
+                        intent_class=fast_intent.get("intent_class"),
+                        route_confidence=fast_intent.get("confidence"),
+                        classification=previous_error_category,
                         session_id=state.get("session_id"),
                         user_id=user.id if user else None,
                     )
@@ -447,6 +595,11 @@ def create_agent_graph(tools: list):
                         latency_ms=0,
                         tools_bound=[],
                         tool_calls=[],
+                        selected_worker=candidate_workers[0] if candidate_workers else None,
+                        selected_skill=candidate_skills[0] if candidate_skills else None,
+                        intent_class=fast_intent.get("intent_class"),
+                        route_confidence=fast_intent.get("confidence"),
+                        classification=previous_error_category,
                         session_id=state.get("session_id"),
                         user_id=user.id if user else None,
                     )
@@ -462,12 +615,41 @@ def create_agent_graph(tools: list):
             skill_bound_tools = tool_router.get_skill_bound_tools(matched_skills, role=user_role)
 
             # Select relevant tools; pass user_role to enforce RBAC at the routing layer
+            t0_route = time.perf_counter()
             routed_tools = await tool_router.route_multi(routing_queries, role=user_role, context=current_context)
+            logger.info(f"[TIMING] route_multi took {(time.perf_counter() - t0_route) * 1000:.0f}ms")
+
             current_tools = skill_bound_tools + routed_tools
-            current_tools = list({t.name: t for t in current_tools}.values())
+            current_tools = ToolCatalog.dedupe_by_name(current_tools)
             if not current_tools:
                 # Fallback: give the LLM all role-permitted tools rather than nothing
                 current_tools = [t for t in tools if tool_router._check_role(t, user_role)]
+
+            if state.get("verification_status") == "failed":
+                current_tools = []
+
+            current_tools, worker_decision = await WorkerDispatcher.prepare_tools(
+                state,
+                current_tools,
+                matched_skills,
+                fallback_worker=candidate_workers[0] if candidate_workers else None,
+            )
+            selected_worker = worker_decision.get("selected_worker")
+            trace_logger.log_wire_event(
+                "toolbelt_selection",
+                trace_id=str(state.get("trace_id", "")),
+                summary="Selected tools for current turn.",
+                details={
+                    "selected_worker": selected_worker,
+                    "execution_mode": worker_decision.get("execution_mode"),
+                    "next_execution_hint": worker_decision.get("next_execution_hint"),
+                    "verify_context_reason": (worker_decision.get("verify_context") or {}).get("reason"),
+                    "selected_skill": state.get("selected_skill")
+                    or (candidate_skills[0] if candidate_skills else None),
+                    "tool_count": len(current_tools),
+                    "tools": [tool.name for tool in current_tools],
+                },
+            )
 
             if search_count >= 3:
                 current_tools = [t for t in current_tools if t.name != "request_more_tools"]
@@ -506,6 +688,12 @@ def create_agent_graph(tools: list):
                     tool_calls=[tc for tc in getattr(response, "tool_calls", [])]
                     if hasattr(response, "tool_calls")
                     else [],
+                    selected_worker=state.get("selected_worker")
+                    or (candidate_workers[0] if candidate_workers else None),
+                    selected_skill=state.get("selected_skill") or (candidate_skills[0] if candidate_skills else None),
+                    intent_class=fast_intent.get("intent_class"),
+                    route_confidence=fast_intent.get("confidence"),
+                    classification=(state.get("last_classification") or {}).get("category"),
                     session_id=state.get("session_id"),
                     user_id=user.id if user else None,
                 )
@@ -521,6 +709,14 @@ def create_agent_graph(tools: list):
         return {
             "messages": [response],
             "intent_queries": intent_queries,
+            "intent_class": fast_intent.get("intent_class"),
+            "route_confidence": fast_intent.get("confidence"),
+            "selected_worker": selected_worker or (candidate_workers[0] if candidate_workers else None),
+            "execution_mode": worker_decision.get("execution_mode"),
+            "next_execution_hint": worker_decision.get("next_execution_hint"),
+            "candidate_workers": candidate_workers,
+            "selected_skill": state.get("selected_skill") or (candidate_skills[0] if candidate_skills else None),
+            "candidate_skills": candidate_skills,
             "llm_call_count": state.get("llm_call_count", 0) + 1,
         }
 
@@ -530,6 +726,13 @@ def create_agent_graph(tools: list):
         user = state.get("user")
         trace_id = state.get("trace_id", uuid.uuid4())
         outputs = []
+        last_outcome = None
+        last_classification = None
+        next_execution_hint = state.get("next_execution_hint")
+        execution_history = list(state.get("execution_history") or [])
+        attempts_by_worker = dict(state.get("attempts_by_worker") or {})
+        attempts_by_tool = dict(state.get("attempts_by_tool") or {})
+        blocked_fingerprints = list(state.get("blocked_fingerprints") or [])
 
         # Should not happen based on edge logic, but safety check
         if not last_message.tool_calls:
@@ -566,89 +769,104 @@ def create_agent_graph(tools: list):
             # patch for MCP-style schemas. This is not the ideal long-term fix; the better
             # direction is to improve tool-call generation / schema guidance so the model
             # omits unknown optional fields entirely.
+            logger.info(f"[DEBUG None] 1. tool_call['args'] 原始值: {tool_call['args']}")
             tool_args = {k: v for k, v in tool_call["args"].items() if v is not None}
+            logger.info(f"[DEBUG None] 2. tool_args 清洗后的值: {tool_args}")
+            logger.info(f"[DEBUG None] 3. dispatcher.execute_tool_call 前的最终值: {tool_args}")
+            execution_patch = await WorkerDispatcher.execute_tool_call(
+                state,
+                tool_name=tool_name,
+                tool_call_id=tool_call["id"],
+                tool_args=tool_args,
+                tool_to_call=tool_to_call,
+                user=user,
+                trace_id=trace_id,
+            )
 
-            # 1. Permission Check
-            from app.core.auth_service import AuthService
+            message = execution_patch.get("message")
+            if message is not None:
+                outputs.append(message)
 
-            # Extract domain and required_role from tool metadata (MCP tools have these)
-            domain = "standard"
-            required_role = None
-            allowed_groups = None
-            if hasattr(tool_to_call, "metadata") and tool_to_call.metadata is not None:
-                domain = tool_to_call.metadata.get("domain") or tool_to_call.metadata.get("category") or domain
-                required_role = tool_to_call.metadata.get("required_role")
-                allowed_groups = tool_to_call.metadata.get("allowed_groups")
+            last_outcome = execution_patch.get("outcome")
+            last_classification = execution_patch.get("classification")
+            next_execution_hint = execution_patch.get("next_execution_hint", next_execution_hint)
 
-            if not AuthService.check_tool_permission(
-                user, tool_name, domain=domain, required_role=required_role, allowed_groups=allowed_groups
-            ):
-                err_msg = f"Error: Permission denied. Access to tool '{tool_name}' is restricted for user '{user.username if user else 'guest'}'."
-                async with AuditInterceptor(
-                    trace_id=trace_id, user_id=user.id if user else None, tool_name=tool_name, tool_args=tool_args
-                ):
-                    pass
-                outputs.append(ToolMessage(err_msg, name=tool_name, tool_call_id=tool_call["id"]))
-                continue
+            if last_outcome:
+                selected_worker = state.get("selected_worker") or "chat_worker"
+                if last_classification and last_classification.get("category") == "retryable_runtime_error":
+                    attempts_by_worker[selected_worker] = attempts_by_worker.get(selected_worker, 0) + 1
+                    if selected_worker == "code_worker" and attempts_by_worker[selected_worker] >= 3:
+                        last_classification = {
+                            **last_classification,
+                            "retryable": False,
+                            "requires_handoff": True,
+                            "suggested_next_action": "handoff",
+                            "user_facing_summary": "Code execution failed repeatedly and now needs intervention.",
+                            "debug_summary": (
+                                last_classification.get("debug_summary")
+                                or "Code execution failed repeatedly and exhausted retry budget."
+                            ),
+                        }
+                        trace_logger.log_wire_event(
+                            "code_worker.budget",
+                            trace_id=str(state.get("trace_id", "")),
+                            summary="Code worker retry budget exhausted.",
+                            details={
+                                "attempts": attempts_by_worker[selected_worker],
+                                "tool_name": tool_name,
+                            },
+                        )
 
-            # 2. Execution with Audit Interceptor
-            try:
-                # Inject user_id into tool arguments if the tool expects it.
-                # LangChain's StructuredTool will only use it if defined in args_schema.
-                if user:
-                    tool_args["user_id"] = user.id
+                fingerprint = last_outcome.get("fingerprint")
+                if fingerprint:
+                    attempts_by_tool[fingerprint] = attempts_by_tool.get(fingerprint, 0) + 1
+                    if (
+                        selected_worker == "code_worker"
+                        and last_classification
+                        and last_classification.get("category") == "retryable_runtime_error"
+                        and attempts_by_tool[fingerprint] >= 2
+                        and fingerprint not in blocked_fingerprints
+                    ):
+                        blocked_fingerprints.append(fingerprint)
+                        trace_logger.log_wire_event(
+                            "code_worker.blocklist",
+                            trace_id=str(state.get("trace_id", "")),
+                            summary="Blocked code fingerprint after repeated runtime failures.",
+                            details={
+                                "fingerprint": fingerprint[:12],
+                                "attempts": attempts_by_tool[fingerprint],
+                                "tool_name": tool_name,
+                            },
+                        )
 
-                # The Interceptor handles Audit Logging (PENDING -> SUCCESS/FAILURE)
-                async with AuditInterceptor(
-                    trace_id=trace_id,
-                    user_id=user.id if user else None,
+        if last_outcome:
+            execution_history.append(
+                WorkerDispatcher.build_execution_history_entry(
                     tool_name=tool_name,
-                    tool_args=tool_args,
-                    user_role=user.role if user else "user",
-                    context=state.get("context", "home"),
-                    tool_tags=getattr(tool_to_call, "tags", ["tag:safe"]),
-                ):
-                    # 🩹 Sanitize tool args: fix None values for typed params
-                    # LLMs sometimes pass \`None\` for booleans/ints, causing Pydantic validation errors.
-                    # This patch ensures defaults are used instead of None for critical types.
-                    schema = getattr(tool_to_call, "args_schema", None)
-                    if schema:
-                        for field_name, field_info in schema.model_fields.items():
-                            if field_name in tool_args and tool_args[field_name] is None:
-                                anno = _unwrap_optional_annotation(field_info.annotation)
-                                if not field_info.is_required():
-                                    tool_args.pop(field_name, None)
-                                elif anno is bool:
-                                    tool_args[field_name] = (
-                                        field_info.default if field_info.default is not None else False
-                                    )
-                                elif anno is int:
-                                    tool_args[field_name] = field_info.default if field_info.default is not None else 0
-                                elif anno is str:
-                                    tool_args[field_name] = field_info.default if field_info.default is not None else ""
-
-                    prediction = await tool_to_call.ainvoke(tool_args)
-                    result_str = str(prediction)
-            except Exception as e:
-                error_text = str(e)
-                # 3. Error Sanitization
-                # If it's a low-level infrastructure error (DB/Network), DO NOT pass details to the LLM
-                # to avoid confusion or infinite fixing loops.
-                is_internal_error = any(
-                    k in error_text for k in ["sqlalchemy", "asyncpg", "ConnectionRefused", "OperationalError"]
+                    selected_worker=state.get("selected_worker"),
+                    selected_skill=state.get("selected_skill"),
+                    execution_mode=execution_patch.get("execution_mode"),
+                    next_execution_hint=next_execution_hint,
+                    outcome=last_outcome,
+                    classification=last_classification,
                 )
-
-                if is_internal_error:
-                    # Log the specific crash for the admin
-                    logger.error(f"CRITICAL SYSTEM ERROR in tool '{tool_name}': {error_text}", exc_info=True)
-                    # Tell LLM generic info so it doesn't try to 'fix' code
-                    result_str = "Error: Internal System Error. Please contact administrator."
-                else:
-                    # Logic errors (e.g. User Not Found) are useful for the LLM
-                    logger.warning(f"Tool execution error ({tool_name}): {error_text}")
-                    result_str = f"Error execution tool: {error_text}"
-
-            outputs.append(ToolMessage(content=result_str, name=tool_name, tool_call_id=tool_call["id"]))
+            )
+            trace_logger.log_wire_event(
+                "tool_result",
+                trace_id=str(state.get("trace_id", "")),
+                summary=f"Tool '{tool_name}' finished.",
+                details={
+                    "tool_name": tool_name,
+                    "selected_worker": state.get("selected_worker"),
+                    "execution_mode": execution_patch.get("execution_mode"),
+                    "selected_skill": state.get("selected_skill"),
+                    "status": last_outcome.get("status"),
+                    "classification": last_classification.get("category") if last_classification else None,
+                    "next_action": last_classification.get("suggested_next_action") if last_classification else None,
+                    "next_execution_hint": next_execution_hint,
+                    "fingerprint": (last_outcome.get("fingerprint") or "")[:12],
+                },
+            )
 
         session_id = state.get("session_id")
         if session_id:
@@ -657,6 +875,15 @@ def create_agent_graph(tools: list):
 
         return {
             "messages": outputs,
+            "last_outcome": last_outcome,
+            "last_classification": last_classification,
+            "execution_history": execution_history,
+            "execution_mode": execution_patch.get("execution_mode") if last_outcome else state.get("execution_mode"),
+            "verification_status": state.get("verification_status"),
+            "next_execution_hint": next_execution_hint,
+            "attempts_by_worker": attempts_by_worker,
+            "attempts_by_tool": attempts_by_tool,
+            "blocked_fingerprints": blocked_fingerprints,
             "tool_call_count": state.get("tool_call_count", 0) + len(last_message.tool_calls),
         }
 
@@ -664,14 +891,45 @@ def create_agent_graph(tools: list):
     workflow.add_node("retrieve_memories", retrieve_memories)
     workflow.add_node("agent", call_model)
     workflow.add_node("tools", tool_node_with_permissions)
+    workflow.add_node("reviewer_gate", reviewer_gate_node)
+    workflow.add_node("verify_followup", verify_followup_node)
+    workflow.add_node("clarify_followup", clarify_followup_node)
+    workflow.add_node("repair_followup", repair_followup_node)
     workflow.add_node("reflexion", reflexion_node)
+    workflow.add_node("report_failure", report_failure_node)
     workflow.add_node("experience_replay", experience_replay_node)
 
     workflow.set_entry_point("retrieve_memories")
     workflow.add_edge("retrieve_memories", "agent")
-    workflow.add_conditional_edges("agent", should_continue, {"tools": "tools", "__end__": "experience_replay"})
+    workflow.add_conditional_edges(
+        "agent",
+        should_continue,
+        {
+            "tools": "tools",
+            "agent": "agent",
+            "verify": "verify_followup",
+            "report": "report_failure",
+            "__end__": "experience_replay",
+        },
+    )
+    workflow.add_edge("report_failure", "experience_replay")
     workflow.add_edge("experience_replay", "__end__")
-    workflow.add_conditional_edges("tools", should_reflect, {"reflexion": "reflexion", "agent": "agent"})
+    workflow.add_edge("tools", "reviewer_gate")
+    workflow.add_conditional_edges(
+        "reviewer_gate",
+        route_after_review,
+        {
+            "reflexion": "reflexion",
+            "repair": "repair_followup",
+            "agent": "agent",
+            "verify": "verify_followup",
+            "clarify": "clarify_followup",
+            "report": "report_failure",
+        },
+    )
+    workflow.add_edge("clarify_followup", "agent")
+    workflow.add_edge("repair_followup", "agent")
+    workflow.add_edge("verify_followup", "agent")
     workflow.add_edge("reflexion", "agent")
 
     return workflow.compile()
