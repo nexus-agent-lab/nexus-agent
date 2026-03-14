@@ -8,6 +8,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from app.core.agent import (
     _build_execution_history_entry,
     create_agent_graph,
+    repair_followup_node,
     report_failure_node,
     route_after_review,
     should_continue,
@@ -194,6 +195,17 @@ def test_route_after_review_routes_code_worker_failed_to_report_node():
     assert route_after_review(state) == "report"
 
 
+def test_route_after_review_routes_code_worker_repair_to_repair_node():
+    state = {
+        "messages": [ToolMessage(content="repair needed", name="python_sandbox", tool_call_id="call-5")],
+        "selected_worker": "code_worker",
+        "next_execution_hint": "repair",
+        "verification_status": "pending",
+    }
+
+    assert route_after_review(state) == "repair"
+
+
 def test_build_execution_history_entry_captures_normalized_fields():
     entry = _build_execution_history_entry(
         tool_name="python_sandbox",
@@ -243,3 +255,23 @@ async def test_verify_followup_node_sets_verify_hint():
     assert result["verify_context"]["skill"] == "browser"
     assert result["verify_context"]["execution_mode"] == "skill_act"
     assert result["verify_context"]["category"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_repair_followup_node_sets_repair_hint_and_retry_count():
+    result = await repair_followup_node(
+        {
+            "selected_worker": "code_worker",
+            "retry_count": 1,
+            "next_execution_hint": "repair",
+            "last_classification": {
+                "category": "retryable_runtime_error",
+                "user_facing_summary": "Code execution failed with a repairable runtime error.",
+                "debug_summary": "Traceback: ValueError('boom')",
+            },
+        }
+    )
+
+    assert result["next_execution_hint"] == "repair"
+    assert result["retry_count"] == 2
+    assert "CODE REPAIR" in result["messages"][0].content

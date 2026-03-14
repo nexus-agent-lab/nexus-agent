@@ -43,6 +43,26 @@ def test_code_worker_report_hint_routes_to_report():
     assert should_reflect(state) == "report"
 
 
+def test_code_worker_repair_hint_routes_to_repair():
+    state = {
+        "messages": [
+            AIMessage(content="", tool_calls=[]),
+            ToolMessage(content="Execution Error", name="python_sandbox", tool_call_id="call-repair"),
+        ],
+        "retry_count": 0,
+        "selected_worker": "code_worker",
+        "next_execution_hint": "repair",
+        "last_classification": {
+            "category": "retryable_runtime_error",
+            "retryable": True,
+            "requires_handoff": False,
+            "suggested_next_action": "retry_same_worker",
+        },
+    }
+
+    assert should_reflect(state) == "repair"
+
+
 def test_code_worker_verify_hint_skips_reflexion():
     state = {
         "messages": [

@@ -154,6 +154,22 @@ def _build_execution_history_entry(
     }
 
 
+def _build_code_repair_message(state: AgentState, retry_count: int) -> str:
+    classification = state.get("last_classification") or {}
+    outcome = state.get("last_outcome") or {}
+    summary = classification.get("user_facing_summary") or "Code execution failed."
+    detail = classification.get("debug_summary") or outcome.get("raw_text") or "No additional error details were captured."
+    if detail and len(detail) > 300:
+        detail = detail[:300] + "..."
+
+    return (
+        f"CODE REPAIR (Attempt {retry_count}/3): {summary}\n"
+        f"Observed detail: {detail}\n"
+        "Produce a materially different fix. Do not rerun the same code unchanged. "
+        "Prefer a narrower, safer repair before calling tools again."
+    )
+
+
 async def _persist_message(session_id: int, message):
     """Persist a single message without adding graph steps."""
     if not session_id or message is None:
@@ -313,12 +329,37 @@ async def reflexion_node(state: AgentState):
     return {"messages": [reflexion_msg], "retry_count": retry_count, "reflexions": [critique]}
 
 
-def should_reflect(state: AgentState) -> Literal["reflexion", "agent", "report", "__end__"]:
+async def repair_followup_node(state: AgentState):
+    retry_count = state.get("retry_count", 0) + 1
+    critique = _build_code_repair_message(state, retry_count)
+    trace_logger.log_wire_event(
+        "repair_followup",
+        trace_id=str(state.get("trace_id", "")),
+        summary="Preparing explicit code repair follow-up path.",
+        details={
+            "selected_worker": state.get("selected_worker"),
+            "retry_count": retry_count,
+            "classification": (state.get("last_classification") or {}).get("category"),
+            "next_execution_hint": state.get("next_execution_hint"),
+        },
+    )
+    return {
+        "messages": [SystemMessage(content=critique)],
+        "retry_count": retry_count,
+        "next_execution_hint": "repair",
+        "reflexions": [critique],
+    }
+
+
+def should_reflect(state: AgentState) -> Literal["reflexion", "repair", "agent", "report", "__end__"]:
     messages = state["messages"]
     last_message = messages[-1]
     selected_worker = state.get("selected_worker")
     attempts_by_worker = state.get("attempts_by_worker") or {}
     next_execution_hint = state.get("next_execution_hint")
+
+    if selected_worker == "code_worker" and next_execution_hint == "repair":
+        return "repair"
 
     if selected_worker == "code_worker" and next_execution_hint == "report":
         return "report"
@@ -417,7 +458,7 @@ async def verify_followup_node(state: AgentState):
     }
 
 
-def route_after_review(state: AgentState) -> Literal["reflexion", "agent", "verify", "report", "__end__"]:
+def route_after_review(state: AgentState) -> Literal["reflexion", "repair", "agent", "verify", "report", "__end__"]:
     verification_status = state.get("verification_status")
     next_execution_hint = state.get("next_execution_hint")
     selected_worker = state.get("selected_worker")
@@ -428,6 +469,8 @@ def route_after_review(state: AgentState) -> Literal["reflexion", "agent", "veri
         return "report"
     if verification_status == "required":
         return "verify"
+    if selected_worker == "code_worker" and next_execution_hint == "repair":
+        return "repair"
     if verification_status == "failed":
         return "agent"
     return should_reflect(state)
@@ -1062,6 +1105,7 @@ def create_agent_graph(tools: list):
     workflow.add_node("tools", tool_node_with_permissions)
     workflow.add_node("reviewer_gate", reviewer_gate_node)
     workflow.add_node("verify_followup", verify_followup_node)
+    workflow.add_node("repair_followup", repair_followup_node)
     workflow.add_node("reflexion", reflexion_node)
     workflow.add_node("report_failure", report_failure_node)
     workflow.add_node("experience_replay", experience_replay_node)
@@ -1085,8 +1129,15 @@ def create_agent_graph(tools: list):
     workflow.add_conditional_edges(
         "reviewer_gate",
         route_after_review,
-        {"reflexion": "reflexion", "agent": "agent", "verify": "verify_followup", "report": "report_failure"},
+        {
+            "reflexion": "reflexion",
+            "repair": "repair_followup",
+            "agent": "agent",
+            "verify": "verify_followup",
+            "report": "report_failure",
+        },
     )
+    workflow.add_edge("repair_followup", "agent")
     workflow.add_edge("verify_followup", "agent")
     workflow.add_edge("reflexion", "agent")
 
