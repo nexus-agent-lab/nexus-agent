@@ -731,6 +731,34 @@ async def test_skill_worker_discovery_does_not_loop_into_more_discovery():
 
 
 @pytest.mark.asyncio
+async def test_skill_worker_explicit_homeassistant_action_does_not_stop_after_discovery():
+    with patch("app.core.worker_graphs.shared_execution.AuthService.check_tool_permission", return_value=True):
+        with patch("app.core.worker_graphs.shared_execution.AuditInterceptor", DummyAuditInterceptor):
+            patch_result = await WorkerDispatcher.execute_tool_call(
+                {
+                    "selected_worker": "skill_worker",
+                    "selected_skill": "homeassistant",
+                    "messages": [HumanMessage(content="关闭显示器灯")],
+                },
+                tool_name="list_entities",
+                tool_call_id="call-ha-discover",
+                tool_args={"domain": "light", "search_query": "显示器"},
+                tool_to_call=DummyTool(
+                    name="list_entities",
+                    metadata={"preferred_worker": "skill_worker", "operation_kind": "discover"},
+                    result='[{"entity_id":"light.monitor","state":"off"}]',
+                ),
+                user=DummyUser(),
+                trace_id="trace-ha-discover",
+            )
+
+    assert patch_result["classification"]["category"] == "success"
+    assert patch_result["classification"]["suggested_next_action"] == "complete"
+    assert patch_result["execution_mode"] == "skill_discover"
+    assert patch_result["next_execution_hint"] == "act"
+
+
+@pytest.mark.asyncio
 async def test_skill_worker_requires_handoff_marks_report_followup():
     with patch("app.core.worker_graphs.shared_execution.AuthService.check_tool_permission", return_value=True):
         with patch("app.core.worker_graphs.shared_execution.AuditInterceptor", DummyAuditInterceptor):

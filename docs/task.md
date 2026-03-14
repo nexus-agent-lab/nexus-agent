@@ -7,6 +7,7 @@
   - [ ] Validate state-query flow
   - [ ] Validate permission-denied flow
   - [ ] Validate entity-not-found / abnormal-state flow
+  - [ ] Filter ambient-room temperature queries away from appliance/process sensors (fridge, freezer, water heater, etc.)
   - [ ] Produce a failure-category checklist for the highest-impact daily-use problems
 - [ ] `P0-2` Binding / login / permission UX tightening
   - [ ] Review bind-token friction for non-technical users

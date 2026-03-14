@@ -412,6 +412,13 @@ class WorkerDispatcher:
                 "Do not rerun the same code unchanged. Prefer using python_sandbox only after you change the approach."
             )
 
+        if selected_worker == "skill_worker" and next_execution_hint == "act":
+            instructions.append(
+                "ACTION REQUIRED: Discovery only identified the target entity. "
+                "Do not stop at the discovered state. Execute the requested control action now, "
+                "then verify the final state before completion."
+            )
+
         if verification_status == "required":
             verify_context = state.get("verify_context") or {}
             verify_reason = verify_context.get("reason") or "Confirm the previous action result."

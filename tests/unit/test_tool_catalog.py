@@ -179,6 +179,29 @@ def test_skill_worker_prepare_uses_next_execution_hint_for_ask_user():
     assert filtered == []
 
 
+def test_skill_worker_prepare_uses_next_execution_hint_for_act():
+    tools = [
+        _tool("get_current_time"),
+        _tool("list_entities", {"operation_kind": "discover", "side_effect": False}),
+        _tool("read_entity_state", {"operation_kind": "read", "side_effect": False}),
+        _tool("call_service_tool", {"operation_kind": "act", "side_effect": True}),
+    ]
+
+    filtered = prepare_skill_worker_tools(
+        {
+            "selected_worker": "skill_worker",
+            "next_execution_hint": "act",
+        },
+        tools,
+        matched_skills=[],
+    )
+    names = [tool.name for tool in filtered]
+
+    assert "call_service_tool" in names
+    assert "read_entity_state" in names
+    assert "list_entities" not in names
+
+
 def test_code_worker_prepare_uses_next_execution_hint_for_verify():
     tools = [
         _tool("python_sandbox", {"preferred_worker": "code_worker"}),

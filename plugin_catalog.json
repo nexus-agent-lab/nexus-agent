@@ -10,6 +10,11 @@
     "context_tags": ["home", "smart_home", "iot", "ha", "home_assistant"],
     "config": {
       "tool_config": {
+        "list_entities": { "cache_ttl": 0 },
+        "get_entity": { "cache_ttl": 5 },
+        "get_state": { "cache_ttl": 5 },
+        "call_service_tool": { "cache_ttl": 0 },
+        "entity_action": { "cache_ttl": 0 },
         "query_entities": { "cache_ttl": 1800 },
         "get_entity_state": { "cache_ttl": 5 },
         "call_service": { "cache_ttl": 0 }

@@ -35,3 +35,11 @@ def test_tool_metadata_high_risk_tools_disable_retry():
     assert metadata["risk_level"] == "high"
     assert metadata["retry_policy"] == "never"
     assert metadata["max_retries"] == 0
+
+
+def test_tool_metadata_treats_entity_action_as_act():
+    metadata = build_tool_metadata("entity_action", {"capability_domain": "home_automation"})
+
+    assert metadata["operation_kind"] == "act"
+    assert metadata["side_effect"] is True
+    assert metadata["requires_verification"] is True

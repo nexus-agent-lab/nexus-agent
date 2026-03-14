@@ -94,6 +94,8 @@ def _infer_operation_kind(tool_name: str, metadata: dict[str, Any]) -> str:
     lowered_name = tool_name.lower()
     if lowered_name == "python_sandbox":
         return "transform"
+    if lowered_name in {"entity_action", "call_service_tool"}:
+        return "act"
     if lowered_name.startswith(("list_", "search_", "find_")):
         return "discover"
     if lowered_name.startswith(("get_", "read_", "view_", "query_")):

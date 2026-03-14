@@ -15,6 +15,7 @@ async def run_reviewer_worker_step(state: AgentState) -> dict:
     outcome = state.get("last_outcome") or {}
     metadata = outcome.get("metadata") or {}
     execution_mode = state.get("execution_mode")
+    next_execution_hint = state.get("next_execution_hint")
     next_action = classification.get("suggested_next_action")
     requires_verification = bool(metadata.get("requires_verification"))
     risk_level = metadata.get("risk_level")
@@ -23,6 +24,8 @@ async def run_reviewer_worker_step(state: AgentState) -> dict:
     verification_status = None
     if classification.get("category") == "verification_failed":
         verification_status = "failed"
+    elif next_execution_hint == "act":
+        verification_status = "pending"
     elif next_action == "verify" or execution_mode == "skill_verify":
         verification_status = "required"
     elif classification.get("category") == "success" and (requires_verification or side_effect or risk_level == "high"):
@@ -42,6 +45,7 @@ async def run_reviewer_worker_step(state: AgentState) -> dict:
             "selected_worker": "reviewer_worker",
             "last_classification": classification.get("category"),
             "next_action": next_action,
+            "next_execution_hint": next_execution_hint,
             "execution_mode": execution_mode,
             "requires_verification": requires_verification,
             "risk_level": risk_level,

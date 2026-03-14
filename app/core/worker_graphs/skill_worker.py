@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from langchain_core.messages import HumanMessage
+
 from app.core.result_classifier import ResultClassification
 from app.core.state import AgentState
 from app.core.tool_catalog import ToolCatalog
@@ -9,6 +11,34 @@ from app.core.tool_metadata import get_tool_metadata
 from app.core.tool_router import CORE_TOOL_NAMES
 from app.core.trace_logger import trace_logger
 from app.core.worker_graphs.shared_execution import ToolExecutionPatch, execute_tool_call_generic
+
+
+def _is_explicit_homeassistant_action_request(state: AgentState) -> bool:
+    if state.get("selected_skill") != "homeassistant":
+        return False
+
+    for message in reversed(state.get("messages") or []):
+        if not isinstance(message, HumanMessage):
+            continue
+        content = str(message.content or "").lower()
+        if any(
+            token in content
+            for token in (
+                "打开",
+                "关闭",
+                "关掉",
+                "开启",
+                "打开它",
+                "turn on",
+                "turn off",
+                "switch on",
+                "switch off",
+                "set ",
+            )
+        ):
+            return True
+        return False
+    return False
 
 
 def _filter_tools_for_skill_mode(state: AgentState, tools: list[Any]) -> tuple[list[Any], str]:
@@ -41,6 +71,17 @@ def _filter_tools_for_skill_mode(state: AgentState, tools: list[Any]) -> tuple[l
             elif operation_kind in {"discover", "read", "verify"} and not metadata.get("side_effect", False):
                 filtered.append(tool)
         return filtered or tools, "discovery"
+
+    if next_hint == "act":
+        filtered = []
+        for tool in tools:
+            metadata = get_tool_metadata(tool)
+            operation_kind = metadata.get("operation_kind")
+            if getattr(tool, "name", "") in CORE_TOOL_NAMES and getattr(tool, "name", "") != "python_sandbox":
+                filtered.append(tool)
+            elif operation_kind in {"act", "read", "verify"}:
+                filtered.append(tool)
+        return filtered or tools, "act"
 
     if intent_class == "skill_discovery" or next_action == "run_discovery":
         filtered = []
@@ -155,6 +196,7 @@ async def execute_skill_worker_tool_call(
         execution_patch.get("classification"),
         metadata=metadata,
         execution_mode=execution_mode,
+        state=state,
     )
     execution_patch["classification"] = classification
     if next_execution_hint:
@@ -167,6 +209,7 @@ def _postprocess_skill_classification(
     *,
     metadata: dict[str, Any],
     execution_mode: str,
+    state: AgentState,
 ) -> tuple[ResultClassification, str | None]:
     if classification is None:
         return (
@@ -193,10 +236,27 @@ def _postprocess_skill_classification(
                 {
                     **classification,
                     "user_facing_summary": "Action executed and should be verified before completion.",
-                    "suggested_next_action": "verify",
-                },
-                "verify",
-            )
+                "suggested_next_action": "verify",
+            },
+            "verify",
+        )
+
+    if (
+        execution_mode == "skill_discover"
+        and classification.get("category") == "success"
+        and _is_explicit_homeassistant_action_request(state)
+    ):
+        return (
+            {
+                **classification,
+                "user_facing_summary": (
+                    "Resource discovery succeeded for an explicit control request. "
+                    "Execute the requested Home Assistant action before completing."
+                ),
+                "suggested_next_action": "complete",
+            },
+            "act",
+        )
 
     if execution_mode == "skill_discover" and classification.get("suggested_next_action") == "run_discovery":
         return (

@@ -48,6 +48,27 @@ async def test_reviewer_worker_requires_verification_for_successful_risky_outcom
 
 
 @pytest.mark.asyncio
+async def test_reviewer_worker_keeps_explicit_action_followup_pending():
+    result = await run_reviewer_worker_step(
+        {
+            "execution_mode": "skill_discover",
+            "next_execution_hint": "act",
+            "last_classification": {"category": "success", "suggested_next_action": "complete"},
+            "last_outcome": {
+                "metadata": {
+                    "operation_kind": "discover",
+                    "side_effect": False,
+                    "requires_verification": False,
+                    "risk_level": "low",
+                }
+            },
+        }
+    )
+
+    assert result["verification_status"] == "pending"
+
+
+@pytest.mark.asyncio
 async def test_reviewer_worker_marks_handoff_as_failed():
     result = await run_reviewer_worker_step(
         {

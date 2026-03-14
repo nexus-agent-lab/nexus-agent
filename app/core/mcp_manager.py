@@ -33,6 +33,14 @@ ALLOWED_MCP_COMMANDS = ["python", "python3", "node", "npx", "uv"]
 # Allowlist of allowed hostnames for SSE MCP servers (SSRF protection)
 ALLOWED_SSE_HOSTNAMES = ["localhost", "127.0.0.1", "host.docker.internal", "mcp-homeassistant", "lark-mcp"]
 
+TOOL_CONFIG_ALIASES = {
+    "list_entities": ["query_entities"],
+    "get_entity": ["get_entity_state"],
+    "get_state": ["get_entity_state"],
+    "call_service_tool": ["call_service"],
+    "entity_action": ["call_service"],
+}
+
 
 class MCPManager:
     _instance = None
@@ -282,6 +290,18 @@ class MCPManager:
     ) -> StructuredTool:
         tool_config_map = tool_config_map or {}
 
+        def resolve_tool_config(tool_name: str) -> Dict[str, Any]:
+            if tool_name in tool_config_map:
+                return tool_config_map[tool_name].copy()
+
+            for alias in TOOL_CONFIG_ALIASES.get(tool_name, []):
+                if alias in tool_config_map:
+                    resolved = tool_config_map[alias].copy()
+                    logger.info("Resolved MCP tool config alias: %s -> %s", tool_name, alias)
+                    return resolved
+
+            return {}
+
         async def _arun(**kwargs) -> str:
             try:
                 from app.core.mcp_middleware import MCPMiddleware
@@ -306,7 +326,7 @@ class MCPManager:
                     except Exception as e:
                         return json.dumps({"type": "error", "message": str(e)}, ensure_ascii=False)
 
-                tool_conf = tool_config_map.get(tool.name, {}).copy()
+                tool_conf = resolve_tool_config(tool.name)
                 if plugin_id:
                     tool_conf["plugin_id"] = plugin_id
                 return await MCPMiddleware.call_tool(
