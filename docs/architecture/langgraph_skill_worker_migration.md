@@ -1016,6 +1016,7 @@ Completed in branch:
 - `skill_worker` now disables tools entirely during `ask_user` clarification follow-up
 - dispatcher decisions now expose `next_execution_hint` and `verify_context`
 - dispatcher now owns compatibility routing for post-agent, post-tool, and post-review follow-up decisions
+- dispatcher now also owns compatibility follow-up instructions, follow-up patch builders, and execution-history helpers
 
 Still remaining:
 
