@@ -1015,13 +1015,14 @@ Completed in branch:
 - verification-oriented toolbelt narrowing now excludes execution-heavy tools like `python_sandbox` when dedicated verify/read tools exist
 - `skill_worker` now disables tools entirely during `ask_user` clarification follow-up
 - dispatcher decisions now expose `next_execution_hint` and `verify_context`
+- dispatcher now owns compatibility routing for post-agent, post-tool, and post-review follow-up decisions
 
 Still remaining:
 
 - move real execution branching out of the shared tool node
 - give `skill_worker` its own discovery/read/act/verify loop
 - give `code_worker` its own execute/classify/repair/verify loop without relying on compatibility behavior in the main agent
-- promote dispatcher from prepare-only boundary to execution-path boundary
+- finish promoting dispatcher from a compatibility boundary into the primary execution-path boundary
 
 ### Phase 4: Reviewer Enforcement + Offline Feedback Loop
 
@@ -1050,6 +1051,7 @@ Completed in branch:
 - deterministic report rendering now exists for programmatic handoff/report paths
 - reviewer now requires verification for successful outcomes that still carry explicit verification/risk metadata
 - normalized `execution_history` is now tracked in state
+- `execution_history` entries now capture reviewer outcomes such as verification status and verify reason
 - `experience_replay` can now build lessons from normalized execution history
 
 Still remaining:
