@@ -6,8 +6,8 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from app.core.agent import (
-    _build_execution_history_lesson,
     _build_execution_history_entry,
+    _build_execution_history_lesson,
     create_agent_graph,
     repair_followup_node,
     report_failure_node,
@@ -175,6 +175,16 @@ def test_route_after_review_routes_failed_back_to_agent():
     }
 
     assert route_after_review(state) == "agent"
+
+
+def test_route_after_review_routes_verification_failed_to_report_node():
+    state = {
+        "messages": [ToolMessage(content="verify failed", name="verify_result", tool_call_id="call-2b")],
+        "verification_status": "failed",
+        "last_classification": {"category": "verification_failed"},
+    }
+
+    assert route_after_review(state) == "report"
 
 
 def test_route_after_review_routes_report_to_report_node():
