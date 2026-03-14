@@ -36,34 +36,6 @@ BASE_SYSTEM_PROMPT = r"""You are Nexus, an AI Operating System connecting physic
 """
 
 
-def _should_retry_classification(state: AgentState) -> bool:
-    return WorkerDispatcher.should_retry_classification(state)
-
-
-def _build_report_message(state: AgentState) -> str:
-    return WorkerDispatcher.build_report_message(state)
-
-
-def _build_verify_context(state: AgentState) -> dict[str, str]:
-    return WorkerDispatcher.build_verify_context(state)
-
-
-def _build_execution_history_entry(**kwargs) -> dict:
-    return WorkerDispatcher.build_execution_history_entry(**kwargs)
-
-
-def _annotate_execution_history_entry(entry: dict, **kwargs) -> dict:
-    return WorkerDispatcher.annotate_execution_history_entry(entry, **kwargs)
-
-
-def _build_execution_history_lesson(state: AgentState) -> str | None:
-    return WorkerDispatcher.build_execution_history_lesson(state)
-
-
-def _build_code_repair_message(state: AgentState, retry_count: int) -> str:
-    return WorkerDispatcher.build_code_repair_message(state, retry_count)
-
-
 async def _persist_message(session_id: int, message):
     """Persist a single message without adding graph steps."""
     if not session_id or message is None:
@@ -220,7 +192,7 @@ async def repair_followup_node(state: AgentState):
 def should_reflect(state: AgentState) -> Literal["reflexion", "repair", "agent", "report", "__end__"]:
     messages = state["messages"]
     last_message = messages[-1]
-    classification_retryable = _should_retry_classification(state)
+    classification_retryable = WorkerDispatcher.should_retry_classification(state)
     tool_error_retryable = False
 
     # Check if the last tool output was an error
@@ -382,7 +354,7 @@ async def experience_replay_node(state: AgentState):
     try:
         from app.core.memory import memory_manager
 
-        lesson = _build_execution_history_lesson(state)
+        lesson = WorkerDispatcher.build_execution_history_lesson(state)
         if search_count > 0:
             lesson = f"ROUTING LESSON: Query '{messages[0].content[:50]}...' required additional tool searching. Ensure prerequisite discovery tools are loaded."
         elif retry_count > 0 and lesson is None:
@@ -881,7 +853,7 @@ def create_agent_graph(tools: list):
 
             if last_outcome:
                 execution_history.append(
-                    _build_execution_history_entry(
+                    WorkerDispatcher.build_execution_history_entry(
                         tool_name=tool_name,
                         selected_worker=state.get("selected_worker"),
                         selected_skill=state.get("selected_skill"),
@@ -894,7 +866,7 @@ def create_agent_graph(tools: list):
                 review_decision = await WorkerDispatcher.prepare_review(
                     {**state, "last_classification": last_classification}
                 )
-                execution_history[-1] = _annotate_execution_history_entry(
+                execution_history[-1] = WorkerDispatcher.annotate_execution_history_entry(
                     execution_history[-1],
                     review_decision=review_decision,
                     next_execution_hint=next_execution_hint,
