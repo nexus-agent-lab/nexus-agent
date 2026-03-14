@@ -428,6 +428,19 @@ def test_build_code_repair_message_uses_latest_failure_context():
     assert "Traceback: ValueError('boom')" in message
 
 
+def test_build_experience_replay_lesson_prefers_search_detours():
+    lesson = WorkerDispatcher.build_experience_replay_lesson(
+        {
+            "messages": [HumanMessage(content="帮我找一下可用实体")],
+            "search_count": 1,
+            "retry_count": 0,
+        }
+    )
+
+    assert lesson is not None
+    assert "required additional tool searching" in lesson
+
+
 def test_build_repair_followup_patch_sets_expected_fields():
     patch = WorkerDispatcher.build_repair_followup_patch(
         {

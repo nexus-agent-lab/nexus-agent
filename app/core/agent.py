@@ -354,11 +354,7 @@ async def experience_replay_node(state: AgentState):
     try:
         from app.core.memory import memory_manager
 
-        lesson = WorkerDispatcher.build_execution_history_lesson(state)
-        if search_count > 0:
-            lesson = f"ROUTING LESSON: Query '{messages[0].content[:50]}...' required additional tool searching. Ensure prerequisite discovery tools are loaded."
-        elif retry_count > 0 and lesson is None:
-            lesson = f"ROUTING LESSON: Query '{messages[0].content[:50]}...' failed initially and required reflexion. Check tool arguments and permissions."
+        lesson = WorkerDispatcher.build_experience_replay_lesson(state)
 
         if lesson:
             logger.info(f"Saving JIT Experience: {lesson}")

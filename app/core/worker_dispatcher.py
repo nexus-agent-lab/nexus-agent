@@ -214,6 +214,25 @@ class WorkerDispatcher:
         )
 
     @staticmethod
+    def build_experience_replay_lesson(state: AgentState) -> str | None:
+        messages = state.get("messages", [])
+        retry_count = state.get("retry_count", 0)
+        search_count = state.get("search_count", 0)
+
+        lesson = WorkerDispatcher.build_execution_history_lesson(state)
+        if search_count > 0 and messages:
+            return (
+                f"ROUTING LESSON: Query '{messages[0].content[:50]}...' required additional tool searching. "
+                "Ensure prerequisite discovery tools are loaded."
+            )
+        if retry_count > 0 and lesson is None and messages:
+            return (
+                f"ROUTING LESSON: Query '{messages[0].content[:50]}...' failed initially and required reflexion. "
+                "Check tool arguments and permissions."
+            )
+        return lesson
+
+    @staticmethod
     def build_code_repair_message(state: AgentState, retry_count: int) -> str:
         classification = state.get("last_classification") or {}
         outcome = state.get("last_outcome") or {}
