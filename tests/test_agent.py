@@ -6,6 +6,7 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from app.core.agent import (
+    _build_execution_history_lesson,
     _build_execution_history_entry,
     create_agent_graph,
     repair_followup_node,
@@ -230,6 +231,27 @@ def test_build_execution_history_entry_captures_normalized_fields():
     assert entry["next_execution_hint"] == "repair"
     assert entry["classification"] == "retryable_runtime_error"
     assert entry["next_action"] == "retry_same_worker"
+
+
+def test_build_execution_history_lesson_uses_latest_normalized_entry():
+    lesson = _build_execution_history_lesson(
+        {
+            "messages": [HumanMessage(content="帮我修一下这个 Python 错误")],
+            "execution_history": [
+                {
+                    "worker": "code_worker",
+                    "tool_name": "python_sandbox",
+                    "classification": "retryable_runtime_error",
+                    "next_execution_hint": "repair",
+                }
+            ],
+        }
+    )
+
+    assert lesson is not None
+    assert "worker=code_worker" in lesson
+    assert "tool=python_sandbox" in lesson
+    assert "classification=retryable_runtime_error" in lesson
 
 
 @pytest.mark.asyncio

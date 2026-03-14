@@ -154,6 +154,33 @@ def _build_execution_history_entry(
     }
 
 
+def _build_execution_history_lesson(state: AgentState) -> str | None:
+    execution_history = state.get("execution_history") or []
+    if not execution_history:
+        return None
+
+    latest = execution_history[-1]
+    category = latest.get("classification") or "unknown"
+    worker = latest.get("worker") or "unknown"
+    tool_name = latest.get("tool_name") or "unknown_tool"
+    next_hint = latest.get("next_execution_hint") or "unknown"
+
+    query = ""
+    for message in state.get("messages", []):
+        if isinstance(message, HumanMessage):
+            query = str(message.content)[:50]
+            break
+
+    if not query:
+        query = "recent task"
+
+    return (
+        f"ROUTING LESSON: Query '{query}...' reached worker={worker}, tool={tool_name}, "
+        f"classification={category}, next_hint={next_hint}. "
+        "Prefer similar routing and recovery handling for comparable requests."
+    )
+
+
 def _build_code_repair_message(state: AgentState, retry_count: int) -> str:
     classification = state.get("last_classification") or {}
     outcome = state.get("last_outcome") or {}
@@ -508,10 +535,10 @@ async def experience_replay_node(state: AgentState):
     try:
         from app.core.memory import memory_manager
 
-        lesson = None
+        lesson = _build_execution_history_lesson(state)
         if search_count > 0:
             lesson = f"ROUTING LESSON: Query '{messages[0].content[:50]}...' required additional tool searching. Ensure prerequisite discovery tools are loaded."
-        elif retry_count > 0:
+        elif retry_count > 0 and lesson is None:
             lesson = f"ROUTING LESSON: Query '{messages[0].content[:50]}...' failed initially and required reflexion. Check tool arguments and permissions."
 
         if lesson:
