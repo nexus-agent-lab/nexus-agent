@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from app.core.tool_catalog import ToolCatalog
+from app.core.worker_graphs.code_worker import prepare_code_worker_tools
 from app.core.worker_graphs.skill_worker import prepare_skill_worker_tools
 
 
@@ -109,3 +110,87 @@ def test_skill_worker_prepare_prefers_verify_and_read_tools():
     assert "check_device_state" in names
     assert "read_entity_state" in names
     assert "turn_on_light" not in names
+
+
+def test_skill_worker_prepare_uses_next_execution_hint_for_verify():
+    tools = [
+        _tool("get_current_time"),
+        _tool("check_page_state", {"operation_kind": "verify", "side_effect": False}),
+        _tool("read_page_text", {"operation_kind": "read", "side_effect": False}),
+        _tool("browser_click", {"operation_kind": "act", "side_effect": True}),
+    ]
+
+    filtered = prepare_skill_worker_tools(
+        {
+            "selected_worker": "skill_worker",
+            "next_execution_hint": "verify",
+        },
+        tools,
+        matched_skills=[],
+    )
+    names = [tool.name for tool in filtered]
+
+    assert "check_page_state" in names
+    assert "read_page_text" in names
+    assert "browser_click" not in names
+
+
+def test_skill_worker_prepare_uses_next_execution_hint_for_discovery():
+    tools = [
+        _tool("get_current_time"),
+        _tool("list_tabs", {"operation_kind": "discover", "side_effect": False}),
+        _tool("read_tab", {"operation_kind": "read", "side_effect": False}),
+        _tool("close_tab", {"operation_kind": "act", "side_effect": True}),
+    ]
+
+    filtered = prepare_skill_worker_tools(
+        {
+            "selected_worker": "skill_worker",
+            "next_execution_hint": "discover",
+        },
+        tools,
+        matched_skills=[],
+    )
+    names = [tool.name for tool in filtered]
+
+    assert "list_tabs" in names
+    assert "read_tab" in names
+    assert "close_tab" not in names
+
+
+def test_code_worker_prepare_uses_next_execution_hint_for_verify():
+    tools = [
+        _tool("python_sandbox", {"preferred_worker": "code_worker"}),
+        _tool("get_current_time"),
+        _tool("read_artifact", {"operation_kind": "read", "side_effect": False}),
+        _tool("verify_result", {"operation_kind": "verify", "side_effect": False}),
+    ]
+
+    filtered = prepare_code_worker_tools(
+        {
+            "selected_worker": "code_worker",
+            "next_execution_hint": "verify",
+        },
+        tools,
+    )
+    names = [tool.name for tool in filtered]
+
+    assert "verify_result" in names
+    assert "read_artifact" in names
+
+
+def test_code_worker_prepare_uses_next_execution_hint_for_report():
+    tools = [
+        _tool("python_sandbox", {"preferred_worker": "code_worker"}),
+        _tool("get_current_time"),
+    ]
+
+    filtered = prepare_code_worker_tools(
+        {
+            "selected_worker": "code_worker",
+            "next_execution_hint": "report",
+        },
+        tools,
+    )
+
+    assert filtered == []

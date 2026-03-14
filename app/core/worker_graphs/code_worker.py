@@ -7,6 +7,7 @@ from app.core.state import AgentState
 from app.core.tool_catalog import ToolCatalog
 from app.core.tool_executor import ToolExecutionOutcome, build_tool_fingerprint
 from app.core.tool_metadata import get_tool_metadata
+from app.core.tool_router import CORE_TOOL_NAMES
 from app.core.trace_logger import trace_logger
 from app.core.worker_graphs.shared_execution import ToolExecutionPatch, execute_tool_call_generic
 
@@ -19,7 +20,39 @@ def prepare_code_worker_tools(state: AgentState, available_tools: list[Any]) -> 
     leaving it inside the monolithic agent node.
     """
     catalog = ToolCatalog(available_tools)
-    tools = catalog.filter_for_worker("code_worker", matched_skills=[])
+    next_hint = state.get("next_execution_hint")
+    if next_hint == "verify":
+        tools = [
+            tool
+            for tool in available_tools
+            if getattr(tool, "name", "") in CORE_TOOL_NAMES
+            or getattr(tool, "name", "") == "python_sandbox"
+            or (
+                get_tool_metadata(tool).get("operation_kind") in {"verify", "read"}
+                and not get_tool_metadata(tool).get("side_effect", False)
+            )
+        ]
+    else:
+        tools = catalog.filter_for_worker("code_worker", matched_skills=[])
+
+    if next_hint == "repair":
+        tools = [
+            tool
+            for tool in tools
+            if getattr(tool, "name", "") in CORE_TOOL_NAMES or getattr(tool, "name", "") == "python_sandbox"
+        ] or tools
+    elif next_hint == "verify":
+        filtered = []
+        for tool in tools:
+            metadata = get_tool_metadata(tool)
+            operation_kind = metadata.get("operation_kind")
+            if getattr(tool, "name", "") in CORE_TOOL_NAMES:
+                filtered.append(tool)
+            elif operation_kind in {"verify", "read"} and not metadata.get("side_effect", False):
+                filtered.append(tool)
+        tools = filtered or tools
+    elif next_hint == "report":
+        tools = []
 
     trace_logger.log_wire_event(
         "code_worker.prepare",
@@ -27,6 +60,7 @@ def prepare_code_worker_tools(state: AgentState, available_tools: list[Any]) -> 
         summary="Prepared code worker toolbelt.",
         details={
             "selected_worker": "code_worker",
+            "next_execution_hint": next_hint,
             "tool_count": len(tools),
             "tools": [getattr(tool, "name", str(tool)) for tool in tools],
         },
@@ -95,6 +129,7 @@ async def execute_code_worker_tool_call(
             outcome=outcome,
             classification=classification,
             execution_mode="code_blocked",
+            next_execution_hint="report",
         )
 
     trace_logger.log_wire_event(
@@ -107,7 +142,7 @@ async def execute_code_worker_tool_call(
             "fingerprint": fingerprint[:12],
         },
     )
-    return await execute_tool_call_generic(
+    execution_patch = await execute_tool_call_generic(
         state,
         tool_name=tool_name,
         tool_call_id=tool_call_id,
@@ -117,3 +152,59 @@ async def execute_code_worker_tool_call(
         trace_id=trace_id,
         execution_mode="code_execute",
     )
+    classification, next_execution_hint = _postprocess_code_classification(execution_patch.get("classification"))
+    execution_patch["classification"] = classification
+    if next_execution_hint:
+        execution_patch["next_execution_hint"] = next_execution_hint
+    return execution_patch
+
+
+def _postprocess_code_classification(
+    classification: ResultClassification | None,
+) -> tuple[ResultClassification, str | None]:
+    if classification is None:
+        return (
+            ResultClassification(
+                category="non_retryable_runtime_error",
+                retryable=False,
+                should_switch_worker=False,
+                requires_handoff=True,
+                user_facing_summary="Code execution did not return a usable result.",
+                debug_summary="Code worker did not receive a classification to post-process.",
+                suggested_next_action="handoff",
+            ),
+            "report",
+        )
+
+    category = classification.get("category")
+    next_action = classification.get("suggested_next_action")
+
+    if category == "success" and next_action == "complete":
+        return (
+            {
+                **classification,
+                "user_facing_summary": "Code execution finished and should be verified before completion.",
+                "suggested_next_action": "verify",
+            },
+            "verify",
+        )
+
+    if category == "retryable_runtime_error":
+        return classification, "repair"
+
+    if category == "retryable_upstream_error":
+        return classification, "retry"
+
+    if category in {"non_retryable_runtime_error", "verification_failed"} or next_action == "handoff":
+        return classification, "report"
+
+    if category in {"invalid_input", "permission_denied", "wrong_tool_or_domain"}:
+        return classification, "ask_user"
+
+    return classification, {
+        "verify": "verify",
+        "retry_same_worker": "repair",
+        "ask_user": "ask_user",
+        "handoff": "report",
+        "complete": "complete",
+    }.get(next_action)

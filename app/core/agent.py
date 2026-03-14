@@ -75,6 +75,39 @@ def _should_retry_classification(state: AgentState) -> bool:
     return False
 
 
+def _prefers_chinese(messages) -> bool:
+    for msg in reversed(messages or []):
+        if isinstance(msg, HumanMessage):
+            content = str(msg.content or "")
+            return any("\u4e00" <= ch <= "\u9fff" for ch in content)
+    return False
+
+
+def _build_report_message(state: AgentState) -> str:
+    classification = state.get("last_classification") or {}
+    outcome = state.get("last_outcome") or {}
+    summary = classification.get("user_facing_summary") or "Execution failed and needs intervention."
+    detail = classification.get("debug_summary") or outcome.get("raw_text") or "No additional error details were captured."
+
+    if len(detail) > 300:
+        detail = detail[:300] + "..."
+
+    if _prefers_chinese(state.get("messages", [])):
+        return (
+            f"本次执行未能完成。\n"
+            f"原因：{summary}\n"
+            f"细节：{detail}\n"
+            f"下一步：请检查输入、权限或外部系统状态后再继续。"
+        )
+
+    return (
+        f"The execution could not be completed.\n"
+        f"Reason: {summary}\n"
+        f"Details: {detail}\n"
+        f"Next step: check the inputs, permissions, or external system state before trying again."
+    )
+
+
 async def _persist_message(session_id: int, message):
     """Persist a single message without adding graph steps."""
     if not session_id or message is None:
@@ -234,11 +267,18 @@ async def reflexion_node(state: AgentState):
     return {"messages": [reflexion_msg], "retry_count": retry_count, "reflexions": [critique]}
 
 
-def should_reflect(state: AgentState) -> Literal["reflexion", "agent", "__end__"]:
+def should_reflect(state: AgentState) -> Literal["reflexion", "agent", "report", "__end__"]:
     messages = state["messages"]
     last_message = messages[-1]
     selected_worker = state.get("selected_worker")
     attempts_by_worker = state.get("attempts_by_worker") or {}
+    next_execution_hint = state.get("next_execution_hint")
+
+    if selected_worker == "code_worker" and next_execution_hint == "report":
+        return "report"
+
+    if selected_worker == "code_worker" and next_execution_hint in {"verify", "ask_user", "complete"}:
+        return "agent"
 
     if selected_worker == "code_worker" and attempts_by_worker.get("code_worker", 0) >= 3:
         return "agent"
@@ -261,16 +301,64 @@ def should_reflect(state: AgentState) -> Literal["reflexion", "agent", "__end__"
     return "agent"
 
 
-def should_continue(state: AgentState) -> Literal["tools", "agent", "__end__"]:
+def should_continue(state: AgentState) -> Literal["tools", "agent", "report", "__end__"]:
     messages = state["messages"]
     last_message = messages[-1]
     if last_message.tool_calls:
         return "tools"
+    if state.get("selected_worker") == "code_worker" and state.get("next_execution_hint") == "report":
+        return "report"
     if state.get("verification_status") == "failed" and state.get("llm_call_count", 0) < 2:
         return "agent"
     if state.get("verification_status") == "required" and state.get("llm_call_count", 0) < 3:
         return "agent"
     return "__end__"
+
+
+async def report_failure_node(state: AgentState):
+    trace_logger.log_wire_event(
+        "report_failure",
+        trace_id=str(state.get("trace_id", "")),
+        summary="Rendering deterministic failure report.",
+        details={
+            "selected_worker": state.get("selected_worker"),
+            "next_execution_hint": state.get("next_execution_hint"),
+            "classification": (state.get("last_classification") or {}).get("category"),
+        },
+    )
+    return {
+        "messages": [AIMessage(content=_build_report_message(state))],
+        "verification_status": "failed",
+        "next_execution_hint": "report",
+    }
+
+
+async def reviewer_gate_node(state: AgentState):
+    classification = state.get("last_classification") or {}
+    trace_logger.log_wire_event(
+        "reviewer_gate",
+        trace_id=str(state.get("trace_id", "")),
+        summary="Evaluating reviewer gate transition.",
+        details={
+            "selected_worker": state.get("selected_worker"),
+            "verification_status": state.get("verification_status"),
+            "next_execution_hint": state.get("next_execution_hint"),
+            "classification": classification.get("category"),
+            "next_action": classification.get("suggested_next_action"),
+        },
+    )
+    return {}
+
+
+def route_after_review(state: AgentState) -> Literal["reflexion", "agent", "report", "__end__"]:
+    verification_status = state.get("verification_status")
+    next_execution_hint = state.get("next_execution_hint")
+
+    if next_execution_hint == "report":
+        return "report"
+    if verification_status in {"required", "failed"}:
+        return "agent"
+    return should_reflect(state)
 
 
 async def experience_replay_node(state: AgentState):
@@ -410,6 +498,24 @@ def create_agent_graph(tools: list):
                         "VERIFICATION FAILED: Do not continue trying tools. "
                         "Explain briefly what failed, why it could not be verified, "
                         "and what user intervention or next step is needed."
+                    )
+                )
+            )
+        if state.get("selected_worker") == "code_worker" and state.get("next_execution_hint") == "report":
+            messages.append(
+                SystemMessage(
+                    content=(
+                        "CODE REPORT MODE: Do not execute more code or call more tools. "
+                        "Summarize the failure, include the most relevant error, and explain the next manual step."
+                    )
+                )
+            )
+        if state.get("selected_worker") == "code_worker" and state.get("next_execution_hint") == "repair":
+            messages.append(
+                SystemMessage(
+                    content=(
+                        "CODE REPAIR MODE: Propose a materially different fix from the previous failed attempt. "
+                        "Do not rerun the same code unchanged. Prefer using python_sandbox only after you change the approach."
                     )
                 )
             )
@@ -618,6 +724,7 @@ def create_agent_graph(tools: list):
                 details={
                     "selected_worker": selected_worker,
                     "execution_mode": worker_decision.get("execution_mode"),
+                    "next_execution_hint": state.get("next_execution_hint"),
                     "selected_skill": state.get("selected_skill")
                     or (candidate_skills[0] if candidate_skills else None),
                     "tool_count": len(current_tools),
@@ -701,6 +808,7 @@ def create_agent_graph(tools: list):
         outputs = []
         last_outcome = None
         last_classification = None
+        next_execution_hint = state.get("next_execution_hint")
         attempts_by_worker = dict(state.get("attempts_by_worker") or {})
         attempts_by_tool = dict(state.get("attempts_by_tool") or {})
         blocked_fingerprints = list(state.get("blocked_fingerprints") or [])
@@ -760,6 +868,7 @@ def create_agent_graph(tools: list):
 
             last_outcome = execution_patch.get("outcome")
             last_classification = execution_patch.get("classification")
+            next_execution_hint = execution_patch.get("next_execution_hint", next_execution_hint)
 
             if last_outcome:
                 selected_worker = state.get("selected_worker") or "chat_worker"
@@ -828,6 +937,7 @@ def create_agent_graph(tools: list):
                         "next_action": last_classification.get("suggested_next_action")
                         if last_classification
                         else None,
+                        "next_execution_hint": next_execution_hint,
                         "fingerprint": (last_outcome.get("fingerprint") or "")[:12],
                     },
                 )
@@ -845,6 +955,7 @@ def create_agent_graph(tools: list):
             "verification_status": review_decision.get("verification_status")
             if last_outcome
             else state.get("verification_status"),
+            "next_execution_hint": next_execution_hint,
             "attempts_by_worker": attempts_by_worker,
             "attempts_by_tool": attempts_by_tool,
             "blocked_fingerprints": blocked_fingerprints,
@@ -855,7 +966,9 @@ def create_agent_graph(tools: list):
     workflow.add_node("retrieve_memories", retrieve_memories)
     workflow.add_node("agent", call_model)
     workflow.add_node("tools", tool_node_with_permissions)
+    workflow.add_node("reviewer_gate", reviewer_gate_node)
     workflow.add_node("reflexion", reflexion_node)
+    workflow.add_node("report_failure", report_failure_node)
     workflow.add_node("experience_replay", experience_replay_node)
 
     workflow.set_entry_point("retrieve_memories")
@@ -863,10 +976,16 @@ def create_agent_graph(tools: list):
     workflow.add_conditional_edges(
         "agent",
         should_continue,
-        {"tools": "tools", "agent": "agent", "__end__": "experience_replay"},
+        {"tools": "tools", "agent": "agent", "report": "report_failure", "__end__": "experience_replay"},
     )
+    workflow.add_edge("report_failure", "experience_replay")
     workflow.add_edge("experience_replay", "__end__")
-    workflow.add_conditional_edges("tools", should_reflect, {"reflexion": "reflexion", "agent": "agent"})
+    workflow.add_edge("tools", "reviewer_gate")
+    workflow.add_conditional_edges(
+        "reviewer_gate",
+        route_after_review,
+        {"reflexion": "reflexion", "agent": "agent", "report": "report_failure"},
+    )
     workflow.add_edge("reflexion", "agent")
 
     return workflow.compile()

@@ -3,9 +3,15 @@ Tests for the agent graph and decision-making logic.
 """
 
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from app.core.agent import create_agent_graph, should_continue
+from app.core.agent import (
+    create_agent_graph,
+    report_failure_node,
+    route_after_review,
+    should_continue,
+    should_reflect,
+)
 from app.models.user import User
 
 
@@ -107,3 +113,70 @@ def test_should_continue_ends_after_failed_handoff_report():
     }
 
     assert should_continue(state) == "__end__"
+
+
+def test_should_continue_routes_code_worker_report_to_report_node():
+    state = {
+        "messages": [AIMessage(content="Need report", tool_calls=[])],
+        "selected_worker": "code_worker",
+        "next_execution_hint": "report",
+    }
+
+    assert should_continue(state) == "report"
+
+
+def test_should_reflect_routes_code_worker_report_to_report_node():
+    state = {
+        "messages": [ToolMessage(content="Execution failed", name="python_sandbox", tool_call_id="call-report")],
+        "selected_worker": "code_worker",
+        "next_execution_hint": "report",
+    }
+
+    assert should_reflect(state) == "report"
+
+
+@pytest.mark.asyncio
+async def test_report_failure_node_renders_deterministic_message():
+    result = await report_failure_node(
+        {
+            "messages": [HumanMessage(content="执行失败了怎么回事？")],
+            "selected_worker": "code_worker",
+            "next_execution_hint": "report",
+            "last_classification": {
+                "category": "non_retryable_runtime_error",
+                "user_facing_summary": "Code execution failed repeatedly and needs intervention.",
+                "debug_summary": "Traceback: ValueError('boom')",
+            },
+        }
+    )
+
+    assert "messages" in result
+    assert "执行未能完成" in result["messages"][0].content or "本次执行未能完成" in result["messages"][0].content
+    assert result["verification_status"] == "failed"
+
+
+def test_route_after_review_routes_required_back_to_agent():
+    state = {
+        "messages": [ToolMessage(content="ok", name="verify_result", tool_call_id="call-1")],
+        "verification_status": "required",
+    }
+
+    assert route_after_review(state) == "agent"
+
+
+def test_route_after_review_routes_failed_back_to_agent():
+    state = {
+        "messages": [ToolMessage(content="verify failed", name="verify_result", tool_call_id="call-2")],
+        "verification_status": "failed",
+    }
+
+    assert route_after_review(state) == "agent"
+
+
+def test_route_after_review_routes_report_to_report_node():
+    state = {
+        "messages": [ToolMessage(content="blocked", name="python_sandbox", tool_call_id="call-3")],
+        "next_execution_hint": "report",
+    }
+
+    assert route_after_review(state) == "report"

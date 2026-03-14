@@ -42,3 +42,19 @@ async def test_reviewer_worker_marks_handoff_as_failed():
     )
 
     assert result["verification_status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_reviewer_worker_marks_verification_failed_as_failed():
+    result = await run_reviewer_worker_step(
+        {
+            "last_classification": {
+                "category": "verification_failed",
+                "suggested_next_action": "ask_user",
+                "requires_handoff": False,
+            },
+            "execution_mode": "skill_verify",
+        }
+    )
+
+    assert result["verification_status"] == "failed"

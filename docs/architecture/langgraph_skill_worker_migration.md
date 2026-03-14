@@ -71,9 +71,41 @@ Today the runtime flow is approximately:
 6.  execute tools through the shared tool node
 7.  normalize the tool result into `ToolExecutionOutcome`
 8.  classify the result into `ResultClassification`
-9.  decide whether to continue, reflect, or recover using compatibility logic
+9.  run a compatibility-stage reviewer pass that produces `verification_status`
+10. decide whether to continue, reflect, verify, report failure, or recover using compatibility logic
 
 This means the migration is already structurally meaningful, but it is **not yet the final supervisor + worker-subgraph architecture**.
+
+### Current Reviewer Gate Semantics
+
+The current branch already has a lightweight reviewer gate, but it is still a compatibility implementation rather than a final hard graph boundary.
+
+Runtime behavior today:
+
+- `reviewer_worker` maps the latest execution state into one of:
+  - `passed`
+  - `required`
+  - `pending`
+  - `failed`
+- `required` is used when the current path still needs explicit verification, such as:
+  - `execution_mode == "skill_verify"`
+  - `last_classification.suggested_next_action == "verify"`
+- `passed` is used when the result is successful and the suggested next action is completion.
+- `failed` is used when the result already implies handoff or unverifiable failure.
+
+Compatibility-stage control rules:
+
+- `verification_status == "required"`
+  - the main agent gets another pass instead of ending immediately
+  - a system reminder is injected telling the model to verify before finalizing
+- `verification_status == "failed"`
+  - the main agent gets one report-only pass
+  - tools are intentionally removed so the model cannot keep retrying side-effect calls
+  - after that pass, the flow ends instead of looping
+- `verification_status == "passed"`
+  - the flow can end normally
+
+This is intentionally stricter than the old prompt-only pattern, but it is still an intermediate step. The final architecture should promote reviewer behavior into an explicit graph gate with dedicated pass/fail/handoff edges.
 
 ---
 
@@ -814,6 +846,19 @@ This worker should be mandatory for:
 - code execution tasks
 - anything with `requires_verification=True`
 
+Current compatibility implementation:
+
+- produces `verification_status` rather than owning the final branch directly
+- already influences main-loop continuation rules
+- can force a verification retry pass
+- can force a report-only failed path with tools disabled
+
+Target end state:
+
+- reviewer becomes a true graph gate rather than a compatibility hook
+- `passed`, `required`, and `failed` should map to explicit graph transitions
+- repeated `failed` outcomes should transition into a real handoff/report node rather than relying on loop counters in the main agent
+
 ---
 
 ## 12. Recovery Rules
@@ -972,13 +1017,27 @@ Goal:
 
 - Enforce real stop conditions and feed normalized failures into Designer.
 
-Status: `Not started`
+Status: `In progress`
 
 Tasks:
 
 1. Make reviewer mandatory for risky and multi-step flows.
 2. Persist normalized classification data.
 3. Upgrade Designer to analyze shared classification categories.
+
+Completed in branch:
+
+- compatibility-stage reviewer worker added
+- reviewer state now produces `passed / required / pending / failed`
+- main agent continuation logic now reacts to reviewer state
+- failed verification now gets a report-only pass with tools disabled
+
+Still remaining:
+
+- make reviewer a mandatory graph-level gate rather than a compatibility hook
+- replace loop-count-based reviewer handling with explicit graph edges
+- persist normalized reviewer/classification outcomes for offline analysis
+- wire Designer to consume shared runtime classification categories
 
 ---
 
@@ -1006,12 +1065,12 @@ Tasks:
 
 - converting worker prepare hooks into real worker execution paths
 - moving from shared execution to worker-specific execution semantics
+- compatibility-stage reviewer enforcement and failed-path reporting
 - expanding explicit metadata coverage
 - reducing core fallback inference logic
 
 ### Not Started
 
-- mandatory reviewer gate
 - graph-native retry budgets and stop conditions
 - true handoff node for repeated non-recoverable failures
 - designer feedback loop driven by normalized runtime categories
@@ -1026,6 +1085,9 @@ Tasks:
     - `code_worker` should own execute/repair/verify behavior
 
 2.  Promote `reviewer_worker` from context hook to enforced gate.
+    - keep the current `verification_status` contract
+    - replace compatibility loop handling with explicit graph edges
+    - add a dedicated handoff/report node for failed verification
 
 3.  Push metadata authority outward.
     - prefer skill metadata

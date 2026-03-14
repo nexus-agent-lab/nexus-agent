@@ -20,6 +20,7 @@ class ToolExecutionPatch(TypedDict, total=False):
     outcome: ToolExecutionOutcome
     classification: ResultClassification
     execution_mode: str
+    next_execution_hint: str
 
 
 def _unwrap_optional_annotation(annotation):
