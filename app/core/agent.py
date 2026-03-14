@@ -128,6 +128,32 @@ def _build_verify_context(state: AgentState) -> dict[str, str]:
     }
 
 
+def _build_execution_history_entry(
+    *,
+    tool_name: str,
+    selected_worker: str | None,
+    selected_skill: str | None,
+    execution_mode: str | None,
+    next_execution_hint: str | None,
+    outcome: dict | None,
+    classification: dict | None,
+) -> dict:
+    outcome = outcome or {}
+    classification = classification or {}
+    return {
+        "tool_name": tool_name,
+        "worker": selected_worker,
+        "skill": selected_skill,
+        "execution_mode": execution_mode,
+        "next_execution_hint": next_execution_hint,
+        "status": outcome.get("status"),
+        "fingerprint": outcome.get("fingerprint"),
+        "classification": classification.get("category"),
+        "next_action": classification.get("suggested_next_action"),
+        "requires_handoff": classification.get("requires_handoff"),
+    }
+
+
 async def _persist_message(session_id: int, message):
     """Persist a single message without adding graph steps."""
     if not session_id or message is None:
@@ -863,6 +889,7 @@ def create_agent_graph(tools: list):
         last_outcome = None
         last_classification = None
         next_execution_hint = state.get("next_execution_hint")
+        execution_history = list(state.get("execution_history") or [])
         attempts_by_worker = dict(state.get("attempts_by_worker") or {})
         attempts_by_tool = dict(state.get("attempts_by_tool") or {})
         blocked_fingerprints = list(state.get("blocked_fingerprints") or [])
@@ -973,6 +1000,17 @@ def create_agent_graph(tools: list):
                         )
 
             if last_outcome:
+                execution_history.append(
+                    _build_execution_history_entry(
+                        tool_name=tool_name,
+                        selected_worker=state.get("selected_worker"),
+                        selected_skill=state.get("selected_skill"),
+                        execution_mode=execution_patch.get("execution_mode"),
+                        next_execution_hint=next_execution_hint,
+                        outcome=last_outcome,
+                        classification=last_classification,
+                    )
+                )
                 review_decision = await WorkerDispatcher.prepare_review(
                     {**state, "last_classification": last_classification}
                 )
@@ -1005,6 +1043,7 @@ def create_agent_graph(tools: list):
             "messages": outputs,
             "last_outcome": last_outcome,
             "last_classification": last_classification,
+            "execution_history": execution_history,
             "execution_mode": execution_patch.get("execution_mode") if last_outcome else state.get("execution_mode"),
             "verification_status": review_decision.get("verification_status")
             if last_outcome

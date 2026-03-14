@@ -6,6 +6,7 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from app.core.agent import (
+    _build_execution_history_entry,
     create_agent_graph,
     report_failure_node,
     route_after_review,
@@ -191,6 +192,32 @@ def test_route_after_review_routes_code_worker_failed_to_report_node():
     }
 
     assert route_after_review(state) == "report"
+
+
+def test_build_execution_history_entry_captures_normalized_fields():
+    entry = _build_execution_history_entry(
+        tool_name="python_sandbox",
+        selected_worker="code_worker",
+        selected_skill=None,
+        execution_mode="code_execute",
+        next_execution_hint="repair",
+        outcome={
+            "status": "success",
+            "fingerprint": "abc123",
+        },
+        classification={
+            "category": "retryable_runtime_error",
+            "suggested_next_action": "retry_same_worker",
+            "requires_handoff": False,
+        },
+    )
+
+    assert entry["tool_name"] == "python_sandbox"
+    assert entry["worker"] == "code_worker"
+    assert entry["execution_mode"] == "code_execute"
+    assert entry["next_execution_hint"] == "repair"
+    assert entry["classification"] == "retryable_runtime_error"
+    assert entry["next_action"] == "retry_same_worker"
 
 
 @pytest.mark.asyncio
