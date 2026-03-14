@@ -103,6 +103,14 @@ Current anti-goals:
 - do not assume unrestricted third-party execution is acceptable
 - do not overbuild enterprise features before real onboarding signals exist
 
+### LangGraph Branch Status
+
+The `codex/langgraph-migration-plan` line should now be treated as a **usable execution baseline** rather than an open-ended refactor track.
+
+- The runtime already has worker-aware routing, normalized tool/reviewer outcomes, explicit `verify/report/clarify/repair` follow-up paths, and dispatcher-owned recovery semantics.
+- This is enough to support near-term P0 scenario validation, especially around Home Assistant reliability and governed execution.
+- Further work on this line should be driven by real P0 needs. Do not continue pure graph/subgraph refactoring unless it directly improves Home Assistant reliability, permissions, binding/login friction, or mobile/message usability.
+
 ---
 
 ## 6. Near-Term Roadmap

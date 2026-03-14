@@ -350,3 +350,161 @@ async def test_reviewer_gate_node_prepares_review_state(mocker):
 
     assert result["verification_status"] == "required"
     assert result["execution_history"][-1]["review_snapshot"]["verification_status"] == "required"
+
+
+@pytest.mark.asyncio
+async def test_review_path_verify_followup_stays_explicit(mocker):
+    mocker.patch(
+        "app.core.agent.WorkerDispatcher.prepare_review",
+        return_value={
+            "verification_status": "required",
+            "execution_mode": "review_prepare",
+            "verify_context": {
+                "reason": "Confirm the light changed state",
+                "worker": "skill_worker",
+                "skill": "homeassistant",
+                "category": "success",
+                "execution_mode": "skill_act",
+            },
+            "review_snapshot": {
+                "verification_status": "required",
+                "classification": "success",
+                "next_action": "verify",
+            },
+        },
+    )
+
+    review_patch = await reviewer_gate_node(
+        {
+            "trace_id": "trace-verify",
+            "selected_worker": "skill_worker",
+            "selected_skill": "homeassistant",
+            "next_execution_hint": "verify",
+            "last_outcome": {"status": "success"},
+            "last_classification": {
+                "category": "success",
+                "suggested_next_action": "verify",
+            },
+            "execution_history": [
+                {
+                    "tool_name": "call_service_tool",
+                    "worker": "skill_worker",
+                    "classification": "success",
+                    "next_execution_hint": "verify",
+                }
+            ],
+        }
+    )
+
+    route = route_after_review(
+        {
+            "messages": [ToolMessage(content="ok", name="call_service_tool", tool_call_id="call-verify-path")],
+            "selected_worker": "skill_worker",
+            "selected_skill": "homeassistant",
+            "next_execution_hint": "verify",
+            "last_classification": {
+                "category": "success",
+                "suggested_next_action": "verify",
+            },
+            "verification_status": review_patch["verification_status"],
+            "execution_history": review_patch["execution_history"],
+        }
+    )
+
+    verify_patch = await verify_followup_node(
+        {
+            "selected_worker": "skill_worker",
+            "selected_skill": "homeassistant",
+            "verification_status": review_patch["verification_status"],
+            "next_execution_hint": "verify",
+            "execution_mode": "skill_act",
+            "last_classification": {
+                "category": "success",
+                "user_facing_summary": "Action executed and should be verified before completion.",
+                "debug_summary": "Light turn_on returned successfully",
+            },
+        }
+    )
+
+    assert route == "verify"
+    assert verify_patch["execution_mode"] == "verify_followup"
+    assert verify_patch["verify_context"]["worker"] == "skill_worker"
+
+
+@pytest.mark.asyncio
+async def test_review_path_failed_handoff_reaches_report_failure(mocker):
+    mocker.patch(
+        "app.core.agent.WorkerDispatcher.prepare_review",
+        return_value={
+            "verification_status": "failed",
+            "execution_mode": "review_prepare",
+            "verify_context": None,
+            "review_snapshot": {
+                "verification_status": "failed",
+                "classification": "unsafe_state",
+                "next_action": "handoff",
+            },
+        },
+    )
+
+    review_patch = await reviewer_gate_node(
+        {
+            "trace_id": "trace-report",
+            "selected_worker": "skill_worker",
+            "selected_skill": "homeassistant",
+            "next_execution_hint": "report",
+            "last_outcome": {"status": "error"},
+            "last_classification": {
+                "category": "unsafe_state",
+                "requires_handoff": True,
+                "suggested_next_action": "handoff",
+                "user_facing_summary": "Device is in an unsafe state.",
+                "debug_summary": "HVAC safety interlock active",
+            },
+            "execution_history": [
+                {
+                    "tool_name": "call_service_tool",
+                    "worker": "skill_worker",
+                    "classification": "unsafe_state",
+                    "next_execution_hint": "report",
+                }
+            ],
+            "messages": [HumanMessage(content="关闭空调")],
+        }
+    )
+
+    route = route_after_review(
+        {
+            "messages": [ToolMessage(content="unsafe", name="call_service_tool", tool_call_id="call-report-path")],
+            "selected_worker": "skill_worker",
+            "selected_skill": "homeassistant",
+            "next_execution_hint": "report",
+            "last_classification": {
+                "category": "unsafe_state",
+                "requires_handoff": True,
+                "suggested_next_action": "handoff",
+                "user_facing_summary": "Device is in an unsafe state.",
+                "debug_summary": "HVAC safety interlock active",
+            },
+            "verification_status": review_patch["verification_status"],
+            "execution_history": review_patch["execution_history"],
+        }
+    )
+
+    report_patch = await report_failure_node(
+        {
+            "messages": [HumanMessage(content="关闭空调")],
+            "selected_worker": "skill_worker",
+            "selected_skill": "homeassistant",
+            "next_execution_hint": "report",
+            "last_classification": {
+                "category": "unsafe_state",
+                "user_facing_summary": "Device is in an unsafe state.",
+                "debug_summary": "HVAC safety interlock active",
+            },
+        }
+    )
+
+    assert route == "report"
+    assert report_patch["verification_status"] == "failed"
+    assert "未能完成" in report_patch["messages"][0].content

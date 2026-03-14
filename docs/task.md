@@ -1,5 +1,25 @@
 # Task: Skill System Architecture Implementation ✅
 
+## Current Priority Queue (Post LangGraph Baseline)
+- [ ] `P0-1` Home Assistant reliability validation on top of the LangGraph baseline
+  - [ ] Validate discovery flow
+  - [ ] Validate single-device control flow
+  - [ ] Validate state-query flow
+  - [ ] Validate permission-denied flow
+  - [ ] Validate entity-not-found / abnormal-state flow
+  - [ ] Produce a failure-category checklist for the highest-impact daily-use problems
+- [ ] `P0-2` Binding / login / permission UX tightening
+  - [ ] Review bind-token friction for non-technical users
+  - [ ] Review login fallback and identity-recognition UX
+  - [ ] Review permission-denied messaging for clarity and recoverability
+- [ ] `P0-3` Telegram + Web fallback experience tightening
+  - [ ] Improve unbound-user onboarding guidance
+  - [ ] Improve first-run bound-user flow
+  - [ ] Verify HA core loop stability in message-first usage
+- [ ] `P1` MCP/skill onboarding standards
+  - [ ] Define required metadata / routing hints for new MCP + skill integrations
+  - [ ] Define validation checklist for future integrations under the current worker architecture
+
 ## Phase 1: Skills Directory ✅
 - [x] Create `skills/` directory structure
 - [x] Create `_template.md` with comprehensive format

@@ -54,7 +54,7 @@ The project is currently in a **compatibility-stage migration**:
 
 - `tool_node_with_permissions` is still the shared execution node for all workers
 - `skill_worker` and `code_worker` are not yet full execution subgraphs
-- `reviewer_worker` is still a compatibility hook, not a hard gate
+- `reviewer_worker` is already on an explicit graph path, but it is not yet a fully graph-native hard gate
 - retry budgets are not yet enforced by worker-native graph transitions
 - MCP-registered tools do not yet all provide explicit metadata under the new contract
 - fallback `_infer_*` helpers still exist and should shrink further over time
@@ -71,8 +71,8 @@ Today the runtime flow is approximately:
 6.  execute tools through the shared tool node
 7.  normalize the tool result into `ToolExecutionOutcome`
 8.  classify the result into `ResultClassification`
-9.  run a compatibility-stage reviewer pass that produces `verification_status`
-10. decide whether to continue, reflect, verify, report failure, or recover using compatibility logic
+9.  run an explicit `reviewer_gate` step that produces `verification_status`
+10. decide whether to continue, reflect, verify, report failure, or recover using dispatcher-owned compatibility logic
 
 This means the migration is already structurally meaningful, but it is **not yet the final supervisor + worker-subgraph architecture**.
 
@@ -107,7 +107,7 @@ Compatibility-stage control rules:
 - `verification_status == "passed"`
   - the flow can end normally
 
-This is intentionally stricter than the old prompt-only pattern, but it is still an intermediate step. The final architecture should promote reviewer behavior into an explicit graph gate with dedicated pass/fail/handoff edges.
+This is intentionally stricter than the old prompt-only pattern, but it is still an intermediate step. The reviewer now sits on an explicit graph path and owns review-state preparation, but the final architecture should still promote it into a fully graph-native gate with dedicated pass/fail/handoff edges.
 
 ---
 
@@ -1085,6 +1085,32 @@ To close this migration cleanly, the remaining work is intentionally compressed 
    - make reviewer behavior fully graph-native and mandatory for risky flows
    - persist normalized runtime/reviewer outcomes in a form that offline analysis can consume
    - wire Designer to shared classification and execution-history data so prompt/metadata tuning uses the same runtime vocabulary
+
+### Merge-Ready / Stop Here
+
+This branch should now be treated as a **usable LangGraph baseline**, not as an invitation to continue architecture-purity work indefinitely.
+
+What this branch has already solved:
+
+- intent routing is no longer purely linear or prompt-only
+- worker-aware toolbelt narrowing is active
+- tool outcomes and reviewer outcomes are normalized
+- repeated code failures now have bounded repair/report handling
+- verification, report, clarify, and repair all exist as explicit graph steps
+- reviewer state is now prepared inside `reviewer_gate` and written back into execution history
+
+What this branch is intentionally **not** trying to finish before merge:
+
+- full `skill_worker` / `code_worker` independent subgraphs
+- full Designer closed loop
+- complete removal of every compatibility-era edge or fallback
+- broad new MCP/browser/platform expansion
+
+Recommended next direction after this stop line:
+
+1. `P0-1` Home Assistant reliability validation using this branch as the runtime baseline.
+2. `P0-2` binding / login / permission friction reduction for non-technical users.
+3. `P0-3` Telegram + Web fallback experience tightening before exploring new family-facing channels.
 
 ---
 
