@@ -403,6 +403,10 @@ def test_build_execution_history_lesson_uses_latest_normalized_entry():
                     "classification": "retryable_runtime_error",
                     "next_execution_hint": "repair",
                     "verification_status": "pending",
+                    "review_snapshot": {
+                        "next_action": "retry_same_worker",
+                        "verify_reason": "Confirm the repaired code produces the expected output",
+                    },
                 }
             ],
         }
@@ -413,6 +417,8 @@ def test_build_execution_history_lesson_uses_latest_normalized_entry():
     assert "tool=python_sandbox" in lesson
     assert "classification=retryable_runtime_error" in lesson
     assert "verification=pending" in lesson
+    assert "review_next_action=retry_same_worker" in lesson
+    assert "Reviewer note: Confirm the repaired code produces the expected output" in lesson
 
 
 def test_build_code_repair_message_uses_latest_failure_context():

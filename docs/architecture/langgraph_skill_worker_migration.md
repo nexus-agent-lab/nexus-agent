@@ -1053,7 +1053,8 @@ Completed in branch:
 - reviewer now requires verification for successful outcomes that still carry explicit verification/risk metadata
 - normalized `execution_history` is now tracked in state
 - `execution_history` entries now capture reviewer outcomes such as verification status and verify reason
-- `experience_replay` can now build lessons from normalized execution history
+- normalized reviewer snapshots are now attached to review decisions and execution history
+- `experience_replay` can now build lessons from normalized execution history and reviewer snapshots
 
 Still remaining:
 

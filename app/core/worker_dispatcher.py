@@ -200,6 +200,9 @@ class WorkerDispatcher:
         tool_name = latest.get("tool_name") or "unknown_tool"
         next_hint = latest.get("next_execution_hint") or "unknown"
         verification_status = latest.get("verification_status") or "unknown"
+        review_snapshot = latest.get("review_snapshot") or {}
+        review_next_action = review_snapshot.get("next_action") or "unknown"
+        verify_reason = review_snapshot.get("verify_reason")
 
         query = ""
         for message in state.get("messages", []):
@@ -210,11 +213,15 @@ class WorkerDispatcher:
         if not query:
             query = "recent task"
 
-        return (
+        lesson = (
             f"ROUTING LESSON: Query '{query}...' reached worker={worker}, tool={tool_name}, "
-            f"classification={category}, next_hint={next_hint}, verification={verification_status}. "
+            f"classification={category}, next_hint={next_hint}, verification={verification_status}, "
+            f"review_next_action={review_next_action}. "
             "Prefer similar routing and recovery handling for comparable requests."
         )
+        if verify_reason:
+            lesson += f" Reviewer note: {verify_reason}."
+        return lesson
 
     @staticmethod
     def build_experience_replay_lesson(state: AgentState) -> str | None:
