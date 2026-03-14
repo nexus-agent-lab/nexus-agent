@@ -154,6 +154,23 @@ def _build_execution_history_entry(
     }
 
 
+def _annotate_execution_history_entry(
+    entry: dict,
+    *,
+    review_decision: dict | None,
+    next_execution_hint: str | None,
+) -> dict:
+    review_decision = review_decision or {}
+    updated = dict(entry)
+    updated["next_execution_hint"] = next_execution_hint or updated.get("next_execution_hint")
+    updated["verification_status"] = review_decision.get("verification_status")
+    updated["review_mode"] = review_decision.get("execution_mode")
+    verify_context = review_decision.get("verify_context") or {}
+    if verify_context:
+        updated["verify_reason"] = verify_context.get("reason")
+    return updated
+
+
 def _build_execution_history_lesson(state: AgentState) -> str | None:
     execution_history = state.get("execution_history") or []
     if not execution_history:
@@ -164,6 +181,7 @@ def _build_execution_history_lesson(state: AgentState) -> str | None:
     worker = latest.get("worker") or "unknown"
     tool_name = latest.get("tool_name") or "unknown_tool"
     next_hint = latest.get("next_execution_hint") or "unknown"
+    verification_status = latest.get("verification_status") or "unknown"
 
     query = ""
     for message in state.get("messages", []):
@@ -176,7 +194,7 @@ def _build_execution_history_lesson(state: AgentState) -> str | None:
 
     return (
         f"ROUTING LESSON: Query '{query}...' reached worker={worker}, tool={tool_name}, "
-        f"classification={category}, next_hint={next_hint}. "
+        f"classification={category}, next_hint={next_hint}, verification={verification_status}. "
         "Prefer similar routing and recovery handling for comparable requests."
     )
 
@@ -516,7 +534,9 @@ async def clarify_followup_node(state: AgentState):
     }
 
 
-def route_after_review(state: AgentState) -> Literal["reflexion", "repair", "agent", "verify", "clarify", "report", "__end__"]:
+def route_after_review(
+    state: AgentState,
+) -> Literal["reflexion", "repair", "agent", "verify", "clarify", "report", "__end__"]:
     verification_status = state.get("verification_status")
     next_execution_hint = state.get("next_execution_hint")
     selected_worker = state.get("selected_worker")
@@ -1124,6 +1144,11 @@ def create_agent_graph(tools: list):
                 )
                 review_decision = await WorkerDispatcher.prepare_review(
                     {**state, "last_classification": last_classification}
+                )
+                execution_history[-1] = _annotate_execution_history_entry(
+                    execution_history[-1],
+                    review_decision=review_decision,
+                    next_execution_hint=next_execution_hint,
                 )
                 trace_logger.log_wire_event(
                     "tool_result",

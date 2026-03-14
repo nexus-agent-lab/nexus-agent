@@ -6,6 +6,7 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from app.core.agent import (
+    _annotate_execution_history_entry,
     _build_execution_history_entry,
     _build_execution_history_lesson,
     clarify_followup_node,
@@ -283,6 +284,7 @@ def test_build_execution_history_lesson_uses_latest_normalized_entry():
                     "tool_name": "python_sandbox",
                     "classification": "retryable_runtime_error",
                     "next_execution_hint": "repair",
+                    "verification_status": "pending",
                 }
             ],
         }
@@ -292,6 +294,30 @@ def test_build_execution_history_lesson_uses_latest_normalized_entry():
     assert "worker=code_worker" in lesson
     assert "tool=python_sandbox" in lesson
     assert "classification=retryable_runtime_error" in lesson
+    assert "verification=pending" in lesson
+
+
+def test_annotate_execution_history_entry_adds_review_state():
+    entry = {
+        "tool_name": "browser_click",
+        "worker": "skill_worker",
+        "classification": "success",
+        "next_execution_hint": "verify",
+    }
+
+    updated = _annotate_execution_history_entry(
+        entry,
+        review_decision={
+            "verification_status": "required",
+            "execution_mode": "review_prepare",
+            "verify_context": {"reason": "Confirm the button click changed page state"},
+        },
+        next_execution_hint="verify",
+    )
+
+    assert updated["verification_status"] == "required"
+    assert updated["review_mode"] == "review_prepare"
+    assert updated["verify_reason"] == "Confirm the button click changed page state"
 
 
 @pytest.mark.asyncio
