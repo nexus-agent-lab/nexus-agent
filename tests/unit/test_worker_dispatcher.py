@@ -247,6 +247,33 @@ def test_route_after_agent_routes_code_report_mode_to_report():
     assert route == "report"
 
 
+def test_route_after_tool_prefers_repair_for_code_worker():
+    route = WorkerDispatcher.route_after_tool(
+        {
+            "selected_worker": "code_worker",
+            "next_execution_hint": "repair",
+            "retry_count": 0,
+        },
+        classification_retryable=False,
+        tool_error_retryable=False,
+    )
+
+    assert route == "repair"
+
+
+def test_route_after_tool_uses_reflexion_for_retryable_classification():
+    route = WorkerDispatcher.route_after_tool(
+        {
+            "selected_worker": "skill_worker",
+            "retry_count": 1,
+        },
+        classification_retryable=True,
+        tool_error_retryable=False,
+    )
+
+    assert route == "reflexion"
+
+
 @pytest.mark.asyncio
 async def test_skill_worker_action_requests_verification_for_side_effects():
     with patch("app.core.worker_graphs.shared_execution.AuthService.check_tool_permission", return_value=True):

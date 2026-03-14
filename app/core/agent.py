@@ -402,38 +402,20 @@ async def repair_followup_node(state: AgentState):
 def should_reflect(state: AgentState) -> Literal["reflexion", "repair", "agent", "report", "__end__"]:
     messages = state["messages"]
     last_message = messages[-1]
-    selected_worker = state.get("selected_worker")
-    attempts_by_worker = state.get("attempts_by_worker") or {}
-    next_execution_hint = state.get("next_execution_hint")
-
-    if selected_worker == "code_worker" and next_execution_hint == "repair":
-        return "repair"
-
-    if selected_worker == "code_worker" and next_execution_hint == "report":
-        return "report"
-
-    if selected_worker == "code_worker" and next_execution_hint in {"verify", "ask_user", "complete"}:
-        return "agent"
-
-    if selected_worker == "code_worker" and attempts_by_worker.get("code_worker", 0) >= 3:
-        return "agent"
-
-    if _should_retry_classification(state):
-        if state.get("retry_count", 0) < 3:
-            return "reflexion"
-        return "agent"
+    classification_retryable = _should_retry_classification(state)
+    tool_error_retryable = False
 
     # Check if the last tool output was an error
     if isinstance(last_message, ToolMessage):
         content = last_message.content
         if _should_retry_tool_error(content):
-            # Check retry limit
-            if state.get("retry_count", 0) < 3:
-                return "reflexion"
-            else:
-                return "agent"
+            tool_error_retryable = True
 
-    return "agent"
+    return WorkerDispatcher.route_after_tool(
+        state,
+        classification_retryable=classification_retryable,
+        tool_error_retryable=tool_error_retryable,
+    )
 
 
 def should_continue(state: AgentState) -> Literal["tools", "agent", "verify", "report", "__end__"]:

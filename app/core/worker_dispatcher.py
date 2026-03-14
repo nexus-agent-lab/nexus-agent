@@ -63,6 +63,32 @@ class WorkerDispatcher:
         return "__end__"
 
     @staticmethod
+    def route_after_tool(
+        state: AgentState,
+        *,
+        classification_retryable: bool,
+        tool_error_retryable: bool,
+    ) -> Literal["reflexion", "repair", "agent", "report", "__end__"]:
+        selected_worker = state.get("selected_worker")
+        attempts_by_worker = state.get("attempts_by_worker") or {}
+        next_execution_hint = state.get("next_execution_hint")
+        retry_count = state.get("retry_count", 0)
+
+        if selected_worker == "code_worker" and next_execution_hint == "repair":
+            return "repair"
+        if selected_worker == "code_worker" and next_execution_hint == "report":
+            return "report"
+        if selected_worker == "code_worker" and next_execution_hint in {"verify", "ask_user", "complete"}:
+            return "agent"
+        if selected_worker == "code_worker" and attempts_by_worker.get("code_worker", 0) >= 3:
+            return "agent"
+        if classification_retryable:
+            return "reflexion" if retry_count < 3 else "agent"
+        if tool_error_retryable:
+            return "reflexion" if retry_count < 3 else "agent"
+        return "agent"
+
+    @staticmethod
     def route_after_review(
         state: AgentState,
         *,
