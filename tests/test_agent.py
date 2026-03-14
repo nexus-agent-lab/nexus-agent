@@ -9,9 +9,9 @@ from app.core.agent import (
     create_agent_graph,
     report_failure_node,
     route_after_review,
-    verify_followup_node,
     should_continue,
     should_reflect,
+    verify_followup_node,
 )
 from app.models.user import User
 
@@ -73,7 +73,7 @@ def test_should_continue_loops_when_verification_required():
         "llm_call_count": 1,
     }
 
-    assert should_continue(state) == "agent"
+    assert should_continue(state) == "verify"
 
 
 def test_should_continue_ends_after_verification_retry_budget():
@@ -200,8 +200,19 @@ async def test_verify_followup_node_sets_verify_hint():
             "selected_worker": "skill_worker",
             "verification_status": "required",
             "next_execution_hint": "ask_user",
+            "selected_skill": "browser",
+            "execution_mode": "skill_act",
+            "last_classification": {
+                "category": "success",
+                "user_facing_summary": "Action executed and should be verified before completion.",
+                "debug_summary": "Clicked submit button",
+            },
         }
     )
 
     assert result["next_execution_hint"] == "verify"
     assert result["verification_status"] == "required"
+    assert result["verify_context"]["worker"] == "skill_worker"
+    assert result["verify_context"]["skill"] == "browser"
+    assert result["verify_context"]["execution_mode"] == "skill_act"
+    assert result["verify_context"]["category"] == "success"

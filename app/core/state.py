@@ -24,6 +24,7 @@ class AgentState(TypedDict):
     candidate_workers: Optional[List[str]] = None  # Worker candidates from fast routing
     execution_mode: Optional[str] = None  # Dispatcher-selected execution mode
     next_execution_hint: Optional[str] = None  # Worker-suggested next phase such as verify/discover/ask_user
+    verify_context: Optional[dict[str, str]] = None  # Normalized verification context for follow-up passes
     selected_skill: Optional[str] = None  # Preferred skill selected for this turn
     candidate_skills: Optional[List[str]] = None  # Skill candidates from fast routing
     reflexions: Optional[List[str]] = []  # Stored self-reflections

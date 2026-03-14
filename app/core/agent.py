@@ -105,6 +105,29 @@ def _build_report_message(state: AgentState) -> str:
     )
 
 
+def _build_verify_context(state: AgentState) -> dict[str, str]:
+    classification = state.get("last_classification") or {}
+    outcome = state.get("last_outcome") or {}
+    execution_mode = state.get("execution_mode") or ""
+    selected_worker = state.get("selected_worker") or ""
+    selected_skill = state.get("selected_skill") or ""
+    previous_hint = state.get("next_execution_hint") or ""
+    detail = classification.get("debug_summary") or outcome.get("raw_text") or ""
+
+    if detail and len(detail) > 240:
+        detail = detail[:240] + "..."
+
+    return {
+        "worker": selected_worker,
+        "skill": selected_skill,
+        "execution_mode": execution_mode,
+        "category": classification.get("category") or "",
+        "reason": classification.get("user_facing_summary") or "",
+        "detail": detail,
+        "previous_hint": previous_hint,
+    }
+
+
 async def _persist_message(session_id: int, message):
     """Persist a single message without adding graph steps."""
     if not session_id or message is None:
@@ -298,7 +321,7 @@ def should_reflect(state: AgentState) -> Literal["reflexion", "agent", "report",
     return "agent"
 
 
-def should_continue(state: AgentState) -> Literal["tools", "agent", "report", "__end__"]:
+def should_continue(state: AgentState) -> Literal["tools", "agent", "verify", "report", "__end__"]:
     messages = state["messages"]
     last_message = messages[-1]
     if last_message.tool_calls:
@@ -308,7 +331,7 @@ def should_continue(state: AgentState) -> Literal["tools", "agent", "report", "_
     if state.get("verification_status") == "failed" and state.get("llm_call_count", 0) < 2:
         return "agent"
     if state.get("verification_status") == "required" and state.get("llm_call_count", 0) < 3:
-        return "agent"
+        return "verify"
     return "__end__"
 
 
@@ -348,6 +371,7 @@ async def reviewer_gate_node(state: AgentState):
 
 
 async def verify_followup_node(state: AgentState):
+    verify_context = _build_verify_context(state)
     trace_logger.log_wire_event(
         "verify_followup",
         trace_id=str(state.get("trace_id", "")),
@@ -356,11 +380,14 @@ async def verify_followup_node(state: AgentState):
             "selected_worker": state.get("selected_worker"),
             "verification_status": state.get("verification_status"),
             "previous_hint": state.get("next_execution_hint"),
+            "verify_reason": verify_context.get("reason"),
+            "verify_category": verify_context.get("category"),
         },
     )
     return {
         "next_execution_hint": "verify",
         "verification_status": "required",
+        "verify_context": verify_context,
     }
 
 
@@ -539,11 +566,20 @@ def create_agent_graph(tools: list):
                 )
             )
         if state.get("verification_status") == "required":
+            verify_context = state.get("verify_context") or {}
+            verify_reason = verify_context.get("reason") or "Confirm the previous action result."
+            verify_detail = verify_context.get("detail") or ""
+            verify_worker = verify_context.get("worker") or state.get("selected_worker") or "unknown"
+            verify_skill = verify_context.get("skill") or state.get("selected_skill") or "unknown"
             messages.append(
                 SystemMessage(
                     content=(
                         "VERIFICATION REQUIRED: Do not finalize yet. "
-                        "Use an appropriate read/verify/discovery tool to confirm the previous action result."
+                        "Use an appropriate read/verify/discovery tool to confirm the previous action result.\n"
+                        f"Verification focus: {verify_reason}\n"
+                        f"Worker: {verify_worker}\n"
+                        f"Skill: {verify_skill}\n"
+                        + (f"Observed detail: {verify_detail}" if verify_detail else "")
                     )
                 )
             )
@@ -996,7 +1032,13 @@ def create_agent_graph(tools: list):
     workflow.add_conditional_edges(
         "agent",
         should_continue,
-        {"tools": "tools", "agent": "agent", "report": "report_failure", "__end__": "experience_replay"},
+        {
+            "tools": "tools",
+            "agent": "agent",
+            "verify": "verify_followup",
+            "report": "report_failure",
+            "__end__": "experience_replay",
+        },
     )
     workflow.add_edge("report_failure", "experience_replay")
     workflow.add_edge("experience_replay", "__end__")
