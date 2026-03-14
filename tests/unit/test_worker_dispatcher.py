@@ -428,6 +428,50 @@ def test_build_code_repair_message_uses_latest_failure_context():
     assert "Traceback: ValueError('boom')" in message
 
 
+def test_build_repair_followup_patch_sets_expected_fields():
+    patch = WorkerDispatcher.build_repair_followup_patch(
+        {
+            "last_classification": {
+                "user_facing_summary": "Code execution failed with a repairable runtime error.",
+                "debug_summary": "Traceback: ValueError('boom')",
+            }
+        },
+        retry_count=2,
+    )
+
+    assert patch["execution_mode"] == "repair_followup"
+    assert patch["next_execution_hint"] == "repair"
+    assert patch["retry_count"] == 2
+    assert "CODE REPAIR (Attempt 2/3)" in patch["messages"][0].content
+
+
+def test_build_verify_followup_patch_sets_verify_state():
+    patch = WorkerDispatcher.build_verify_followup_patch(
+        {
+            "selected_worker": "skill_worker",
+            "selected_skill": "browser",
+            "execution_mode": "skill_act",
+            "last_classification": {
+                "category": "success",
+                "user_facing_summary": "Action executed and should be verified before completion.",
+            },
+        }
+    )
+
+    assert patch["execution_mode"] == "verify_followup"
+    assert patch["next_execution_hint"] == "verify"
+    assert patch["verification_status"] == "required"
+    assert patch["verify_context"]["worker"] == "skill_worker"
+
+
+def test_build_clarify_followup_patch_disables_tools_and_prompts_question():
+    patch = WorkerDispatcher.build_clarify_followup_patch()
+
+    assert patch["execution_mode"] == "clarify_followup"
+    assert patch["next_execution_hint"] == "ask_user"
+    assert "ASK USER MODE" in patch["messages"][0].content
+
+
 @pytest.mark.asyncio
 async def test_skill_worker_action_requests_verification_for_side_effects():
     with patch("app.core.worker_graphs.shared_execution.AuthService.check_tool_permission", return_value=True):

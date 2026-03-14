@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal, TypedDict
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from app.core.state import AgentState
 from app.core.tool_catalog import ToolCatalog
@@ -195,6 +195,50 @@ class WorkerDispatcher:
             "Produce a materially different fix. Do not rerun the same code unchanged. "
             "Prefer a narrower, safer repair before calling tools again."
         )
+
+    @staticmethod
+    def build_report_failure_patch(state: AgentState) -> dict[str, Any]:
+        return {
+            "messages": [AIMessage(content=WorkerDispatcher.build_report_message(state))],
+            "verification_status": "failed",
+            "next_execution_hint": "report",
+        }
+
+    @staticmethod
+    def build_verify_followup_patch(state: AgentState) -> dict[str, Any]:
+        verify_context = WorkerDispatcher.build_verify_context(state)
+        return {
+            "execution_mode": "verify_followup",
+            "next_execution_hint": "verify",
+            "verification_status": "required",
+            "verify_context": verify_context,
+        }
+
+    @staticmethod
+    def build_clarify_followup_patch() -> dict[str, Any]:
+        return {
+            "messages": [
+                SystemMessage(
+                    content=(
+                        "ASK USER MODE: Do not call more tools yet. "
+                        "Ask one concise clarification question that will unblock the next step."
+                    )
+                )
+            ],
+            "execution_mode": "clarify_followup",
+            "next_execution_hint": "ask_user",
+        }
+
+    @staticmethod
+    def build_repair_followup_patch(state: AgentState, *, retry_count: int) -> dict[str, Any]:
+        critique = WorkerDispatcher.build_code_repair_message(state, retry_count)
+        return {
+            "messages": [SystemMessage(content=critique)],
+            "retry_count": retry_count,
+            "execution_mode": "repair_followup",
+            "next_execution_hint": "repair",
+            "reflexions": [critique],
+        }
 
     @staticmethod
     def build_followup_instructions(state: AgentState) -> list[str]:

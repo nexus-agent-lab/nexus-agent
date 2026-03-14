@@ -260,7 +260,6 @@ async def reflexion_node(state: AgentState):
 
 async def repair_followup_node(state: AgentState):
     retry_count = state.get("retry_count", 0) + 1
-    critique = _build_code_repair_message(state, retry_count)
     trace_logger.log_wire_event(
         "repair_followup",
         trace_id=str(state.get("trace_id", "")),
@@ -272,13 +271,7 @@ async def repair_followup_node(state: AgentState):
             "next_execution_hint": state.get("next_execution_hint"),
         },
     )
-    return {
-        "messages": [SystemMessage(content=critique)],
-        "retry_count": retry_count,
-        "execution_mode": "repair_followup",
-        "next_execution_hint": "repair",
-        "reflexions": [critique],
-    }
+    return WorkerDispatcher.build_repair_followup_patch(state, retry_count=retry_count)
 
 
 def should_reflect(state: AgentState) -> Literal["reflexion", "repair", "agent", "report", "__end__"]:
@@ -344,11 +337,7 @@ async def report_failure_node(state: AgentState):
             "classification": (state.get("last_classification") or {}).get("category"),
         },
     )
-    return {
-        "messages": [AIMessage(content=_build_report_message(state))],
-        "verification_status": "failed",
-        "next_execution_hint": "report",
-    }
+    return WorkerDispatcher.build_report_failure_patch(state)
 
 
 async def reviewer_gate_node(state: AgentState):
@@ -369,7 +358,7 @@ async def reviewer_gate_node(state: AgentState):
 
 
 async def verify_followup_node(state: AgentState):
-    verify_context = _build_verify_context(state)
+    verify_context = WorkerDispatcher.build_verify_context(state)
     trace_logger.log_wire_event(
         "verify_followup",
         trace_id=str(state.get("trace_id", "")),
@@ -382,12 +371,7 @@ async def verify_followup_node(state: AgentState):
             "verify_category": verify_context.get("category"),
         },
     )
-    return {
-        "execution_mode": "verify_followup",
-        "next_execution_hint": "verify",
-        "verification_status": "required",
-        "verify_context": verify_context,
-    }
+    return WorkerDispatcher.build_verify_followup_patch(state)
 
 
 async def clarify_followup_node(state: AgentState):
@@ -403,18 +387,7 @@ async def clarify_followup_node(state: AgentState):
             "next_action": classification.get("suggested_next_action"),
         },
     )
-    return {
-        "messages": [
-            SystemMessage(
-                content=(
-                    "ASK USER MODE: Do not call more tools yet. "
-                    "Ask one concise clarification question that will unblock the next step."
-                )
-            )
-        ],
-        "execution_mode": "clarify_followup",
-        "next_execution_hint": "ask_user",
-    }
+    return WorkerDispatcher.build_clarify_followup_patch()
 
 
 def route_after_review(
