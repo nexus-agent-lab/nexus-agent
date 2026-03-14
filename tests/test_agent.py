@@ -9,6 +9,7 @@ from app.core.agent import (
     create_agent_graph,
     report_failure_node,
     route_after_review,
+    verify_followup_node,
     should_continue,
     should_reflect,
 )
@@ -155,13 +156,13 @@ async def test_report_failure_node_renders_deterministic_message():
     assert result["verification_status"] == "failed"
 
 
-def test_route_after_review_routes_required_back_to_agent():
+def test_route_after_review_routes_required_to_verify_node():
     state = {
         "messages": [ToolMessage(content="ok", name="verify_result", tool_call_id="call-1")],
         "verification_status": "required",
     }
 
-    assert route_after_review(state) == "agent"
+    assert route_after_review(state) == "verify"
 
 
 def test_route_after_review_routes_failed_back_to_agent():
@@ -190,3 +191,17 @@ def test_route_after_review_routes_code_worker_failed_to_report_node():
     }
 
     assert route_after_review(state) == "report"
+
+
+@pytest.mark.asyncio
+async def test_verify_followup_node_sets_verify_hint():
+    result = await verify_followup_node(
+        {
+            "selected_worker": "skill_worker",
+            "verification_status": "required",
+            "next_execution_hint": "ask_user",
+        }
+    )
+
+    assert result["next_execution_hint"] == "verify"
+    assert result["verification_status"] == "required"
