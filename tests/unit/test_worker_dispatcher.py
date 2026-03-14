@@ -205,6 +205,23 @@ async def test_prepare_tools_preserves_next_execution_hint_in_decision():
     assert len(tools) >= 1
 
 
+def test_route_after_review_prefers_explicit_followup_routes():
+    route = WorkerDispatcher.route_after_review(
+        {
+            "selected_worker": "skill_worker",
+            "verification_status": "failed",
+            "next_execution_hint": "ask_user",
+            "last_classification": {
+                "category": "invalid_input",
+                "suggested_next_action": "ask_user",
+            },
+        },
+        fallback_route="agent",
+    )
+
+    assert route == "clarify"
+
+
 @pytest.mark.asyncio
 async def test_skill_worker_action_requests_verification_for_side_effects():
     with patch("app.core.worker_graphs.shared_execution.AuthService.check_tool_permission", return_value=True):

@@ -537,29 +537,7 @@ async def clarify_followup_node(state: AgentState):
 def route_after_review(
     state: AgentState,
 ) -> Literal["reflexion", "repair", "agent", "verify", "clarify", "report", "__end__"]:
-    verification_status = state.get("verification_status")
-    next_execution_hint = state.get("next_execution_hint")
-    selected_worker = state.get("selected_worker")
-    classification = state.get("last_classification") or {}
-    next_action = classification.get("suggested_next_action")
-
-    if next_execution_hint == "report":
-        return "report"
-    if next_execution_hint == "ask_user":
-        return "clarify"
-    if verification_status == "failed" and (classification.get("requires_handoff") or next_action == "handoff"):
-        return "report"
-    if verification_status == "failed" and selected_worker == "code_worker":
-        return "report"
-    if verification_status == "failed" and classification.get("category") == "verification_failed":
-        return "report"
-    if verification_status == "required":
-        return "verify"
-    if selected_worker == "code_worker" and next_execution_hint == "repair":
-        return "repair"
-    if verification_status == "failed":
-        return "agent"
-    return should_reflect(state)
+    return WorkerDispatcher.route_after_review(state, fallback_route=should_reflect(state))
 
 
 async def experience_replay_node(state: AgentState):
