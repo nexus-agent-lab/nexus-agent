@@ -844,9 +844,9 @@ def create_agent_graph(tools: list):
                 WorkerDispatcher.build_execution_history_entry(
                     tool_name=tool_name,
                     selected_worker=state.get("selected_worker"),
-                        selected_skill=state.get("selected_skill"),
-                        execution_mode=execution_patch.get("execution_mode"),
-                        next_execution_hint=next_execution_hint,
+                    selected_skill=state.get("selected_skill"),
+                    execution_mode=execution_patch.get("execution_mode"),
+                    next_execution_hint=next_execution_hint,
                     outcome=last_outcome,
                     classification=last_classification,
                 )
@@ -862,13 +862,11 @@ def create_agent_graph(tools: list):
                     "selected_skill": state.get("selected_skill"),
                     "status": last_outcome.get("status"),
                     "classification": last_classification.get("category") if last_classification else None,
-                    "next_action": last_classification.get("suggested_next_action")
-                    if last_classification
-                        else None,
-                        "next_execution_hint": next_execution_hint,
-                        "fingerprint": (last_outcome.get("fingerprint") or "")[:12],
-                    },
-                )
+                    "next_action": last_classification.get("suggested_next_action") if last_classification else None,
+                    "next_execution_hint": next_execution_hint,
+                    "fingerprint": (last_outcome.get("fingerprint") or "")[:12],
+                },
+            )
 
         session_id = state.get("session_id")
         if session_id:
