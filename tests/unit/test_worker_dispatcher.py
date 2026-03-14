@@ -258,6 +258,33 @@ async def test_skill_worker_discovery_does_not_loop_into_more_discovery():
 
 
 @pytest.mark.asyncio
+async def test_skill_worker_requires_handoff_marks_report_followup():
+    with patch("app.core.worker_graphs.shared_execution.AuthService.check_tool_permission", return_value=True):
+        with patch("app.core.worker_graphs.shared_execution.AuditInterceptor", DummyAuditInterceptor):
+            patch_result = await WorkerDispatcher.execute_tool_call(
+                {"selected_worker": "skill_worker", "selected_skill": "browser"},
+                tool_name="browser_click",
+                tool_call_id="call-8",
+                tool_args={"selector": "#dangerous"},
+                tool_to_call=DummyTool(
+                    name="browser_click",
+                    metadata={
+                        "preferred_worker": "skill_worker",
+                        "operation_kind": "act",
+                        "side_effect": True,
+                    },
+                    result="unsafe state encountered",
+                ),
+                user=DummyUser(),
+                trace_id="trace-8",
+            )
+
+    assert patch_result["classification"]["requires_handoff"] is True
+    assert patch_result["classification"]["suggested_next_action"] == "handoff"
+    assert patch_result["next_execution_hint"] == "report"
+
+
+@pytest.mark.asyncio
 async def test_skill_worker_verify_invalid_input_marks_verification_failed():
     with patch("app.core.worker_graphs.shared_execution.AuthService.check_tool_permission", return_value=True):
         with patch("app.core.worker_graphs.shared_execution.AuditInterceptor", DummyAuditInterceptor):

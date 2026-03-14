@@ -220,6 +220,15 @@ def _postprocess_skill_classification(
             "report",
         )
 
+    if classification.get("requires_handoff"):
+        return (
+            {
+                **classification,
+                "suggested_next_action": classification.get("suggested_next_action") or "handoff",
+            },
+            "report",
+        )
+
     default_hint = {
         "verify": "verify",
         "run_discovery": "discover",
