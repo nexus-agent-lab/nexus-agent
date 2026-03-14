@@ -87,18 +87,15 @@ def _build_report_message(state: AgentState) -> str:
     classification = state.get("last_classification") or {}
     outcome = state.get("last_outcome") or {}
     summary = classification.get("user_facing_summary") or "Execution failed and needs intervention."
-    detail = classification.get("debug_summary") or outcome.get("raw_text") or "No additional error details were captured."
+    detail = (
+        classification.get("debug_summary") or outcome.get("raw_text") or "No additional error details were captured."
+    )
 
     if len(detail) > 300:
         detail = detail[:300] + "..."
 
     if _prefers_chinese(state.get("messages", [])):
-        return (
-            f"本次执行未能完成。\n"
-            f"原因：{summary}\n"
-            f"细节：{detail}\n"
-            f"下一步：请检查输入、权限或外部系统状态后再继续。"
-        )
+        return f"本次执行未能完成。\n原因：{summary}\n细节：{detail}\n下一步：请检查输入、权限或外部系统状态后再继续。"
 
     return (
         f"The execution could not be completed.\n"
@@ -353,8 +350,11 @@ async def reviewer_gate_node(state: AgentState):
 def route_after_review(state: AgentState) -> Literal["reflexion", "agent", "report", "__end__"]:
     verification_status = state.get("verification_status")
     next_execution_hint = state.get("next_execution_hint")
+    selected_worker = state.get("selected_worker")
 
     if next_execution_hint == "report":
+        return "report"
+    if verification_status == "failed" and selected_worker == "code_worker":
         return "report"
     if verification_status in {"required", "failed"}:
         return "agent"

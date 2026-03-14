@@ -180,3 +180,13 @@ def test_route_after_review_routes_report_to_report_node():
     }
 
     assert route_after_review(state) == "report"
+
+
+def test_route_after_review_routes_code_worker_failed_to_report_node():
+    state = {
+        "messages": [ToolMessage(content="verify failed", name="python_sandbox", tool_call_id="call-4")],
+        "selected_worker": "code_worker",
+        "verification_status": "failed",
+    }
+
+    assert route_after_review(state) == "report"

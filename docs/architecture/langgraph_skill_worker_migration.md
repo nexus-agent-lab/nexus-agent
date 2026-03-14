@@ -96,12 +96,13 @@ Runtime behavior today:
 Compatibility-stage control rules:
 
 - `verification_status == "required"`
+  - the flow now passes through an explicit `reviewer_gate` node before routing onward
   - the main agent gets another pass instead of ending immediately
   - a system reminder is injected telling the model to verify before finalizing
 - `verification_status == "failed"`
-  - the main agent gets one report-only pass
-  - tools are intentionally removed so the model cannot keep retrying side-effect calls
-  - after that pass, the flow ends instead of looping
+  - `code_worker` failures can now route directly into `report_failure`
+  - the report node renders a deterministic failure summary instead of relying purely on one more LLM pass
+  - non-code-worker failures still use a compatibility return-to-agent path
 - `verification_status == "passed"`
   - the flow can end normally
 
@@ -1003,12 +1004,16 @@ Completed in branch:
 - worker-specific execution entrypoints now exist for `skill_worker` and `code_worker`
 - `skill_worker` execution now differentiates `discover/read/act/verify` modes from metadata
 - execution mode tracking in state and logs
+- `skill_worker` now emits explicit `next_execution_hint` values such as `verify`, `ask_user`, and `report`
+- `code_worker` now emits explicit `next_execution_hint` values such as `repair`, `verify`, `retry`, and `report`
+- worker preparation now consumes `next_execution_hint` to narrow toolbelts for follow-up steps
+- `code_worker` now has an explicit deterministic `report_failure` node in the graph
 
 Still remaining:
 
 - move real execution branching out of the shared tool node
 - give `skill_worker` its own discovery/read/act/verify loop
-- give `code_worker` its own execute/classify/repair/verify loop
+- give `code_worker` its own execute/classify/repair/verify loop without relying on compatibility behavior in the main agent
 - promote dispatcher from prepare-only boundary to execution-path boundary
 
 ### Phase 4: Reviewer Enforcement + Offline Feedback Loop
@@ -1031,11 +1036,15 @@ Completed in branch:
 - reviewer state now produces `passed / required / pending / failed`
 - main agent continuation logic now reacts to reviewer state
 - failed verification now gets a report-only pass with tools disabled
+- `tools -> reviewer_gate -> route_after_review` is now an explicit graph path
+- `code_worker` failed reviewer outcomes can now route directly to `report_failure`
+- deterministic report rendering now exists for programmatic handoff/report paths
 
 Still remaining:
 
 - make reviewer a mandatory graph-level gate rather than a compatibility hook
-- replace loop-count-based reviewer handling with explicit graph edges
+- replace the remaining loop-count-based reviewer handling with fully explicit graph edges
+- move `required` into a more explicit verify path instead of mostly looping back through the main agent
 - persist normalized reviewer/classification outcomes for offline analysis
 - wire Designer to consume shared runtime classification categories
 
