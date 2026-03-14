@@ -1,7 +1,7 @@
 from unittest.mock import patch
 
 import pytest
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, ToolMessage
 
 from app.core.tool_executor import build_tool_fingerprint
 from app.core.worker_dispatcher import WorkerDispatcher
@@ -443,6 +443,54 @@ def test_build_repair_followup_patch_sets_expected_fields():
     assert patch["next_execution_hint"] == "repair"
     assert patch["retry_count"] == 2
     assert "CODE REPAIR (Attempt 2/3)" in patch["messages"][0].content
+
+
+def test_should_retry_tool_error_blocks_permission_failures():
+    assert WorkerDispatcher.should_retry_tool_error("Permission denied") is False
+    assert WorkerDispatcher.should_retry_tool_error("Execution Error: boom") is True
+
+
+def test_should_retry_classification_respects_handoff_and_retryable_states():
+    assert (
+        WorkerDispatcher.should_retry_classification(
+            {
+                "last_classification": {
+                    "retryable": True,
+                    "requires_handoff": False,
+                }
+            }
+        )
+        is True
+    )
+    assert (
+        WorkerDispatcher.should_retry_classification(
+            {
+                "selected_worker": "code_worker",
+                "attempts_by_worker": {"code_worker": 3},
+                "last_classification": {
+                    "retryable": True,
+                    "requires_handoff": False,
+                },
+            }
+        )
+        is False
+    )
+
+
+def test_build_reflexion_message_uses_latest_failure_sources():
+    critique, failures = WorkerDispatcher.build_reflexion_message(
+        {
+            "messages": [ToolMessage(content="Execution Error", name="python_sandbox", tool_call_id="call-1")],
+            "last_classification": {
+                "debug_summary": "Traceback: ValueError('boom')",
+            },
+        },
+        retry_count=2,
+    )
+
+    assert "REFLECTION (Attempt 2/3)" in critique
+    assert "Traceback: ValueError('boom')" in critique
+    assert failures
 
 
 def test_build_verify_followup_patch_sets_verify_state():

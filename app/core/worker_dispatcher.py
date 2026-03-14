@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal, TypedDict
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from app.core.state import AgentState
 from app.core.tool_catalog import ToolCatalog
@@ -47,6 +47,43 @@ class WorkerDispatcher:
     Future scope:
     - own true worker subgraph dispatch instead of merely preparing state
     """
+
+    @staticmethod
+    def should_retry_tool_error(content: str) -> bool:
+        if not content:
+            return False
+
+        lowered = content.lower()
+        non_retryable_markers = (
+            "permission denied",
+            "internal system error",
+            "tool '",
+            "tool not found",
+            "restricted for user",
+        )
+        if any(marker in lowered for marker in non_retryable_markers):
+            return False
+
+        return "error" in lowered
+
+    @staticmethod
+    def should_retry_classification(state: AgentState) -> bool:
+        classification = state.get("last_classification") or {}
+        selected_worker = state.get("selected_worker")
+        attempts_by_worker = state.get("attempts_by_worker") or {}
+        if selected_worker == "code_worker" and attempts_by_worker.get("code_worker", 0) >= 3:
+            return False
+
+        if classification:
+            if classification.get("requires_handoff"):
+                return False
+            if classification.get("retryable"):
+                return True
+
+            next_action = classification.get("suggested_next_action")
+            return next_action in {"retry_same_worker", "run_discovery", "switch_worker"}
+
+        return False
 
     @staticmethod
     def prefers_chinese(messages: list[Any] | None) -> bool:
@@ -195,6 +232,31 @@ class WorkerDispatcher:
             "Produce a materially different fix. Do not rerun the same code unchanged. "
             "Prefer a narrower, safer repair before calling tools again."
         )
+
+    @staticmethod
+    def build_reflexion_message(state: AgentState, *, retry_count: int) -> tuple[str, list[str]]:
+        messages = state.get("messages") or []
+        last_message = messages[-1] if messages else None
+
+        failures = []
+        classification = state.get("last_classification") or {}
+        if classification:
+            failures.append(
+                classification.get("debug_summary")
+                or classification.get("user_facing_summary")
+                or "Unknown failure"
+            )
+
+        if isinstance(last_message, ToolMessage) and WorkerDispatcher.should_retry_tool_error(last_message.content):
+            failures.append(last_message.content)
+
+        critique = (
+            f"REFLECTION (Attempt {retry_count}/3): The previous tool execution failed with: {failures}. "
+            f"Please analyze why this happened (e.g., wrong arguments, missing permissions) "
+            f"and try a different approach or correct the arguments. "
+            f"Do not repeat the exact same invalid call."
+        )
+        return critique, failures
 
     @staticmethod
     def build_report_failure_patch(state: AgentState) -> dict[str, Any]:

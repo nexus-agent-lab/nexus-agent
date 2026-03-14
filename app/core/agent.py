@@ -36,43 +36,8 @@ BASE_SYSTEM_PROMPT = r"""You are Nexus, an AI Operating System connecting physic
 """
 
 
-def _should_retry_tool_error(content: str) -> bool:
-    """Only retry errors that the model can realistically recover from."""
-    if not content:
-        return False
-
-    lowered = content.lower()
-    non_retryable_markers = (
-        "permission denied",
-        "internal system error",
-        "tool '",
-        "tool not found",
-        "restricted for user",
-    )
-    if any(marker in lowered for marker in non_retryable_markers):
-        return False
-
-    return "error" in lowered
-
-
 def _should_retry_classification(state: AgentState) -> bool:
-    """Prefer normalized result classification over raw tool text when available."""
-    classification = state.get("last_classification") or {}
-    selected_worker = state.get("selected_worker")
-    attempts_by_worker = state.get("attempts_by_worker") or {}
-    if selected_worker == "code_worker" and attempts_by_worker.get("code_worker", 0) >= 3:
-        return False
-
-    if classification:
-        if classification.get("requires_handoff"):
-            return False
-        if classification.get("retryable"):
-            return True
-
-        next_action = classification.get("suggested_next_action")
-        return next_action in {"retry_same_worker", "run_discovery", "switch_worker"}
-
-    return False
+    return WorkerDispatcher.should_retry_classification(state)
 
 
 def _build_report_message(state: AgentState) -> str:
@@ -220,28 +185,9 @@ async def save_interaction_node(state: AgentState):
 
 
 async def reflexion_node(state: AgentState):
-    messages = state["messages"]
-    last_message = messages[-1]
-
-    failures = []
     classification = state.get("last_classification") or {}
-    if classification:
-        failures.append(
-            classification.get("debug_summary") or classification.get("user_facing_summary") or "Unknown failure"
-        )
-
-    if isinstance(last_message, ToolMessage):
-        if _should_retry_tool_error(last_message.content):
-            failures.append(last_message.content)
-
     retry_count = state.get("retry_count", 0) + 1
-
-    critique = (
-        f"REFLECTION (Attempt {retry_count}/3): The previous tool execution failed with: {failures}. "
-        f"Please analyze why this happened (e.g., wrong arguments, missing permissions) "
-        f"and try a different approach or correct the arguments. "
-        f"Do not repeat the exact same invalid call."
-    )
+    critique, failures = WorkerDispatcher.build_reflexion_message(state, retry_count=retry_count)
     trace_logger.log_wire_event(
         "reflexion",
         trace_id=str(state.get("trace_id", "")),
@@ -283,7 +229,7 @@ def should_reflect(state: AgentState) -> Literal["reflexion", "repair", "agent",
     # Check if the last tool output was an error
     if isinstance(last_message, ToolMessage):
         content = last_message.content
-        if _should_retry_tool_error(content):
+        if WorkerDispatcher.should_retry_tool_error(content):
             tool_error_retryable = True
 
     route = WorkerDispatcher.route_after_tool(
