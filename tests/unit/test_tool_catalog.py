@@ -160,6 +160,25 @@ def test_skill_worker_prepare_uses_next_execution_hint_for_discovery():
     assert "close_tab" not in names
 
 
+def test_skill_worker_prepare_uses_next_execution_hint_for_ask_user():
+    tools = [
+        _tool("get_current_time"),
+        _tool("list_tabs", {"operation_kind": "discover", "side_effect": False}),
+        _tool("browser_click", {"operation_kind": "act", "side_effect": True}),
+    ]
+
+    filtered = prepare_skill_worker_tools(
+        {
+            "selected_worker": "skill_worker",
+            "next_execution_hint": "ask_user",
+        },
+        tools,
+        matched_skills=[],
+    )
+
+    assert filtered == []
+
+
 def test_code_worker_prepare_uses_next_execution_hint_for_verify():
     tools = [
         _tool("python_sandbox", {"preferred_worker": "code_worker"}),

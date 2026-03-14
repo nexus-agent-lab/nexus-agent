@@ -17,6 +17,9 @@ def _filter_tools_for_skill_mode(state: AgentState, tools: list[Any]) -> tuple[l
     next_action = classification.get("suggested_next_action")
     next_hint = state.get("next_execution_hint")
 
+    if next_hint == "ask_user":
+        return [], "clarify"
+
     if next_hint == "verify":
         filtered = []
         for tool in tools:
