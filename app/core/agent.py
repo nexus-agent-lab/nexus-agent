@@ -241,6 +241,18 @@ async def report_failure_node(state: AgentState):
 
 
 async def reviewer_gate_node(state: AgentState):
+    if not state.get("last_outcome"):
+        return {}
+
+    review_decision = await WorkerDispatcher.prepare_review(state)
+    execution_history = list(state.get("execution_history") or [])
+    if execution_history:
+        execution_history[-1] = WorkerDispatcher.annotate_execution_history_entry(
+            execution_history[-1],
+            review_decision=review_decision,
+            next_execution_hint=state.get("next_execution_hint"),
+        )
+
     classification = state.get("last_classification") or {}
     trace_logger.log_wire_event(
         "reviewer_gate",
@@ -248,13 +260,17 @@ async def reviewer_gate_node(state: AgentState):
         summary="Evaluating reviewer gate transition.",
         details={
             "selected_worker": state.get("selected_worker"),
-            "verification_status": state.get("verification_status"),
+            "verification_status": review_decision.get("verification_status"),
             "next_execution_hint": state.get("next_execution_hint"),
             "classification": classification.get("category"),
             "next_action": classification.get("suggested_next_action"),
+            "review_mode": review_decision.get("execution_mode"),
         },
     )
-    return {}
+    return {
+        "execution_history": execution_history,
+        "verification_status": review_decision.get("verification_status"),
+    }
 
 
 async def verify_followup_node(state: AgentState):
@@ -823,40 +839,31 @@ def create_agent_graph(tools: list):
                             },
                         )
 
-            if last_outcome:
-                execution_history.append(
-                    WorkerDispatcher.build_execution_history_entry(
-                        tool_name=tool_name,
-                        selected_worker=state.get("selected_worker"),
+        if last_outcome:
+            execution_history.append(
+                WorkerDispatcher.build_execution_history_entry(
+                    tool_name=tool_name,
+                    selected_worker=state.get("selected_worker"),
                         selected_skill=state.get("selected_skill"),
                         execution_mode=execution_patch.get("execution_mode"),
                         next_execution_hint=next_execution_hint,
-                        outcome=last_outcome,
-                        classification=last_classification,
-                    )
+                    outcome=last_outcome,
+                    classification=last_classification,
                 )
-                review_decision = await WorkerDispatcher.prepare_review(
-                    {**state, "last_classification": last_classification}
-                )
-                execution_history[-1] = WorkerDispatcher.annotate_execution_history_entry(
-                    execution_history[-1],
-                    review_decision=review_decision,
-                    next_execution_hint=next_execution_hint,
-                )
-                trace_logger.log_wire_event(
-                    "tool_result",
-                    trace_id=str(state.get("trace_id", "")),
-                    summary=f"Tool '{tool_name}' finished.",
-                    details={
-                        "tool_name": tool_name,
-                        "selected_worker": state.get("selected_worker"),
-                        "execution_mode": execution_patch.get("execution_mode"),
-                        "review_mode": review_decision.get("execution_mode"),
-                        "selected_skill": state.get("selected_skill"),
-                        "status": last_outcome.get("status"),
-                        "classification": last_classification.get("category") if last_classification else None,
-                        "next_action": last_classification.get("suggested_next_action")
-                        if last_classification
+            )
+            trace_logger.log_wire_event(
+                "tool_result",
+                trace_id=str(state.get("trace_id", "")),
+                summary=f"Tool '{tool_name}' finished.",
+                details={
+                    "tool_name": tool_name,
+                    "selected_worker": state.get("selected_worker"),
+                    "execution_mode": execution_patch.get("execution_mode"),
+                    "selected_skill": state.get("selected_skill"),
+                    "status": last_outcome.get("status"),
+                    "classification": last_classification.get("category") if last_classification else None,
+                    "next_action": last_classification.get("suggested_next_action")
+                    if last_classification
                         else None,
                         "next_execution_hint": next_execution_hint,
                         "fingerprint": (last_outcome.get("fingerprint") or "")[:12],
@@ -874,9 +881,7 @@ def create_agent_graph(tools: list):
             "last_classification": last_classification,
             "execution_history": execution_history,
             "execution_mode": execution_patch.get("execution_mode") if last_outcome else state.get("execution_mode"),
-            "verification_status": review_decision.get("verification_status")
-            if last_outcome
-            else state.get("verification_status"),
+            "verification_status": state.get("verification_status"),
             "next_execution_hint": next_execution_hint,
             "attempts_by_worker": attempts_by_worker,
             "attempts_by_tool": attempts_by_tool,

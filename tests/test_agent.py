@@ -10,6 +10,7 @@ from app.core.agent import (
     create_agent_graph,
     repair_followup_node,
     report_failure_node,
+    reviewer_gate_node,
     route_after_review,
     should_continue,
     should_reflect,
@@ -309,3 +310,43 @@ async def test_repair_followup_node_sets_repair_hint_and_retry_count():
     assert result["execution_mode"] == "repair_followup"
     assert result["retry_count"] == 2
     assert "CODE REPAIR" in result["messages"][0].content
+
+
+@pytest.mark.asyncio
+async def test_reviewer_gate_node_prepares_review_state(mocker):
+    mocker.patch(
+        "app.core.agent.WorkerDispatcher.prepare_review",
+        return_value={
+            "verification_status": "required",
+            "execution_mode": "review_prepare",
+            "verify_context": None,
+            "review_snapshot": {
+                "verification_status": "required",
+                "classification": "success",
+            },
+        },
+    )
+
+    result = await reviewer_gate_node(
+        {
+            "trace_id": "trace-1",
+            "selected_worker": "skill_worker",
+            "next_execution_hint": "verify",
+            "last_outcome": {"status": "success"},
+            "last_classification": {
+                "category": "success",
+                "suggested_next_action": "verify",
+            },
+            "execution_history": [
+                {
+                    "tool_name": "browser_click",
+                    "worker": "skill_worker",
+                    "classification": "success",
+                    "next_execution_hint": "verify",
+                }
+            ],
+        }
+    )
+
+    assert result["verification_status"] == "required"
+    assert result["execution_history"][-1]["review_snapshot"]["verification_status"] == "required"

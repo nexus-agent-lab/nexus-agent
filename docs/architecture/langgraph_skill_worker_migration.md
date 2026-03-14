@@ -1057,6 +1057,7 @@ Completed in branch:
 - `experience_replay` can now build lessons from normalized execution history and reviewer snapshots
 - dispatcher now owns post-tool retry-state derivation and post-review fallback routing
 - dispatcher now prepares experience-replay payloads before persistence
+- `reviewer_gate` now prepares review state and annotates execution history directly in its own graph node
 
 Still remaining:
 
