@@ -1011,7 +1011,9 @@ Completed in branch:
 - `code_worker` now has an explicit deterministic `report_failure` node in the graph
 - `code_worker` now has an explicit `repair_followup` node in the graph
 - `verify_followup` now carries structured `verify_context`
+- `clarify_followup` now exists as an explicit graph node for `ask_user` paths
 - verification-oriented toolbelt narrowing now excludes execution-heavy tools like `python_sandbox` when dedicated verify/read tools exist
+- `skill_worker` now disables tools entirely during `ask_user` clarification follow-up
 - dispatcher decisions now expose `next_execution_hint` and `verify_context`
 
 Still remaining:
@@ -1043,6 +1045,8 @@ Completed in branch:
 - failed verification now gets a report-only pass with tools disabled
 - `tools -> reviewer_gate -> route_after_review` is now an explicit graph path
 - `code_worker` failed reviewer outcomes can now route directly to `report_failure`
+- failed handoff outcomes from non-code flows can now route directly to `report_failure`
+- `ask_user` outcomes can now route through an explicit `clarify_followup` node before returning to the agent
 - deterministic report rendering now exists for programmatic handoff/report paths
 - reviewer now requires verification for successful outcomes that still carry explicit verification/risk metadata
 - normalized `execution_history` is now tracked in state
@@ -1052,7 +1056,7 @@ Still remaining:
 
 - make reviewer a mandatory graph-level gate rather than a compatibility hook
 - replace the remaining loop-count-based reviewer handling with fully explicit graph edges
-- expand explicit verify/report routing beyond the current compatibility return paths for non-code workers
+- keep expanding explicit verify/report/clarify routing beyond the remaining compatibility return paths
 - persist normalized reviewer/classification outcomes for offline analysis
 - wire Designer to consume shared runtime classification categories
 
