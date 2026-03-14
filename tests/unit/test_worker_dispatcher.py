@@ -187,7 +187,11 @@ async def test_skill_worker_dispatch_marks_action_tools():
 @pytest.mark.asyncio
 async def test_prepare_tools_preserves_next_execution_hint_in_decision():
     tools, decision = await WorkerDispatcher.prepare_tools(
-        {"selected_worker": "code_worker", "next_execution_hint": "verify"},
+        {
+            "selected_worker": "code_worker",
+            "next_execution_hint": "verify",
+            "verify_context": {"reason": "Confirm output correctness"},
+        },
         [
             DummyTool(name="python_sandbox", metadata={"preferred_worker": "code_worker"}),
             DummyTool(name="verify_result", metadata={"operation_kind": "verify", "side_effect": False}),
@@ -197,6 +201,7 @@ async def test_prepare_tools_preserves_next_execution_hint_in_decision():
 
     assert decision["selected_worker"] == "code_worker"
     assert decision["next_execution_hint"] == "verify"
+    assert decision["verify_context"]["reason"] == "Confirm output correctness"
     assert len(tools) >= 1
 
 
