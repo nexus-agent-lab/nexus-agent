@@ -489,7 +489,34 @@ async def verify_followup_node(state: AgentState):
     }
 
 
-def route_after_review(state: AgentState) -> Literal["reflexion", "repair", "agent", "verify", "report", "__end__"]:
+async def clarify_followup_node(state: AgentState):
+    classification = state.get("last_classification") or {}
+    trace_logger.log_wire_event(
+        "clarify_followup",
+        trace_id=str(state.get("trace_id", "")),
+        summary="Preparing explicit clarification follow-up path.",
+        details={
+            "selected_worker": state.get("selected_worker"),
+            "selected_skill": state.get("selected_skill"),
+            "classification": classification.get("category"),
+            "next_action": classification.get("suggested_next_action"),
+        },
+    )
+    return {
+        "messages": [
+            SystemMessage(
+                content=(
+                    "ASK USER MODE: Do not call more tools yet. "
+                    "Ask one concise clarification question that will unblock the next step."
+                )
+            )
+        ],
+        "execution_mode": "clarify_followup",
+        "next_execution_hint": "ask_user",
+    }
+
+
+def route_after_review(state: AgentState) -> Literal["reflexion", "repair", "agent", "verify", "clarify", "report", "__end__"]:
     verification_status = state.get("verification_status")
     next_execution_hint = state.get("next_execution_hint")
     selected_worker = state.get("selected_worker")
@@ -498,9 +525,9 @@ def route_after_review(state: AgentState) -> Literal["reflexion", "repair", "age
 
     if next_execution_hint == "report":
         return "report"
-    if verification_status == "failed" and (
-        classification.get("requires_handoff") or next_action == "handoff"
-    ):
+    if next_execution_hint == "ask_user":
+        return "clarify"
+    if verification_status == "failed" and (classification.get("requires_handoff") or next_action == "handoff"):
         return "report"
     if verification_status == "failed" and selected_worker == "code_worker":
         return "report"
@@ -1145,6 +1172,7 @@ def create_agent_graph(tools: list):
     workflow.add_node("tools", tool_node_with_permissions)
     workflow.add_node("reviewer_gate", reviewer_gate_node)
     workflow.add_node("verify_followup", verify_followup_node)
+    workflow.add_node("clarify_followup", clarify_followup_node)
     workflow.add_node("repair_followup", repair_followup_node)
     workflow.add_node("reflexion", reflexion_node)
     workflow.add_node("report_failure", report_failure_node)
@@ -1174,9 +1202,11 @@ def create_agent_graph(tools: list):
             "repair": "repair_followup",
             "agent": "agent",
             "verify": "verify_followup",
+            "clarify": "clarify_followup",
             "report": "report_failure",
         },
     )
+    workflow.add_edge("clarify_followup", "agent")
     workflow.add_edge("repair_followup", "agent")
     workflow.add_edge("verify_followup", "agent")
     workflow.add_edge("reflexion", "agent")

@@ -8,6 +8,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from app.core.agent import (
     _build_execution_history_entry,
     _build_execution_history_lesson,
+    clarify_followup_node,
     create_agent_graph,
     repair_followup_node,
     report_failure_node,
@@ -196,6 +197,20 @@ def test_route_after_review_routes_report_to_report_node():
     assert route_after_review(state) == "report"
 
 
+def test_route_after_review_routes_ask_user_to_clarify_node():
+    state = {
+        "messages": [ToolMessage(content="not found", name="lookup_tool", tool_call_id="call-3b")],
+        "selected_worker": "skill_worker",
+        "next_execution_hint": "ask_user",
+        "last_classification": {
+            "category": "invalid_input",
+            "suggested_next_action": "ask_user",
+        },
+    }
+
+    assert route_after_review(state) == "clarify"
+
+
 def test_route_after_review_routes_code_worker_failed_to_report_node():
     state = {
         "messages": [ToolMessage(content="verify failed", name="python_sandbox", tool_call_id="call-4")],
@@ -277,6 +292,25 @@ def test_build_execution_history_lesson_uses_latest_normalized_entry():
     assert "worker=code_worker" in lesson
     assert "tool=python_sandbox" in lesson
     assert "classification=retryable_runtime_error" in lesson
+
+
+@pytest.mark.asyncio
+async def test_clarify_followup_node_sets_clarify_mode():
+    result = await clarify_followup_node(
+        {
+            "selected_worker": "skill_worker",
+            "selected_skill": "browser",
+            "next_execution_hint": "ask_user",
+            "last_classification": {
+                "category": "invalid_input",
+                "suggested_next_action": "ask_user",
+            },
+        }
+    )
+
+    assert result["execution_mode"] == "clarify_followup"
+    assert result["next_execution_hint"] == "ask_user"
+    assert "ASK USER MODE" in result["messages"][0].content
 
 
 @pytest.mark.asyncio
