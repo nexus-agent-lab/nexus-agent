@@ -34,6 +34,7 @@ class WorkerExecutionDecision(TypedDict, total=False):
     verification_status: str | None
     next_execution_hint: str | None
     verify_context: dict[str, str] | None
+    review_snapshot: dict[str, Any] | None
 
 
 class WorkerDispatcher:
@@ -183,6 +184,8 @@ class WorkerDispatcher:
         verify_context = review_decision.get("verify_context") or {}
         if verify_context:
             updated["verify_reason"] = verify_context.get("reason")
+        if review_decision.get("review_snapshot"):
+            updated["review_snapshot"] = review_decision.get("review_snapshot")
         return updated
 
     @staticmethod
@@ -231,6 +234,30 @@ class WorkerDispatcher:
                 "Check tool arguments and permissions."
             )
         return lesson
+
+    @staticmethod
+    def build_review_snapshot(
+        state: AgentState,
+        *,
+        verification_status: str | None,
+        execution_mode: str | None = None,
+        verify_context: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        classification = state.get("last_classification") or {}
+        snapshot: dict[str, Any] = {
+            "worker": state.get("selected_worker"),
+            "skill": state.get("selected_skill"),
+            "execution_mode": execution_mode or state.get("execution_mode"),
+            "verification_status": verification_status,
+            "classification": classification.get("category"),
+            "next_action": classification.get("suggested_next_action"),
+            "requires_handoff": classification.get("requires_handoff"),
+            "next_execution_hint": state.get("next_execution_hint"),
+        }
+        verify_context = verify_context or {}
+        if verify_context.get("reason"):
+            snapshot["verify_reason"] = verify_context.get("reason")
+        return snapshot
 
     @staticmethod
     def build_code_repair_message(state: AgentState, retry_count: int) -> str:
@@ -533,11 +560,20 @@ class WorkerDispatcher:
     @staticmethod
     async def prepare_review(state: AgentState) -> WorkerExecutionDecision:
         review_patch = await run_reviewer_worker_step(state)
+        verification_status = review_patch.get("verification_status")
+        execution_mode = "review_prepare"
+        verify_context = state.get("verify_context")
         return WorkerExecutionDecision(
             selected_worker=review_patch.get("selected_worker"),
-            execution_mode="review_prepare",
+            execution_mode=execution_mode,
             active_tool_names=[],
-            verification_status=review_patch.get("verification_status"),
+            verification_status=verification_status,
             next_execution_hint=state.get("next_execution_hint"),
-            verify_context=state.get("verify_context"),
+            verify_context=verify_context,
+            review_snapshot=WorkerDispatcher.build_review_snapshot(
+                state,
+                verification_status=verification_status,
+                execution_mode=execution_mode,
+                verify_context=verify_context,
+            ),
         )

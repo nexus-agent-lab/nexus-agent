@@ -381,6 +381,7 @@ def test_annotate_execution_history_entry_adds_review_state():
             "verification_status": "required",
             "execution_mode": "review_prepare",
             "verify_context": {"reason": "Confirm the button click changed page state"},
+            "review_snapshot": {"verification_status": "required"},
         },
         next_execution_hint="verify",
     )
@@ -388,6 +389,7 @@ def test_annotate_execution_history_entry_adds_review_state():
     assert updated["verification_status"] == "required"
     assert updated["review_mode"] == "review_prepare"
     assert updated["verify_reason"] == "Confirm the button click changed page state"
+    assert updated["review_snapshot"]["verification_status"] == "required"
 
 
 def test_build_execution_history_lesson_uses_latest_normalized_entry():
@@ -439,6 +441,31 @@ def test_build_experience_replay_lesson_prefers_search_detours():
 
     assert lesson is not None
     assert "required additional tool searching" in lesson
+
+
+def test_build_review_snapshot_captures_runtime_review_summary():
+    snapshot = WorkerDispatcher.build_review_snapshot(
+        {
+            "selected_worker": "skill_worker",
+            "selected_skill": "browser",
+            "execution_mode": "skill_act",
+            "next_execution_hint": "verify",
+            "last_classification": {
+                "category": "success",
+                "suggested_next_action": "verify",
+                "requires_handoff": False,
+            },
+        },
+        verification_status="required",
+        execution_mode="review_prepare",
+        verify_context={"reason": "Confirm the button click changed page state"},
+    )
+
+    assert snapshot["worker"] == "skill_worker"
+    assert snapshot["skill"] == "browser"
+    assert snapshot["verification_status"] == "required"
+    assert snapshot["classification"] == "success"
+    assert snapshot["verify_reason"] == "Confirm the button click changed page state"
 
 
 def test_build_repair_followup_patch_sets_expected_fields():
@@ -548,6 +575,27 @@ def test_build_clarify_followup_patch_disables_tools_and_prompts_question():
     assert patch["execution_mode"] == "clarify_followup"
     assert patch["next_execution_hint"] == "ask_user"
     assert "ASK USER MODE" in patch["messages"][0].content
+
+
+@pytest.mark.asyncio
+async def test_prepare_review_exposes_review_snapshot():
+    decision = await WorkerDispatcher.prepare_review(
+        {
+            "selected_worker": "skill_worker",
+            "selected_skill": "browser",
+            "execution_mode": "skill_act",
+            "next_execution_hint": "verify",
+            "last_classification": {
+                "category": "success",
+                "suggested_next_action": "verify",
+                "requires_handoff": False,
+            },
+        }
+    )
+
+    assert decision["verification_status"] == "required"
+    assert decision["review_snapshot"]["worker"] == "skill_worker"
+    assert decision["review_snapshot"]["classification"] == "success"
 
 
 @pytest.mark.asyncio

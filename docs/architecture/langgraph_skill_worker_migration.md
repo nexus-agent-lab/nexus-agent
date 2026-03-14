@@ -1063,6 +1063,25 @@ Still remaining:
 - persist normalized reviewer/classification outcomes for offline analysis
 - wire Designer to consume shared runtime classification categories
 
+### Final Milestones
+
+To close this migration cleanly, the remaining work is intentionally compressed into three final milestones:
+
+1. `Dispatcher Becomes Primary Runtime Boundary`
+   - remove the remaining compatibility-style execution decisions from `agent.py`
+   - let `WorkerDispatcher` fully own follow-up routing, follow-up patch construction, and shared runtime semantics
+   - keep `agent.py` focused on graph wiring, node registration, and tracing
+
+2. `Worker Loops Become Real Subgraphs`
+   - finish splitting `skill_worker` into a real `discover -> read/act -> verify/clarify/report` loop
+   - finish splitting `code_worker` into a real `execute -> repair/verify/report` loop
+   - reduce reliance on the shared tool execution path so the worker boundary is structural, not just semantic
+
+3. `Reviewer And Designer Close The Loop`
+   - make reviewer behavior fully graph-native and mandatory for risky flows
+   - persist normalized runtime/reviewer outcomes in a form that offline analysis can consume
+   - wire Designer to shared classification and execution-history data so prompt/metadata tuning uses the same runtime vocabulary
+
 ---
 
 ## 14.1 Implementation Checklist
