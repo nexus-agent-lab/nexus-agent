@@ -29,6 +29,25 @@ async def test_reviewer_worker_marks_complete_success_as_passed():
 
 
 @pytest.mark.asyncio
+async def test_reviewer_worker_requires_verification_for_successful_risky_outcome():
+    result = await run_reviewer_worker_step(
+        {
+            "last_classification": {"category": "success", "suggested_next_action": "complete"},
+            "last_outcome": {
+                "metadata": {
+                    "requires_verification": True,
+                    "risk_level": "medium",
+                    "side_effect": True,
+                }
+            },
+            "execution_mode": "skill_act",
+        }
+    )
+
+    assert result["verification_status"] == "required"
+
+
+@pytest.mark.asyncio
 async def test_reviewer_worker_marks_handoff_as_failed():
     result = await run_reviewer_worker_step(
         {

@@ -578,8 +578,7 @@ def create_agent_graph(tools: list):
                         "Use an appropriate read/verify/discovery tool to confirm the previous action result.\n"
                         f"Verification focus: {verify_reason}\n"
                         f"Worker: {verify_worker}\n"
-                        f"Skill: {verify_skill}\n"
-                        + (f"Observed detail: {verify_detail}" if verify_detail else "")
+                        f"Skill: {verify_skill}\n" + (f"Observed detail: {verify_detail}" if verify_detail else "")
                     )
                 )
             )

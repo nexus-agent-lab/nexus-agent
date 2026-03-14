@@ -12,13 +12,20 @@ async def run_reviewer_worker_step(state: AgentState) -> dict:
     subgraphs can feed into more formal pass/fail logic.
     """
     classification = state.get("last_classification") or {}
+    outcome = state.get("last_outcome") or {}
+    metadata = outcome.get("metadata") or {}
     execution_mode = state.get("execution_mode")
     next_action = classification.get("suggested_next_action")
+    requires_verification = bool(metadata.get("requires_verification"))
+    risk_level = metadata.get("risk_level")
+    side_effect = bool(metadata.get("side_effect"))
 
     verification_status = None
     if classification.get("category") == "verification_failed":
         verification_status = "failed"
     elif next_action == "verify" or execution_mode == "skill_verify":
+        verification_status = "required"
+    elif classification.get("category") == "success" and (requires_verification or side_effect or risk_level == "high"):
         verification_status = "required"
     elif classification.get("requires_handoff") or next_action == "handoff":
         verification_status = "failed"
@@ -36,6 +43,9 @@ async def run_reviewer_worker_step(state: AgentState) -> dict:
             "last_classification": classification.get("category"),
             "next_action": next_action,
             "execution_mode": execution_mode,
+            "requires_verification": requires_verification,
+            "risk_level": risk_level,
+            "side_effect": side_effect,
             "verification_status": verification_status,
         },
     )
