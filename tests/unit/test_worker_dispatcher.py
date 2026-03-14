@@ -274,6 +274,38 @@ def test_route_after_tool_uses_reflexion_for_retryable_classification():
     assert route == "reflexion"
 
 
+def test_build_followup_instructions_for_code_verify_report_flow():
+    instructions = WorkerDispatcher.build_followup_instructions(
+        {
+            "selected_worker": "code_worker",
+            "next_execution_hint": "report",
+            "verification_status": "failed",
+        }
+    )
+
+    assert any("VERIFICATION FAILED" in item for item in instructions)
+    assert any("CODE REPORT MODE" in item for item in instructions)
+
+
+def test_build_followup_instructions_include_verify_context():
+    instructions = WorkerDispatcher.build_followup_instructions(
+        {
+            "selected_worker": "skill_worker",
+            "selected_skill": "browser",
+            "verification_status": "required",
+            "verify_context": {
+                "reason": "Confirm the button click changed page state",
+                "worker": "skill_worker",
+                "skill": "browser",
+                "detail": "Clicked submit button",
+            },
+        }
+    )
+
+    assert any("VERIFICATION REQUIRED" in item for item in instructions)
+    assert any("Confirm the button click changed page state" in item for item in instructions)
+
+
 @pytest.mark.asyncio
 async def test_skill_worker_action_requests_verification_for_side_effects():
     with patch("app.core.worker_graphs.shared_execution.AuthService.check_tool_permission", return_value=True):

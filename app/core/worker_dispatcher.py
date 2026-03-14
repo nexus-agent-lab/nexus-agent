@@ -47,6 +47,48 @@ class WorkerDispatcher:
     """
 
     @staticmethod
+    def build_followup_instructions(state: AgentState) -> list[str]:
+        instructions: list[str] = []
+        verification_status = state.get("verification_status")
+        selected_worker = state.get("selected_worker")
+        next_execution_hint = state.get("next_execution_hint")
+
+        if verification_status == "failed":
+            instructions.append(
+                "VERIFICATION FAILED: Do not continue trying tools. "
+                "Explain briefly what failed, why it could not be verified, "
+                "and what user intervention or next step is needed."
+            )
+
+        if selected_worker == "code_worker" and next_execution_hint == "report":
+            instructions.append(
+                "CODE REPORT MODE: Do not execute more code or call more tools. "
+                "Summarize the failure, include the most relevant error, and explain the next manual step."
+            )
+
+        if selected_worker == "code_worker" and next_execution_hint == "repair":
+            instructions.append(
+                "CODE REPAIR MODE: Propose a materially different fix from the previous failed attempt. "
+                "Do not rerun the same code unchanged. Prefer using python_sandbox only after you change the approach."
+            )
+
+        if verification_status == "required":
+            verify_context = state.get("verify_context") or {}
+            verify_reason = verify_context.get("reason") or "Confirm the previous action result."
+            verify_detail = verify_context.get("detail") or ""
+            verify_worker = verify_context.get("worker") or selected_worker or "unknown"
+            verify_skill = verify_context.get("skill") or state.get("selected_skill") or "unknown"
+            instructions.append(
+                "VERIFICATION REQUIRED: Do not finalize yet. "
+                "Use an appropriate read/verify/discovery tool to confirm the previous action result.\n"
+                f"Verification focus: {verify_reason}\n"
+                f"Worker: {verify_worker}\n"
+                f"Skill: {verify_skill}\n" + (f"Observed detail: {verify_detail}" if verify_detail else "")
+            )
+
+        return instructions
+
+    @staticmethod
     def route_after_agent(
         state: AgentState,
         *,
