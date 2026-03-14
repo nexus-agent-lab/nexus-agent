@@ -185,6 +185,22 @@ async def test_skill_worker_dispatch_marks_action_tools():
 
 
 @pytest.mark.asyncio
+async def test_prepare_tools_preserves_next_execution_hint_in_decision():
+    tools, decision = await WorkerDispatcher.prepare_tools(
+        {"selected_worker": "code_worker", "next_execution_hint": "verify"},
+        [
+            DummyTool(name="python_sandbox", metadata={"preferred_worker": "code_worker"}),
+            DummyTool(name="verify_result", metadata={"operation_kind": "verify", "side_effect": False}),
+        ],
+        matched_skills=[],
+    )
+
+    assert decision["selected_worker"] == "code_worker"
+    assert decision["next_execution_hint"] == "verify"
+    assert len(tools) >= 1
+
+
+@pytest.mark.asyncio
 async def test_skill_worker_action_requests_verification_for_side_effects():
     with patch("app.core.worker_graphs.shared_execution.AuthService.check_tool_permission", return_value=True):
         with patch("app.core.worker_graphs.shared_execution.AuditInterceptor", DummyAuditInterceptor):

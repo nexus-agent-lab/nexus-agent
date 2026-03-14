@@ -28,6 +28,7 @@ class WorkerExecutionDecision(TypedDict, total=False):
     ]
     active_tool_names: list[str]
     verification_status: str | None
+    next_execution_hint: str | None
 
 
 class WorkerDispatcher:
@@ -97,6 +98,7 @@ class WorkerDispatcher:
             "selected_worker": selected_worker,
             "execution_mode": "direct",
             "active_tool_names": [],
+            "next_execution_hint": state.get("next_execution_hint"),
         }
 
         if selected_worker == "skill_worker":
@@ -136,4 +138,5 @@ class WorkerDispatcher:
             execution_mode="review_prepare",
             active_tool_names=[],
             verification_status=review_patch.get("verification_status"),
+            next_execution_hint=state.get("next_execution_hint"),
         )

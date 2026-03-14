@@ -804,7 +804,7 @@ def create_agent_graph(tools: list):
                 details={
                     "selected_worker": selected_worker,
                     "execution_mode": worker_decision.get("execution_mode"),
-                    "next_execution_hint": state.get("next_execution_hint"),
+                    "next_execution_hint": worker_decision.get("next_execution_hint"),
                     "selected_skill": state.get("selected_skill")
                     or (candidate_skills[0] if candidate_skills else None),
                     "tool_count": len(current_tools),
@@ -874,6 +874,7 @@ def create_agent_graph(tools: list):
             "route_confidence": fast_intent.get("confidence"),
             "selected_worker": selected_worker or (candidate_workers[0] if candidate_workers else None),
             "execution_mode": worker_decision.get("execution_mode"),
+            "next_execution_hint": worker_decision.get("next_execution_hint"),
             "candidate_workers": candidate_workers,
             "selected_skill": state.get("selected_skill") or (candidate_skills[0] if candidate_skills else None),
             "candidate_skills": candidate_skills,
