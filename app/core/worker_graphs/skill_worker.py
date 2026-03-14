@@ -22,7 +22,7 @@ def _filter_tools_for_skill_mode(state: AgentState, tools: list[Any]) -> tuple[l
         for tool in tools:
             metadata = get_tool_metadata(tool)
             operation_kind = metadata.get("operation_kind")
-            if getattr(tool, "name", "") in CORE_TOOL_NAMES:
+            if getattr(tool, "name", "") in CORE_TOOL_NAMES and getattr(tool, "name", "") != "python_sandbox":
                 filtered.append(tool)
             elif operation_kind in {"verify", "read"} and not metadata.get("side_effect", False):
                 filtered.append(tool)
@@ -55,7 +55,7 @@ def _filter_tools_for_skill_mode(state: AgentState, tools: list[Any]) -> tuple[l
         for tool in tools:
             metadata = get_tool_metadata(tool)
             operation_kind = metadata.get("operation_kind")
-            if getattr(tool, "name", "") in CORE_TOOL_NAMES:
+            if getattr(tool, "name", "") in CORE_TOOL_NAMES and getattr(tool, "name", "") != "python_sandbox":
                 filtered.append(tool)
             elif operation_kind in {"verify", "read"} and not metadata.get("side_effect", False):
                 filtered.append(tool)

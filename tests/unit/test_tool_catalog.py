@@ -115,6 +115,7 @@ def test_skill_worker_prepare_prefers_verify_and_read_tools():
 def test_skill_worker_prepare_uses_next_execution_hint_for_verify():
     tools = [
         _tool("get_current_time"),
+        _tool("python_sandbox", {"preferred_worker": "code_worker"}),
         _tool("check_page_state", {"operation_kind": "verify", "side_effect": False}),
         _tool("read_page_text", {"operation_kind": "read", "side_effect": False}),
         _tool("browser_click", {"operation_kind": "act", "side_effect": True}),
@@ -133,6 +134,7 @@ def test_skill_worker_prepare_uses_next_execution_hint_for_verify():
     assert "check_page_state" in names
     assert "read_page_text" in names
     assert "browser_click" not in names
+    assert "python_sandbox" not in names
 
 
 def test_skill_worker_prepare_uses_next_execution_hint_for_discovery():
