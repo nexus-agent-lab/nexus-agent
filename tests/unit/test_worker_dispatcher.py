@@ -413,6 +413,21 @@ def test_build_execution_history_lesson_uses_latest_normalized_entry():
     assert "verification=pending" in lesson
 
 
+def test_build_code_repair_message_uses_latest_failure_context():
+    message = WorkerDispatcher.build_code_repair_message(
+        {
+            "last_classification": {
+                "user_facing_summary": "Code execution failed with a repairable runtime error.",
+                "debug_summary": "Traceback: ValueError('boom')",
+            }
+        },
+        retry_count=2,
+    )
+
+    assert "CODE REPAIR (Attempt 2/3)" in message
+    assert "Traceback: ValueError('boom')" in message
+
+
 @pytest.mark.asyncio
 async def test_skill_worker_action_requests_verification_for_side_effects():
     with patch("app.core.worker_graphs.shared_execution.AuthService.check_tool_permission", return_value=True):

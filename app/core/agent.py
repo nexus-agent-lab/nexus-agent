@@ -96,21 +96,7 @@ def _build_execution_history_lesson(state: AgentState) -> str | None:
 
 
 def _build_code_repair_message(state: AgentState, retry_count: int) -> str:
-    classification = state.get("last_classification") or {}
-    outcome = state.get("last_outcome") or {}
-    summary = classification.get("user_facing_summary") or "Code execution failed."
-    detail = (
-        classification.get("debug_summary") or outcome.get("raw_text") or "No additional error details were captured."
-    )
-    if detail and len(detail) > 300:
-        detail = detail[:300] + "..."
-
-    return (
-        f"CODE REPAIR (Attempt {retry_count}/3): {summary}\n"
-        f"Observed detail: {detail}\n"
-        "Produce a materially different fix. Do not rerun the same code unchanged. "
-        "Prefer a narrower, safer repair before calling tools again."
-    )
+    return WorkerDispatcher.build_code_repair_message(state, retry_count)
 
 
 async def _persist_message(session_id: int, message):
