@@ -75,57 +75,12 @@ def _should_retry_classification(state: AgentState) -> bool:
     return False
 
 
-def _prefers_chinese(messages) -> bool:
-    for msg in reversed(messages or []):
-        if isinstance(msg, HumanMessage):
-            content = str(msg.content or "")
-            return any("\u4e00" <= ch <= "\u9fff" for ch in content)
-    return False
-
-
 def _build_report_message(state: AgentState) -> str:
-    classification = state.get("last_classification") or {}
-    outcome = state.get("last_outcome") or {}
-    summary = classification.get("user_facing_summary") or "Execution failed and needs intervention."
-    detail = (
-        classification.get("debug_summary") or outcome.get("raw_text") or "No additional error details were captured."
-    )
-
-    if len(detail) > 300:
-        detail = detail[:300] + "..."
-
-    if _prefers_chinese(state.get("messages", [])):
-        return f"本次执行未能完成。\n原因：{summary}\n细节：{detail}\n下一步：请检查输入、权限或外部系统状态后再继续。"
-
-    return (
-        f"The execution could not be completed.\n"
-        f"Reason: {summary}\n"
-        f"Details: {detail}\n"
-        f"Next step: check the inputs, permissions, or external system state before trying again."
-    )
+    return WorkerDispatcher.build_report_message(state)
 
 
 def _build_verify_context(state: AgentState) -> dict[str, str]:
-    classification = state.get("last_classification") or {}
-    outcome = state.get("last_outcome") or {}
-    execution_mode = state.get("execution_mode") or ""
-    selected_worker = state.get("selected_worker") or ""
-    selected_skill = state.get("selected_skill") or ""
-    previous_hint = state.get("next_execution_hint") or ""
-    detail = classification.get("debug_summary") or outcome.get("raw_text") or ""
-
-    if detail and len(detail) > 240:
-        detail = detail[:240] + "..."
-
-    return {
-        "worker": selected_worker,
-        "skill": selected_skill,
-        "execution_mode": execution_mode,
-        "category": classification.get("category") or "",
-        "reason": classification.get("user_facing_summary") or "",
-        "detail": detail,
-        "previous_hint": previous_hint,
-    }
+    return WorkerDispatcher.build_verify_context(state)
 
 
 def _build_execution_history_entry(

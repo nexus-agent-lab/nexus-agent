@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 import pytest
+from langchain_core.messages import HumanMessage
 
 from app.core.tool_executor import build_tool_fingerprint
 from app.core.worker_dispatcher import WorkerDispatcher
@@ -304,6 +305,42 @@ def test_build_followup_instructions_include_verify_context():
 
     assert any("VERIFICATION REQUIRED" in item for item in instructions)
     assert any("Confirm the button click changed page state" in item for item in instructions)
+
+
+def test_build_report_message_prefers_user_language():
+    message = WorkerDispatcher.build_report_message(
+        {
+            "messages": [HumanMessage(content="帮我看看为什么失败了")],
+            "last_classification": {
+                "user_facing_summary": "执行失败",
+                "debug_summary": "Traceback: boom",
+            },
+        }
+    )
+
+    assert "本次执行未能完成" in message
+    assert "Traceback: boom" in message
+
+
+def test_build_verify_context_normalizes_latest_state():
+    context = WorkerDispatcher.build_verify_context(
+        {
+            "selected_worker": "skill_worker",
+            "selected_skill": "browser",
+            "execution_mode": "skill_act",
+            "next_execution_hint": "verify",
+            "last_classification": {
+                "category": "success",
+                "user_facing_summary": "Action executed and should be verified before completion.",
+                "debug_summary": "Clicked submit button",
+            },
+        }
+    )
+
+    assert context["worker"] == "skill_worker"
+    assert context["skill"] == "browser"
+    assert context["execution_mode"] == "skill_act"
+    assert context["previous_hint"] == "verify"
 
 
 @pytest.mark.asyncio
