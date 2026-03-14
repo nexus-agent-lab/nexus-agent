@@ -348,6 +348,7 @@ async def repair_followup_node(state: AgentState):
     return {
         "messages": [SystemMessage(content=critique)],
         "retry_count": retry_count,
+        "execution_mode": "repair_followup",
         "next_execution_hint": "repair",
         "reflexions": [critique],
     }
@@ -454,6 +455,7 @@ async def verify_followup_node(state: AgentState):
         },
     )
     return {
+        "execution_mode": "verify_followup",
         "next_execution_hint": "verify",
         "verification_status": "required",
         "verify_context": verify_context,

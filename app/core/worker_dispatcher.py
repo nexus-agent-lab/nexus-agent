@@ -25,6 +25,8 @@ class WorkerExecutionDecision(TypedDict, total=False):
         "skill_verify",
         "code_execute",
         "code_blocked",
+        "verify_followup",
+        "repair_followup",
     ]
     active_tool_names: list[str]
     verification_status: str | None

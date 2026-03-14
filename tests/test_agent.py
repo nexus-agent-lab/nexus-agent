@@ -250,6 +250,7 @@ async def test_verify_followup_node_sets_verify_hint():
     )
 
     assert result["next_execution_hint"] == "verify"
+    assert result["execution_mode"] == "verify_followup"
     assert result["verification_status"] == "required"
     assert result["verify_context"]["worker"] == "skill_worker"
     assert result["verify_context"]["skill"] == "browser"
@@ -273,5 +274,6 @@ async def test_repair_followup_node_sets_repair_hint_and_retry_count():
     )
 
     assert result["next_execution_hint"] == "repair"
+    assert result["execution_mode"] == "repair_followup"
     assert result["retry_count"] == 2
     assert "CODE REPAIR" in result["messages"][0].content
