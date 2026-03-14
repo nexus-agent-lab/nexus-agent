@@ -242,9 +242,7 @@ class WorkerDispatcher:
         classification = state.get("last_classification") or {}
         if classification:
             failures.append(
-                classification.get("debug_summary")
-                or classification.get("user_facing_summary")
-                or "Unknown failure"
+                classification.get("debug_summary") or classification.get("user_facing_summary") or "Unknown failure"
             )
 
         if isinstance(last_message, ToolMessage) and WorkerDispatcher.should_retry_tool_error(last_message.content):
@@ -257,6 +255,15 @@ class WorkerDispatcher:
             f"Do not repeat the exact same invalid call."
         )
         return critique, failures
+
+    @staticmethod
+    def build_reflexion_patch(state: AgentState, *, retry_count: int) -> tuple[dict[str, Any], list[str]]:
+        critique, failures = WorkerDispatcher.build_reflexion_message(state, retry_count=retry_count)
+        return {
+            "messages": [SystemMessage(content=critique)],
+            "retry_count": retry_count,
+            "reflexions": [critique],
+        }, failures
 
     @staticmethod
     def build_report_failure_patch(state: AgentState) -> dict[str, Any]:

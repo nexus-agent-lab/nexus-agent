@@ -187,7 +187,7 @@ async def save_interaction_node(state: AgentState):
 async def reflexion_node(state: AgentState):
     classification = state.get("last_classification") or {}
     retry_count = state.get("retry_count", 0) + 1
-    critique, failures = WorkerDispatcher.build_reflexion_message(state, retry_count=retry_count)
+    patch, failures = WorkerDispatcher.build_reflexion_patch(state, retry_count=retry_count)
     trace_logger.log_wire_event(
         "reflexion",
         trace_id=str(state.get("trace_id", "")),
@@ -198,10 +198,7 @@ async def reflexion_node(state: AgentState):
             "failures": failures,
         },
     )
-
-    reflexion_msg = SystemMessage(content=critique)
-
-    return {"messages": [reflexion_msg], "retry_count": retry_count, "reflexions": [critique]}
+    return patch
 
 
 async def repair_followup_node(state: AgentState):

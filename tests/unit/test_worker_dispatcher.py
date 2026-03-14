@@ -493,6 +493,23 @@ def test_build_reflexion_message_uses_latest_failure_sources():
     assert failures
 
 
+def test_build_reflexion_patch_sets_retry_state_and_message():
+    patch, failures = WorkerDispatcher.build_reflexion_patch(
+        {
+            "messages": [ToolMessage(content="Execution Error", name="python_sandbox", tool_call_id="call-2")],
+            "last_classification": {
+                "debug_summary": "Traceback: ValueError('boom')",
+            },
+        },
+        retry_count=2,
+    )
+
+    assert patch["retry_count"] == 2
+    assert "REFLECTION (Attempt 2/3)" in patch["messages"][0].content
+    assert patch["reflexions"]
+    assert failures
+
+
 def test_build_verify_followup_patch_sets_verify_state():
     patch = WorkerDispatcher.build_verify_followup_patch(
         {
