@@ -177,6 +177,7 @@ def test_code_worker_prepare_uses_next_execution_hint_for_verify():
 
     assert "verify_result" in names
     assert "read_artifact" in names
+    assert "python_sandbox" not in names
 
 
 def test_code_worker_prepare_uses_next_execution_hint_for_report():

@@ -22,16 +22,26 @@ def prepare_code_worker_tools(state: AgentState, available_tools: list[Any]) -> 
     catalog = ToolCatalog(available_tools)
     next_hint = state.get("next_execution_hint")
     if next_hint == "verify":
-        tools = [
+        verify_tools = [
             tool
             for tool in available_tools
-            if getattr(tool, "name", "") in CORE_TOOL_NAMES
-            or getattr(tool, "name", "") == "python_sandbox"
-            or (
+            if (
                 get_tool_metadata(tool).get("operation_kind") in {"verify", "read"}
                 and not get_tool_metadata(tool).get("side_effect", False)
             )
         ]
+        if verify_tools:
+            tools = [
+                tool
+                for tool in available_tools
+                if getattr(tool, "name", "") in CORE_TOOL_NAMES and getattr(tool, "name", "") != "python_sandbox"
+            ] + verify_tools
+        else:
+            tools = [
+                tool
+                for tool in available_tools
+                if getattr(tool, "name", "") in CORE_TOOL_NAMES or getattr(tool, "name", "") == "python_sandbox"
+            ]
     else:
         tools = catalog.filter_for_worker("code_worker", matched_skills=[])
 
