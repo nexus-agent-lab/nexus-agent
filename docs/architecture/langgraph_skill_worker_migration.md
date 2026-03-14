@@ -97,8 +97,9 @@ Compatibility-stage control rules:
 
 - `verification_status == "required"`
   - the flow now passes through an explicit `reviewer_gate` node before routing onward
-  - the main agent gets another pass instead of ending immediately
-  - a system reminder is injected telling the model to verify before finalizing
+  - the flow now routes into an explicit `verify_followup` node before returning to the agent
+  - verification follow-up now carries structured `verify_context`
+  - the main agent receives verification-specific guidance rather than a generic retry prompt
 - `verification_status == "failed"`
   - `code_worker` failures can now route directly into `report_failure`
   - the report node renders a deterministic failure summary instead of relying purely on one more LLM pass
@@ -1008,6 +1009,10 @@ Completed in branch:
 - `code_worker` now emits explicit `next_execution_hint` values such as `repair`, `verify`, `retry`, and `report`
 - worker preparation now consumes `next_execution_hint` to narrow toolbelts for follow-up steps
 - `code_worker` now has an explicit deterministic `report_failure` node in the graph
+- `code_worker` now has an explicit `repair_followup` node in the graph
+- `verify_followup` now carries structured `verify_context`
+- verification-oriented toolbelt narrowing now excludes execution-heavy tools like `python_sandbox` when dedicated verify/read tools exist
+- dispatcher decisions now expose `next_execution_hint` and `verify_context`
 
 Still remaining:
 
@@ -1039,12 +1044,15 @@ Completed in branch:
 - `tools -> reviewer_gate -> route_after_review` is now an explicit graph path
 - `code_worker` failed reviewer outcomes can now route directly to `report_failure`
 - deterministic report rendering now exists for programmatic handoff/report paths
+- reviewer now requires verification for successful outcomes that still carry explicit verification/risk metadata
+- normalized `execution_history` is now tracked in state
+- `experience_replay` can now build lessons from normalized execution history
 
 Still remaining:
 
 - make reviewer a mandatory graph-level gate rather than a compatibility hook
 - replace the remaining loop-count-based reviewer handling with fully explicit graph edges
-- move `required` into a more explicit verify path instead of mostly looping back through the main agent
+- expand explicit verify/report routing beyond the current compatibility return paths for non-code workers
 - persist normalized reviewer/classification outcomes for offline analysis
 - wire Designer to consume shared runtime classification categories
 
