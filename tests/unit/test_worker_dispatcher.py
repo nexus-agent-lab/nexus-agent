@@ -1,7 +1,7 @@
 from unittest.mock import patch
 
 import pytest
-from langchain_core.messages import HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from app.core.tool_executor import build_tool_fingerprint
 from app.core.worker_dispatcher import WorkerDispatcher
@@ -484,6 +484,43 @@ def test_build_experience_replay_lesson_prefers_search_detours():
 
     assert lesson is not None
     assert "required additional tool searching" in lesson
+
+
+def test_prepare_experience_replay_returns_persistable_payload():
+    payload = WorkerDispatcher.prepare_experience_replay(
+        {
+            "messages": [
+                HumanMessage(content="帮我修一下这个 Python 错误"),
+                AIMessage(content="已经完成处理"),
+            ],
+            "user": DummyUser(),
+            "execution_history": [
+                {
+                    "worker": "code_worker",
+                    "tool_name": "python_sandbox",
+                    "classification": "retryable_runtime_error",
+                    "next_execution_hint": "repair",
+                    "verification_status": "pending",
+                }
+            ],
+        }
+    )
+
+    assert payload is not None
+    assert payload["user_id"] == 7
+    assert payload["memory_type"] == "preference"
+    assert "worker=code_worker" in payload["lesson"]
+
+
+def test_prepare_experience_replay_skips_when_latest_message_is_not_ai():
+    payload = WorkerDispatcher.prepare_experience_replay(
+        {
+            "messages": [HumanMessage(content="帮我修一下这个 Python 错误")],
+            "user": DummyUser(),
+        }
+    )
+
+    assert payload is None
 
 
 def test_build_review_snapshot_captures_runtime_review_summary():

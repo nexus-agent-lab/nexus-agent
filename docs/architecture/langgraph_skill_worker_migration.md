@@ -1056,6 +1056,7 @@ Completed in branch:
 - normalized reviewer snapshots are now attached to review decisions and execution history
 - `experience_replay` can now build lessons from normalized execution history and reviewer snapshots
 - dispatcher now owns post-tool retry-state derivation and post-review fallback routing
+- dispatcher now prepares experience-replay payloads before persistence
 
 Still remaining:
 

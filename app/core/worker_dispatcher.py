@@ -243,6 +243,30 @@ class WorkerDispatcher:
         return lesson
 
     @staticmethod
+    def prepare_experience_replay(state: AgentState) -> dict[str, Any] | None:
+        messages = state.get("messages", [])
+        if not messages:
+            return None
+
+        last_message = messages[-1]
+        if not isinstance(last_message, AIMessage) or not last_message.content:
+            return None
+
+        user = state.get("user")
+        if not user:
+            return None
+
+        lesson = WorkerDispatcher.build_experience_replay_lesson(state)
+        if not lesson:
+            return None
+
+        return {
+            "lesson": lesson,
+            "user_id": user.id,
+            "memory_type": "preference",
+        }
+
+    @staticmethod
     def build_review_snapshot(
         state: AgentState,
         *,

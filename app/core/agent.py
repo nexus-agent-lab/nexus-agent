@@ -327,27 +327,17 @@ async def experience_replay_node(state: AgentState):
     if retry_count == 0 and search_count == 0:
         return {}
 
-    # Logic: If the last message is from the assistant and it's successful,
-    # we summarize the 'lesson learned'.
-    last_msg = messages[-1]
-    if not isinstance(last_msg, AIMessage) or not last_msg.content:
-        return {}
-
-    user = state.get("user")
-    if not user:
-        return {}
-
     try:
         from app.core.memory import memory_manager
 
-        lesson = WorkerDispatcher.build_experience_replay_lesson(state)
-
-        if lesson:
+        replay_payload = WorkerDispatcher.prepare_experience_replay(state)
+        if replay_payload:
+            lesson = replay_payload["lesson"]
             logger.info(f"Saving JIT Experience: {lesson}")
             await memory_manager.add_memory(
-                user_id=user.id,
+                user_id=replay_payload["user_id"],
                 content=lesson,
-                memory_type="preference",
+                memory_type=replay_payload["memory_type"],
             )
     except Exception as e:
         logger.error(f"Experience Replay failed: {e}")
