@@ -439,15 +439,7 @@ def should_reflect(state: AgentState) -> Literal["reflexion", "repair", "agent",
 def should_continue(state: AgentState) -> Literal["tools", "agent", "verify", "report", "__end__"]:
     messages = state["messages"]
     last_message = messages[-1]
-    if last_message.tool_calls:
-        return "tools"
-    if state.get("selected_worker") == "code_worker" and state.get("next_execution_hint") == "report":
-        return "report"
-    if state.get("verification_status") == "failed" and state.get("llm_call_count", 0) < 2:
-        return "agent"
-    if state.get("verification_status") == "required" and state.get("llm_call_count", 0) < 3:
-        return "verify"
-    return "__end__"
+    return WorkerDispatcher.route_after_agent(state, has_tool_calls=bool(last_message.tool_calls))
 
 
 async def report_failure_node(state: AgentState):

@@ -47,6 +47,22 @@ class WorkerDispatcher:
     """
 
     @staticmethod
+    def route_after_agent(
+        state: AgentState,
+        *,
+        has_tool_calls: bool,
+    ) -> Literal["tools", "agent", "verify", "report", "__end__"]:
+        if has_tool_calls:
+            return "tools"
+        if state.get("selected_worker") == "code_worker" and state.get("next_execution_hint") == "report":
+            return "report"
+        if state.get("verification_status") == "failed" and state.get("llm_call_count", 0) < 2:
+            return "agent"
+        if state.get("verification_status") == "required" and state.get("llm_call_count", 0) < 3:
+            return "verify"
+        return "__end__"
+
+    @staticmethod
     def route_after_review(
         state: AgentState,
         *,

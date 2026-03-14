@@ -222,6 +222,31 @@ def test_route_after_review_prefers_explicit_followup_routes():
     assert route == "clarify"
 
 
+def test_route_after_agent_prefers_verify_before_end():
+    route = WorkerDispatcher.route_after_agent(
+        {
+            "verification_status": "required",
+            "llm_call_count": 1,
+        },
+        has_tool_calls=False,
+    )
+
+    assert route == "verify"
+
+
+def test_route_after_agent_routes_code_report_mode_to_report():
+    route = WorkerDispatcher.route_after_agent(
+        {
+            "selected_worker": "code_worker",
+            "next_execution_hint": "report",
+            "llm_call_count": 0,
+        },
+        has_tool_calls=False,
+    )
+
+    assert route == "report"
+
+
 @pytest.mark.asyncio
 async def test_skill_worker_action_requests_verification_for_side_effects():
     with patch("app.core.worker_graphs.shared_execution.AuthService.check_tool_permission", return_value=True):
