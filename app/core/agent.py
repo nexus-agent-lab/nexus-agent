@@ -494,8 +494,13 @@ def route_after_review(state: AgentState) -> Literal["reflexion", "repair", "age
     next_execution_hint = state.get("next_execution_hint")
     selected_worker = state.get("selected_worker")
     classification = state.get("last_classification") or {}
+    next_action = classification.get("suggested_next_action")
 
     if next_execution_hint == "report":
+        return "report"
+    if verification_status == "failed" and (
+        classification.get("requires_handoff") or next_action == "handoff"
+    ):
         return "report"
     if verification_status == "failed" and selected_worker == "code_worker":
         return "report"

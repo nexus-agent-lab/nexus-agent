@@ -206,6 +206,21 @@ def test_route_after_review_routes_code_worker_failed_to_report_node():
     assert route_after_review(state) == "report"
 
 
+def test_route_after_review_routes_handoff_failed_to_report_node():
+    state = {
+        "messages": [ToolMessage(content="device unavailable", name="device_tool", tool_call_id="call-4b")],
+        "selected_worker": "skill_worker",
+        "verification_status": "failed",
+        "last_classification": {
+            "category": "unsafe_state",
+            "requires_handoff": True,
+            "suggested_next_action": "handoff",
+        },
+    }
+
+    assert route_after_review(state) == "report"
+
+
 def test_route_after_review_routes_code_worker_repair_to_repair_node():
     state = {
         "messages": [ToolMessage(content="repair needed", name="python_sandbox", tool_call_id="call-5")],
