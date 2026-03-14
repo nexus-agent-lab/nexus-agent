@@ -83,75 +83,16 @@ def _build_verify_context(state: AgentState) -> dict[str, str]:
     return WorkerDispatcher.build_verify_context(state)
 
 
-def _build_execution_history_entry(
-    *,
-    tool_name: str,
-    selected_worker: str | None,
-    selected_skill: str | None,
-    execution_mode: str | None,
-    next_execution_hint: str | None,
-    outcome: dict | None,
-    classification: dict | None,
-) -> dict:
-    outcome = outcome or {}
-    classification = classification or {}
-    return {
-        "tool_name": tool_name,
-        "worker": selected_worker,
-        "skill": selected_skill,
-        "execution_mode": execution_mode,
-        "next_execution_hint": next_execution_hint,
-        "status": outcome.get("status"),
-        "fingerprint": outcome.get("fingerprint"),
-        "classification": classification.get("category"),
-        "next_action": classification.get("suggested_next_action"),
-        "requires_handoff": classification.get("requires_handoff"),
-    }
+def _build_execution_history_entry(**kwargs) -> dict:
+    return WorkerDispatcher.build_execution_history_entry(**kwargs)
 
 
-def _annotate_execution_history_entry(
-    entry: dict,
-    *,
-    review_decision: dict | None,
-    next_execution_hint: str | None,
-) -> dict:
-    review_decision = review_decision or {}
-    updated = dict(entry)
-    updated["next_execution_hint"] = next_execution_hint or updated.get("next_execution_hint")
-    updated["verification_status"] = review_decision.get("verification_status")
-    updated["review_mode"] = review_decision.get("execution_mode")
-    verify_context = review_decision.get("verify_context") or {}
-    if verify_context:
-        updated["verify_reason"] = verify_context.get("reason")
-    return updated
+def _annotate_execution_history_entry(entry: dict, **kwargs) -> dict:
+    return WorkerDispatcher.annotate_execution_history_entry(entry, **kwargs)
 
 
 def _build_execution_history_lesson(state: AgentState) -> str | None:
-    execution_history = state.get("execution_history") or []
-    if not execution_history:
-        return None
-
-    latest = execution_history[-1]
-    category = latest.get("classification") or "unknown"
-    worker = latest.get("worker") or "unknown"
-    tool_name = latest.get("tool_name") or "unknown_tool"
-    next_hint = latest.get("next_execution_hint") or "unknown"
-    verification_status = latest.get("verification_status") or "unknown"
-
-    query = ""
-    for message in state.get("messages", []):
-        if isinstance(message, HumanMessage):
-            query = str(message.content)[:50]
-            break
-
-    if not query:
-        query = "recent task"
-
-    return (
-        f"ROUTING LESSON: Query '{query}...' reached worker={worker}, tool={tool_name}, "
-        f"classification={category}, next_hint={next_hint}, verification={verification_status}. "
-        "Prefer similar routing and recovery handling for comparable requests."
-    )
+    return WorkerDispatcher.build_execution_history_lesson(state)
 
 
 def _build_code_repair_message(state: AgentState, retry_count: int) -> str:

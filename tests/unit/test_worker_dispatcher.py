@@ -343,6 +343,76 @@ def test_build_verify_context_normalizes_latest_state():
     assert context["previous_hint"] == "verify"
 
 
+def test_build_execution_history_entry_captures_normalized_fields():
+    entry = WorkerDispatcher.build_execution_history_entry(
+        tool_name="python_sandbox",
+        selected_worker="code_worker",
+        selected_skill=None,
+        execution_mode="code_execute",
+        next_execution_hint="repair",
+        outcome={
+            "status": "success",
+            "fingerprint": "abc123",
+        },
+        classification={
+            "category": "retryable_runtime_error",
+            "suggested_next_action": "retry_same_worker",
+            "requires_handoff": False,
+        },
+    )
+
+    assert entry["tool_name"] == "python_sandbox"
+    assert entry["worker"] == "code_worker"
+    assert entry["execution_mode"] == "code_execute"
+    assert entry["next_execution_hint"] == "repair"
+    assert entry["classification"] == "retryable_runtime_error"
+    assert entry["next_action"] == "retry_same_worker"
+
+
+def test_annotate_execution_history_entry_adds_review_state():
+    updated = WorkerDispatcher.annotate_execution_history_entry(
+        {
+            "tool_name": "browser_click",
+            "worker": "skill_worker",
+            "classification": "success",
+            "next_execution_hint": "verify",
+        },
+        review_decision={
+            "verification_status": "required",
+            "execution_mode": "review_prepare",
+            "verify_context": {"reason": "Confirm the button click changed page state"},
+        },
+        next_execution_hint="verify",
+    )
+
+    assert updated["verification_status"] == "required"
+    assert updated["review_mode"] == "review_prepare"
+    assert updated["verify_reason"] == "Confirm the button click changed page state"
+
+
+def test_build_execution_history_lesson_uses_latest_normalized_entry():
+    lesson = WorkerDispatcher.build_execution_history_lesson(
+        {
+            "messages": [HumanMessage(content="帮我修一下这个 Python 错误")],
+            "execution_history": [
+                {
+                    "worker": "code_worker",
+                    "tool_name": "python_sandbox",
+                    "classification": "retryable_runtime_error",
+                    "next_execution_hint": "repair",
+                    "verification_status": "pending",
+                }
+            ],
+        }
+    )
+
+    assert lesson is not None
+    assert "worker=code_worker" in lesson
+    assert "tool=python_sandbox" in lesson
+    assert "classification=retryable_runtime_error" in lesson
+    assert "verification=pending" in lesson
+
+
 @pytest.mark.asyncio
 async def test_skill_worker_action_requests_verification_for_side_effects():
     with patch("app.core.worker_graphs.shared_execution.AuthService.check_tool_permission", return_value=True):
