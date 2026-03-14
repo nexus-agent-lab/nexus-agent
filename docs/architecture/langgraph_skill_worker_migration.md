@@ -1055,6 +1055,7 @@ Completed in branch:
 - `execution_history` entries now capture reviewer outcomes such as verification status and verify reason
 - normalized reviewer snapshots are now attached to review decisions and execution history
 - `experience_replay` can now build lessons from normalized execution history and reviewer snapshots
+- dispatcher now owns post-tool retry-state derivation and post-review fallback routing
 
 Still remaining:
 

@@ -190,22 +190,7 @@ async def repair_followup_node(state: AgentState):
 
 
 def should_reflect(state: AgentState) -> Literal["reflexion", "repair", "agent", "report", "__end__"]:
-    messages = state["messages"]
-    last_message = messages[-1]
-    classification_retryable = WorkerDispatcher.should_retry_classification(state)
-    tool_error_retryable = False
-
-    # Check if the last tool output was an error
-    if isinstance(last_message, ToolMessage):
-        content = last_message.content
-        if WorkerDispatcher.should_retry_tool_error(content):
-            tool_error_retryable = True
-
-    route = WorkerDispatcher.route_after_tool(
-        state,
-        classification_retryable=classification_retryable,
-        tool_error_retryable=tool_error_retryable,
-    )
+    route, retry_state = WorkerDispatcher.route_after_tool_with_runtime(state)
     trace_logger.log_wire_event(
         "tool_route",
         trace_id=str(state.get("trace_id", "")),
@@ -213,8 +198,8 @@ def should_reflect(state: AgentState) -> Literal["reflexion", "repair", "agent",
         details={
             "selected_worker": state.get("selected_worker"),
             "next_execution_hint": state.get("next_execution_hint"),
-            "classification_retryable": classification_retryable,
-            "tool_error_retryable": tool_error_retryable,
+            "classification_retryable": retry_state["classification_retryable"],
+            "tool_error_retryable": retry_state["tool_error_retryable"],
             "route": route,
         },
     )
@@ -308,8 +293,7 @@ async def clarify_followup_node(state: AgentState):
 def route_after_review(
     state: AgentState,
 ) -> Literal["reflexion", "repair", "agent", "verify", "clarify", "report", "__end__"]:
-    fallback_route = should_reflect(state)
-    route = WorkerDispatcher.route_after_review(state, fallback_route=fallback_route)
+    route, review_state = WorkerDispatcher.route_after_review_with_runtime(state)
     trace_logger.log_wire_event(
         "review_route",
         trace_id=str(state.get("trace_id", "")),
@@ -319,7 +303,9 @@ def route_after_review(
             "verification_status": state.get("verification_status"),
             "next_execution_hint": state.get("next_execution_hint"),
             "classification": (state.get("last_classification") or {}).get("category"),
-            "fallback_route": fallback_route,
+            "fallback_route": review_state["fallback_route"],
+            "classification_retryable": review_state["classification_retryable"],
+            "tool_error_retryable": review_state["tool_error_retryable"],
             "route": route,
         },
     )

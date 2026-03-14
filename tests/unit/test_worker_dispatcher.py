@@ -275,6 +275,43 @@ def test_route_after_tool_uses_reflexion_for_retryable_classification():
     assert route == "reflexion"
 
 
+def test_route_after_tool_with_runtime_derives_retry_inputs_from_state():
+    route, retry_state = WorkerDispatcher.route_after_tool_with_runtime(
+        {
+            "selected_worker": "skill_worker",
+            "retry_count": 1,
+            "messages": [ToolMessage(content="Execution Error: boom", name="python_sandbox", tool_call_id="call-1")],
+            "last_classification": {
+                "retryable": True,
+                "requires_handoff": False,
+            },
+        }
+    )
+
+    assert route == "reflexion"
+    assert retry_state["classification_retryable"] is True
+    assert retry_state["tool_error_retryable"] is True
+
+
+def test_route_after_review_with_runtime_uses_dispatcher_fallback_route():
+    route, review_state = WorkerDispatcher.route_after_review_with_runtime(
+        {
+            "selected_worker": "skill_worker",
+            "retry_count": 1,
+            "messages": [ToolMessage(content="Execution Error: boom", name="browser_click", tool_call_id="call-2")],
+            "last_classification": {
+                "retryable": True,
+                "requires_handoff": False,
+            },
+        }
+    )
+
+    assert route == "reflexion"
+    assert review_state["fallback_route"] == "reflexion"
+    assert review_state["classification_retryable"] is True
+    assert review_state["tool_error_retryable"] is True
+
+
 def test_build_followup_instructions_for_code_verify_report_flow():
     instructions = WorkerDispatcher.build_followup_instructions(
         {

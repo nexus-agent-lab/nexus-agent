@@ -421,6 +421,20 @@ class WorkerDispatcher:
         return "__end__"
 
     @staticmethod
+    def build_tool_retry_state(state: AgentState) -> dict[str, Any]:
+        messages = state.get("messages", [])
+        last_message = messages[-1] if messages else None
+        tool_error_retryable = False
+
+        if isinstance(last_message, ToolMessage):
+            tool_error_retryable = WorkerDispatcher.should_retry_tool_error(last_message.content)
+
+        return {
+            "classification_retryable": WorkerDispatcher.should_retry_classification(state),
+            "tool_error_retryable": tool_error_retryable,
+        }
+
+    @staticmethod
     def route_after_tool(
         state: AgentState,
         *,
@@ -445,6 +459,18 @@ class WorkerDispatcher:
         if tool_error_retryable:
             return "reflexion" if retry_count < 3 else "agent"
         return "agent"
+
+    @staticmethod
+    def route_after_tool_with_runtime(
+        state: AgentState,
+    ) -> tuple[Literal["reflexion", "repair", "agent", "report", "__end__"], dict[str, Any]]:
+        retry_state = WorkerDispatcher.build_tool_retry_state(state)
+        route = WorkerDispatcher.route_after_tool(
+            state,
+            classification_retryable=retry_state["classification_retryable"],
+            tool_error_retryable=retry_state["tool_error_retryable"],
+        )
+        return route, retry_state
 
     @staticmethod
     def route_after_review(
@@ -475,6 +501,14 @@ class WorkerDispatcher:
         if verification_status == "failed":
             return "agent"
         return fallback_route
+
+    @staticmethod
+    def route_after_review_with_runtime(
+        state: AgentState,
+    ) -> tuple[Literal["reflexion", "repair", "agent", "verify", "clarify", "report", "__end__"], dict[str, Any]]:
+        fallback_route, retry_state = WorkerDispatcher.route_after_tool_with_runtime(state)
+        route = WorkerDispatcher.route_after_review(state, fallback_route=fallback_route)
+        return route, {"fallback_route": fallback_route, **retry_state}
 
     @staticmethod
     async def execute_tool_call(
