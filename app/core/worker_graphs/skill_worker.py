@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from langchain_core.messages import HumanMessage
+from langchain_core.messages import ToolMessage
 
 from app.core.result_classifier import ResultClassification
 from app.core.state import AgentState
@@ -11,6 +13,59 @@ from app.core.tool_metadata import get_tool_metadata
 from app.core.tool_router import CORE_TOOL_NAMES
 from app.core.trace_logger import trace_logger
 from app.core.worker_graphs.shared_execution import ToolExecutionPatch, execute_tool_call_generic
+
+
+AMBIENT_QUERY_KEYWORDS = (
+    "冷不冷",
+    "室温",
+    "家里温度",
+    "房间温度",
+    "温度最高",
+    "温度最低",
+    "最热",
+    "最冷",
+    "temperature",
+)
+
+AMBIENT_INCLUDE_KEYWORDS = (
+    "客厅",
+    "卧室",
+    "主卧",
+    "次卧",
+    "书房",
+    "儿童房",
+    "餐厅",
+    "房间",
+    "室内",
+    "环境",
+    "home",
+    "living room",
+    "bedroom",
+    "study",
+    "indoor",
+)
+
+AMBIENT_EXCLUDE_KEYWORDS = (
+    "冰箱",
+    "冷冻",
+    "冷藏",
+    "热水器",
+    "出水",
+    "回水",
+    "锅炉",
+    "水温",
+    "管道",
+    "cpu",
+    "设备内部",
+    "freezer",
+    "fridge",
+    "refrigerator",
+    "water heater",
+    "boiler",
+    "outlet",
+    "pipe",
+    "阳台",
+)
 
 
 def _is_explicit_homeassistant_action_request(state: AgentState) -> bool:
@@ -39,6 +94,99 @@ def _is_explicit_homeassistant_action_request(state: AgentState) -> bool:
             return True
         return False
     return False
+
+
+def _is_homeassistant_ambient_temperature_request(state: AgentState) -> bool:
+    if state.get("selected_skill") != "homeassistant":
+        return False
+
+    for message in reversed(state.get("messages") or []):
+        if not isinstance(message, HumanMessage):
+            continue
+        content = str(message.content or "").lower()
+        return any(token in content for token in AMBIENT_QUERY_KEYWORDS)
+
+    return False
+
+
+def _extract_result_payload(raw_text: str) -> tuple[dict[str, Any] | None, list[dict[str, Any]] | None]:
+    try:
+        parsed = json.loads(raw_text)
+    except Exception:
+        return None, None
+
+    if isinstance(parsed, dict) and parsed.get("type") == "json" and isinstance(parsed.get("content"), list):
+        return parsed, parsed["content"]
+    if isinstance(parsed, list):
+        return None, parsed
+    return None, None
+
+
+def _ambient_entity_text(entity: dict[str, Any]) -> str:
+    attributes = entity.get("attributes") or {}
+    return " ".join(
+        str(part).lower()
+        for part in (
+            entity.get("entity_id", ""),
+            attributes.get("friendly_name", ""),
+            attributes.get("device_class", ""),
+            attributes.get("unit_of_measurement", ""),
+        )
+        if part
+    )
+
+
+def _filter_ambient_temperature_entities(entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    kept: list[dict[str, Any]] = []
+    for entity in entities:
+        haystack = _ambient_entity_text(entity)
+        if any(token in haystack for token in AMBIENT_EXCLUDE_KEYWORDS):
+            continue
+        if not any(token in haystack for token in AMBIENT_INCLUDE_KEYWORDS):
+            continue
+        kept.append(entity)
+    return kept or entities
+
+
+def _apply_homeassistant_ambient_filter(
+    state: AgentState,
+    *,
+    tool_name: str,
+    execution_mode: str,
+    execution_patch: ToolExecutionPatch,
+) -> ToolExecutionPatch:
+    if state.get("selected_skill") != "homeassistant":
+        return execution_patch
+    if tool_name != "list_entities" or execution_mode != "skill_discover":
+        return execution_patch
+    if not _is_homeassistant_ambient_temperature_request(state):
+        return execution_patch
+
+    outcome = execution_patch.get("outcome")
+    message = execution_patch.get("message")
+    if not outcome or not message:
+        return execution_patch
+
+    wrapper, entities = _extract_result_payload(outcome.get("raw_text", ""))
+    if not entities:
+        return execution_patch
+
+    filtered_entities = _filter_ambient_temperature_entities(entities)
+    if filtered_entities == entities:
+        return execution_patch
+
+    if wrapper is not None:
+        raw_text = json.dumps({**wrapper, "content": filtered_entities}, ensure_ascii=False)
+    else:
+        raw_text = json.dumps(filtered_entities, ensure_ascii=False)
+
+    execution_patch["outcome"] = {
+        **outcome,
+        "raw_text": raw_text,
+        "structured_data": filtered_entities,
+    }
+    execution_patch["message"] = ToolMessage(content=raw_text, name=message.name, tool_call_id=message.tool_call_id)
+    return execution_patch
 
 
 def _filter_tools_for_skill_mode(state: AgentState, tools: list[Any]) -> tuple[list[Any], str]:
@@ -79,7 +227,7 @@ def _filter_tools_for_skill_mode(state: AgentState, tools: list[Any]) -> tuple[l
             operation_kind = metadata.get("operation_kind")
             if getattr(tool, "name", "") in CORE_TOOL_NAMES and getattr(tool, "name", "") != "python_sandbox":
                 filtered.append(tool)
-            elif operation_kind in {"act", "read", "verify"}:
+            elif operation_kind in {"act", "notify"}:
                 filtered.append(tool)
         return filtered or tools, "act"
 
@@ -192,6 +340,12 @@ async def execute_skill_worker_tool_call(
         trace_id=trace_id,
         execution_mode=execution_mode,
     )
+    execution_patch = _apply_homeassistant_ambient_filter(
+        state,
+        tool_name=tool_name,
+        execution_mode=execution_mode,
+        execution_patch=execution_patch,
+    )
     classification, next_execution_hint = _postprocess_skill_classification(
         execution_patch.get("classification"),
         metadata=metadata,
@@ -236,10 +390,10 @@ def _postprocess_skill_classification(
                 {
                     **classification,
                     "user_facing_summary": "Action executed and should be verified before completion.",
-                "suggested_next_action": "verify",
-            },
-            "verify",
-        )
+                    "suggested_next_action": "verify",
+                },
+                "verify",
+            )
 
     if (
         execution_mode == "skill_discover"

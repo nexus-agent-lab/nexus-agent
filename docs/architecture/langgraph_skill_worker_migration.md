@@ -49,6 +49,11 @@ The project is currently in a **compatibility-stage migration**:
   - `code_worker`
   - `reviewer_worker`
 - flow-oriented tracing has been added so logs show routing and recovery decisions
+- a small number of P0 runtime guardrails now exist inside worker logic for Home Assistant reliability
+  - example: explicit control requests cannot stop at discovery-only state
+  - example: ambient temperature queries can be filtered before the model sees appliance/process sensors
+
+These guardrails are intentional for the current P0 phase. They are not the final desired ownership boundary and should later migrate into skill/domain policy once the HA baseline is stable.
 
 ### Not Finished Yet
 

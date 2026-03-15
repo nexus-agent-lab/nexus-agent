@@ -1,3 +1,4 @@
+import json
 from unittest.mock import patch
 
 import pytest
@@ -248,6 +249,32 @@ def test_route_after_agent_routes_code_report_mode_to_report():
     assert route == "report"
 
 
+def test_route_after_agent_retries_skill_action_followup_before_end():
+    route = WorkerDispatcher.route_after_agent(
+        {
+            "selected_worker": "skill_worker",
+            "next_execution_hint": "act",
+            "llm_call_count": 2,
+        },
+        has_tool_calls=False,
+    )
+
+    assert route == "agent"
+
+
+def test_route_after_agent_reports_skill_action_followup_after_budget():
+    route = WorkerDispatcher.route_after_agent(
+        {
+            "selected_worker": "skill_worker",
+            "next_execution_hint": "act",
+            "llm_call_count": 3,
+        },
+        has_tool_calls=False,
+    )
+
+    assert route == "report"
+
+
 def test_route_after_tool_prefers_repair_for_code_worker():
     route = WorkerDispatcher.route_after_tool(
         {
@@ -342,6 +369,19 @@ def test_build_followup_instructions_include_verify_context():
 
     assert any("VERIFICATION REQUIRED" in item for item in instructions)
     assert any("Confirm the button click changed page state" in item for item in instructions)
+
+
+def test_build_followup_instructions_force_skill_action_execution():
+    instructions = WorkerDispatcher.build_followup_instructions(
+        {
+            "selected_worker": "skill_worker",
+            "selected_skill": "homeassistant",
+            "next_execution_hint": "act",
+        }
+    )
+
+    assert any("ACTION REQUIRED" in item for item in instructions)
+    assert any("MUST call an action tool" in item for item in instructions)
 
 
 def test_build_report_message_prefers_user_language():
@@ -756,6 +796,56 @@ async def test_skill_worker_explicit_homeassistant_action_does_not_stop_after_di
     assert patch_result["classification"]["suggested_next_action"] == "complete"
     assert patch_result["execution_mode"] == "skill_discover"
     assert patch_result["next_execution_hint"] == "act"
+
+
+@pytest.mark.asyncio
+async def test_skill_worker_filters_ambient_temperature_entities_for_homeassistant():
+    raw_result = {
+        "type": "json",
+        "content": [
+            {
+                "entity_id": "sensor.living_room_temperature",
+                "attributes": {"friendly_name": "客厅温度"},
+                "state": "24",
+            },
+            {
+                "entity_id": "sensor.fridge_freezer_temperature",
+                "attributes": {"friendly_name": "冰箱冷冻层温度"},
+                "state": "-18",
+            },
+            {
+                "entity_id": "sensor.water_heater_outlet_temperature",
+                "attributes": {"friendly_name": "热水器出水温度"},
+                "state": "52",
+            },
+        ],
+    }
+
+    with patch("app.core.worker_graphs.shared_execution.AuthService.check_tool_permission", return_value=True):
+        with patch("app.core.worker_graphs.shared_execution.AuditInterceptor", DummyAuditInterceptor):
+            patch_result = await WorkerDispatcher.execute_tool_call(
+                {
+                    "selected_worker": "skill_worker",
+                    "selected_skill": "homeassistant",
+                    "messages": [HumanMessage(content="家里冷不冷")],
+                },
+                tool_name="list_entities",
+                tool_call_id="call-ha-ambient",
+                tool_args={"domain": "sensor", "search_query": "temperature"},
+                tool_to_call=DummyTool(
+                    name="list_entities",
+                    metadata={"preferred_worker": "skill_worker", "operation_kind": "discover"},
+                    result=json.dumps(raw_result, ensure_ascii=False),
+                ),
+                user=DummyUser(),
+                trace_id="trace-ha-ambient",
+            )
+
+    filtered = patch_result["outcome"]["structured_data"]
+    assert len(filtered) == 1
+    assert filtered[0]["entity_id"] == "sensor.living_room_temperature"
+    assert "fridge_freezer_temperature" not in patch_result["message"].content
+    assert "water_heater_outlet_temperature" not in patch_result["message"].content
 
 
 @pytest.mark.asyncio

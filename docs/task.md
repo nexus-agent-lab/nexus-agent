@@ -8,6 +8,8 @@
   - [ ] Validate permission-denied flow
   - [ ] Validate entity-not-found / abnormal-state flow
   - [ ] Filter ambient-room temperature queries away from appliance/process sensors (fridge, freezer, water heater, etc.)
+    - Note: the current ambient-temperature filter is an intentional P0 runtime guardrail in `skill_worker`, not the final architecture target
+    - Follow-up: move this rule into skill/domain policy metadata once the HA core loop is stable
   - [ ] Produce a failure-category checklist for the highest-impact daily-use problems
 - [ ] `P0-2` Binding / login / permission UX tightening
   - [ ] Review bind-token friction for non-technical users
