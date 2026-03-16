@@ -73,7 +73,7 @@ else:
                 if st.button("🔗 Generate Binding Token", key=f"bind_{user.id}"):
                     token = run_async(AuthService.create_bind_token(user.id))
                     st.success(f"Binding Code: **{token}**")
-                    st.info("Send `/bind {token}` to the bot within 5 minutes.")
+                    st.info(f"Send `/bind {token}` to the bot within 5 minutes.")
 
             with col2:
                 # Identities

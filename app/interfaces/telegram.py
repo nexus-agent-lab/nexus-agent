@@ -5,7 +5,7 @@ import os
 from telegram import BotCommand, BotCommandScopeChat, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 
-from app.core.auth_service import AuthService
+from app.core.auth_service import AuthService, BindResult
 from app.core.dispatcher import InterfaceDispatcher
 from app.core.i18n import get_text, resolve_language
 from app.core.mq import ChannelType, MessageType, MQService, UnifiedMessage
@@ -368,11 +368,11 @@ async def process_bind_token(update: Update, context: ContextTypes.DEFAULT_TYPE,
         username = update.effective_user.username or update.effective_user.first_name
         logger.info(f"Token verified. Binding Telegram ID {user_id} to Nexus User #{target_user_id}")
 
-        success = await AuthService.bind_identity(
+        bind_result = await AuthService.bind_identity(
             user_id=target_user_id, provider="telegram", provider_user_id=user_id, username=username
         )
 
-        if success:
+        if bind_result == BindResult.SUCCESS:
             logger.info(f"Account bind successful for {user_id}")
 
             # Update user language if possible based on Telegram pref
@@ -390,19 +390,14 @@ async def process_bind_token(update: Update, context: ContextTypes.DEFAULT_TYPE,
             await context.bot.send_message(
                 chat_id=chat_id, text=get_text("bind_success", lang, user_id=target_user_id), parse_mode="Markdown"
             )
+            bound_user = await AuthService.get_user_by_identity("telegram", user_id)
+            await refresh_user_commands(context.bot, chat_id, bound_user, lang)
         else:
             logger.warning(f"Account bind failed for {user_id}. Conflict or already linked.")
-            from app.core.auth_service import BindResult
-            # Check result if possible, assuming success is returned as bool or enum
-            # If changed to Enum, need to handle it.
-            # Previous changes returned BindResult.
-            # Let's check the code I recall: 'success = await AuthService.bind_identity...'
-            # Wait, I previously changed it to return BindResult Enum!
-            # I should handle Enum here.
 
-            if success == BindResult.PROVIDER_CONFLICT:
+            if bind_result == BindResult.PROVIDER_CONFLICT:
                 text = get_text("bind_conflict_provider", lang)
-            elif success == BindResult.USER_CONFLICT:
+            elif bind_result == BindResult.USER_CONFLICT:
                 text = get_text("bind_conflict_user", lang)
             else:
                 text = get_text("bind_fail", lang)

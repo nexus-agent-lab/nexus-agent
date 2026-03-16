@@ -10,6 +10,7 @@
 - Immediate continuation point: finish the remaining `P0-1` Home Assistant reliability scenarios before moving to `P0-2`.
 
 - [ ] `P0-1` Home Assistant reliability validation on top of the LangGraph baseline
+  - Reference: `docs/ha_p0_validation_checklist.md`
   - [ ] Validate discovery flow
   - [ ] Validate single-device control flow
   - [ ] Validate state-query flow
@@ -20,6 +21,7 @@
     - Note: the current ambient-temperature filter is an intentional P0 runtime guardrail in `skill_worker`, not the final architecture target
     - Follow-up: move this rule into skill/domain policy metadata once the HA core loop is stable
   - [ ] Produce a failure-category checklist for the highest-impact daily-use problems
+    - Tracking doc: `docs/ha_p0_validation_checklist.md`
 - [ ] `P0-2` Binding / login / permission UX tightening
   - [ ] Review bind-token friction for non-technical users
   - [ ] Review login fallback and identity-recognition UX
