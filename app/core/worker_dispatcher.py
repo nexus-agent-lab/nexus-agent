@@ -415,7 +415,8 @@ class WorkerDispatcher:
         if selected_worker == "skill_worker" and next_execution_hint == "act":
             instructions.append(
                 "ACTION REQUIRED: Discovery only identified the target entity. "
-                "Do not stop at the discovered state. Execute the requested control action now, "
+                "Do not stop at the discovered state and do not answer with current status only. "
+                "You MUST call an action tool now (prefer `entity_action` or `call_service_tool`), "
                 "then verify the final state before completion."
             )
 
@@ -443,6 +444,8 @@ class WorkerDispatcher:
     ) -> Literal["tools", "agent", "verify", "report", "__end__"]:
         if has_tool_calls:
             return "tools"
+        if state.get("selected_worker") == "skill_worker" and state.get("next_execution_hint") == "act":
+            return "agent" if state.get("llm_call_count", 0) < 3 else "report"
         if state.get("selected_worker") == "code_worker" and state.get("next_execution_hint") == "report":
             return "report"
         if state.get("verification_status") == "failed" and state.get("llm_call_count", 0) < 2:

@@ -198,8 +198,8 @@ def test_skill_worker_prepare_uses_next_execution_hint_for_act():
     names = [tool.name for tool in filtered]
 
     assert "call_service_tool" in names
-    assert "read_entity_state" in names
     assert "list_entities" not in names
+    assert "read_entity_state" not in names
 
 
 def test_code_worker_prepare_uses_next_execution_hint_for_verify():

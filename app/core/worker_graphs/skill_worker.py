@@ -3,8 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from langchain_core.messages import HumanMessage
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import HumanMessage, ToolMessage
 
 from app.core.result_classifier import ResultClassification
 from app.core.state import AgentState
@@ -13,7 +12,6 @@ from app.core.tool_metadata import get_tool_metadata
 from app.core.tool_router import CORE_TOOL_NAMES
 from app.core.trace_logger import trace_logger
 from app.core.worker_graphs.shared_execution import ToolExecutionPatch, execute_tool_call_generic
-
 
 AMBIENT_QUERY_KEYWORDS = (
     "冷不冷",

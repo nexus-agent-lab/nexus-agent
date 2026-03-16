@@ -24,6 +24,8 @@ class DummyUser:
         self.id = user_id
         self.username = username
         self.role = role
+        self.policy = {}
+        self.groups = []
 
 
 class DummyTool:
@@ -56,6 +58,49 @@ async def test_execute_tool_call_permission_denied():
     assert patch_result["outcome"]["status"] == "error"
     assert patch_result["classification"]["category"] == "permission_denied"
     assert patch_result["execution_mode"] == "skill_read"
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_call_denies_homeassistant_restart_for_non_admin():
+    with patch("app.core.worker_graphs.shared_execution.AuditInterceptor", DummyAuditInterceptor):
+        patch_result = await WorkerDispatcher.execute_tool_call(
+            {"selected_worker": "skill_worker", "selected_skill": "homeassistant"},
+            tool_name="call_service_tool",
+            tool_call_id="call-ha-restart",
+            tool_args={"domain": "homeassistant", "service": "restart"},
+            tool_to_call=DummyTool(
+                name="call_service_tool",
+                metadata={"preferred_worker": "skill_worker", "operation_kind": "act"},
+            ),
+            user=DummyUser(role="user"),
+            trace_id="trace-ha-restart",
+        )
+
+    assert "Permission denied" in patch_result["message"].content
+    assert patch_result["classification"]["category"] == "permission_denied"
+    assert patch_result["execution_mode"] == "skill_act"
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_call_allows_homeassistant_restart_for_admin():
+    with patch("app.core.worker_graphs.shared_execution.AuditInterceptor", DummyAuditInterceptor):
+        patch_result = await WorkerDispatcher.execute_tool_call(
+            {"selected_worker": "skill_worker", "selected_skill": "homeassistant"},
+            tool_name="call_service_tool",
+            tool_call_id="call-ha-restart-admin",
+            tool_args={"domain": "homeassistant", "service": "restart"},
+            tool_to_call=DummyTool(
+                name="call_service_tool",
+                metadata={"preferred_worker": "skill_worker", "operation_kind": "act"},
+                result="ok",
+            ),
+            user=DummyUser(role="admin"),
+            trace_id="trace-ha-restart-admin",
+        )
+
+    assert patch_result["outcome"]["status"] == "success"
+    assert patch_result["classification"]["category"] == "success"
+    assert patch_result["execution_mode"] == "skill_act"
 
 
 @pytest.mark.asyncio

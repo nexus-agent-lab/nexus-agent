@@ -111,6 +111,33 @@ The `codex/langgraph-migration-plan` line should now be treated as a **usable ex
 - This is enough to support near-term P0 scenario validation, especially around Home Assistant reliability and governed execution.
 - Further work on this line should be driven by real P0 needs. Do not continue pure graph/subgraph refactoring unless it directly improves Home Assistant reliability, permissions, binding/login friction, or mobile/message usability.
 
+### Latest P0 Reliability Snapshot
+
+As of the latest `main` progress:
+
+- Home Assistant control flow has been tightened so explicit control requests do not stop at discovery-only state.
+- Ambient temperature questions such as "家里冷不冷" and "哪个房间最高/最低" now have a runtime guardrail that filters appliance/process sensors before the model sees the entity list.
+- `homeassistant.restart` is currently restricted to `admin` as a temporary runtime guardrail.
+
+These are deliberate P0 reliability patches. They are acceptable for the current phase, but they are **not** the final ownership boundary. The intended future direction is:
+
+- move Home Assistant-specific business policy into declarative plugin / skill policy
+- keep core graph logic generic
+- keep runtime enforcement reading from config/metadata instead of accumulating ad hoc hardcoded rules
+
+### New-Session Resume Point
+
+If a new session starts now, the most useful continuation point is:
+
+1. validate remaining `P0-1` Home Assistant reliability scenarios
+   - permission denied
+   - entity not found
+   - abnormal / unavailable device state
+2. record a failure checklist from real runs
+3. only then move to `P0-2` binding / login / permission UX
+
+Do **not** restart pure LangGraph refactoring unless a concrete P0 issue forces it.
+
 ---
 
 ## 6. Near-Term Roadmap

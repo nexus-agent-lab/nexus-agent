@@ -48,6 +48,7 @@ generated_by: placeholder  # Replace with actual generation
 4. **安全检查 (Safety Check)**: 执行操作前确认
    - 如果操作影响范围大（如"关闭所有灯"），先列出将受影响的设备
    - 对于温度设置，验证数值合理性（16-30°C）
+   - `homeassistant.restart` 这类系统级操作必须视为管理员操作，不对普通用户执行
 
 5. **参数完整性 (Parameter Integrity)**: 避免默认值陷阱
    - 调用 `list_entities` 时，显式提供 `domain` 以减少噪音

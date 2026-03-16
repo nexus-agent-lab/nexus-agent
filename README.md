@@ -1,4 +1,4 @@
-# Nexus Agent OS
+# Nexus Agent
 
 <div align="center">
 
@@ -13,10 +13,19 @@
 > [!WARNING]
 > **Alpha Preview**: This project is currently in early active development. It requires a basic understanding of Docker, Python, and LLMs to set up. Things might break. PRs and Issues are welcome! 
 
+> [!IMPORTANT]
+> **Current Product Stage**: treat the current codebase as a P0-focused baseline for a self-hosted, governable agent control plane. Near-term work is centered on:
+> - Home Assistant reliability for real daily use
+> - binding / login / permission experience
+> - Telegram + Web fallback usability
+> - safe MCP integration and auditability
+>
+> It is **not** currently optimized for broad feature expansion or a generic "AI OS" narrative.
+
 <a name="english"></a>
 ## 🇬🇧 English
 
-**Nexus Agent** is a private, intelligent control center designed for the **Apple Silicon** era. It starts as your generic **Home AI Center**, running entirely on your local infrastructure to ensure privacy, and scales seamlessly to **Enterprise Integration**.
+**Nexus Agent** is a self-hosted, governable agent control plane for home and enterprise environments. In the near term, it should be understood first as a **Home AI Center** with strong identity, permission, audit, and tool-governance boundaries, then extended into enterprise integrations on the same foundation.
 
 ### 🚀 Vision
 > **"From Local Privacy to Enterprise Intelligence"**
@@ -39,12 +48,24 @@
     -   **Smart Home**: Deep integration with Home Assistant.
 -   **Mission Control**: Streamlit dashboard for monitoring health, audit logs, and memory state.
 
+### 📌 Current Execution Baseline
+The current `main` branch already includes a LangGraph-oriented execution baseline with:
+- worker-aware routing (`skill_worker`, `code_worker`, `reviewer_worker`)
+- explicit follow-up paths for `verify`, `report`, `clarify`, and `repair`
+- structured runtime/reviewer outcomes and richer flow logging
+- P0 Home Assistant guardrails for:
+  - explicit control requests not stopping at discovery-only state
+  - ambient temperature queries filtering appliance/process sensors before the model sees them
+  - `homeassistant.restart` requiring admin-level permission as a temporary runtime guardrail
+
+These guardrails are intentional for P0 reliability and are expected to move into declarative plugin/skill policy later.
+
 ---
 
 <a name="chinese"></a>
 ## 🇨🇳 中文说明
 
-**Nexus Agent** 是专为 **Apple Silicon** 时代打造的隐私优先、智能控制中心。它的愿景是成为您的 **家庭 AI 中枢**，在保障隐私的前提下运行所有推理与记忆，并具备无缝扩展至 **企业级集成** 的能力。
+**Nexus Agent** 当前更准确的定位是：一个面向家庭与企业场景的**自托管、可治理 Agent 控制平面**。近阶段优先把它做成可靠的 **家庭 AI 中枢**，把身份、权限、审计、工具治理做好，再在同一基础上扩展企业集成。
 
 ### 🚀 项目愿景
 > **“从家庭隐私计算到企业智能中枢”**
@@ -66,6 +87,18 @@
     -   **MCP 原生支持**：基于 Model Context Protocol 标准，轻松挂载本地文件与 API。
     -   **深度家居互联**：自带 Home Assistant 完美集成。
 -   **任务指挥台**：提供可视化 Dashboard，实时监控大脑状态、审计自我学习日志。
+
+### 📌 当前执行基线
+当前 `main` 分支已经具备一条可用的 LangGraph 基线：
+- 按 worker 路由的执行骨架（`skill_worker`、`code_worker`、`reviewer_worker`）
+- 显式 `verify / report / clarify / repair` 后续路径
+- 结构化运行结果、reviewer 结果和更清晰的 flow 日志
+- 面向 P0 的 Home Assistant 可靠性补丁：
+  - 明确控制命令不会在 discovery 阶段提前结束
+  - “家里冷不冷/房间最高最低”会先过滤冰箱、热水器等过程温度
+  - `homeassistant.restart` 目前要求 `admin` 权限
+
+这些规则目前是 **P0 runtime guardrail**，后续会逐步迁移到 MCP / plugin / skill policy。
 
 ---
 

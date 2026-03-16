@@ -23,6 +23,26 @@ class ToolExecutionPatch(TypedDict, total=False):
     next_execution_hint: str
 
 
+def _derive_service_level_permission_overrides(
+    tool_name: str,
+    tool_args: dict[str, Any],
+    metadata: dict[str, Any],
+) -> tuple[str | None, str | None]:
+    required_role = metadata.get("required_role")
+    domain = metadata.get("domain") or metadata.get("category") or "standard"
+
+    if tool_name not in {"call_service_tool", "entity_action"}:
+        return required_role, domain
+
+    service_domain = str(tool_args.get("domain") or "").lower()
+    service_name = str(tool_args.get("service") or tool_args.get("action") or "").lower()
+
+    if service_domain == "homeassistant" and service_name in {"restart", "homeassistant.restart"}:
+        return "admin", "home_automation"
+
+    return required_role, domain
+
+
 def _unwrap_optional_annotation(annotation):
     none_type = type(None)
     if annotation in (None, none_type):
@@ -64,6 +84,16 @@ async def execute_tool_call_generic(
         domain = tool_to_call.metadata.get("domain") or tool_to_call.metadata.get("category") or domain
         required_role = tool_to_call.metadata.get("required_role")
         allowed_groups = tool_to_call.metadata.get("allowed_groups")
+
+    required_role, domain = _derive_service_level_permission_overrides(
+        tool_name,
+        tool_args,
+        {
+            "required_role": required_role,
+            "domain": domain,
+            "category": domain,
+        },
+    )
 
     if not AuthService.check_tool_permission(
         user, tool_name, domain=domain, required_role=required_role, allowed_groups=allowed_groups

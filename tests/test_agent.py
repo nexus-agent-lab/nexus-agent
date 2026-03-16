@@ -129,6 +129,17 @@ def test_should_continue_routes_code_worker_report_to_report_node():
     assert should_continue(state) == "report"
 
 
+def test_should_continue_retries_skill_action_followup_before_end():
+    state = {
+        "messages": [AIMessage(content="Need to actually perform the action", tool_calls=[])],
+        "selected_worker": "skill_worker",
+        "next_execution_hint": "act",
+        "llm_call_count": 2,
+    }
+
+    assert should_continue(state) == "agent"
+
+
 def test_should_reflect_routes_code_worker_report_to_report_node():
     state = {
         "messages": [ToolMessage(content="Execution failed", name="python_sandbox", tool_call_id="call-report")],

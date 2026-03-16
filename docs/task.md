@@ -1,11 +1,20 @@
 # Task: Skill System Architecture Implementation ✅
 
 ## Current Priority Queue (Post LangGraph Baseline)
+### Current Resume Notes
+- LangGraph baseline is in place on `main`; do not reopen architecture-first refactoring by default.
+- Recently landed P0 Home Assistant guardrails:
+  - explicit control requests no longer stop at discovery-only state
+  - ambient temperature queries filter appliance/process sensors before reaching the model
+  - `homeassistant.restart` currently requires `admin`
+- Immediate continuation point: finish the remaining `P0-1` Home Assistant reliability scenarios before moving to `P0-2`.
+
 - [ ] `P0-1` Home Assistant reliability validation on top of the LangGraph baseline
   - [ ] Validate discovery flow
   - [ ] Validate single-device control flow
   - [ ] Validate state-query flow
   - [ ] Validate permission-denied flow
+    - Note: the current `homeassistant.restart -> admin` restriction is an intentional P0 runtime guardrail, not the final permission architecture
   - [ ] Validate entity-not-found / abnormal-state flow
   - [ ] Filter ambient-room temperature queries away from appliance/process sensors (fridge, freezer, water heater, etc.)
     - Note: the current ambient-temperature filter is an intentional P0 runtime guardrail in `skill_worker`, not the final architecture target
@@ -22,6 +31,11 @@
 - [ ] `P1` MCP/skill onboarding standards
   - [ ] Define required metadata / routing hints for new MCP + skill integrations
   - [ ] Define validation checklist for future integrations under the current worker architecture
+  - [ ] Define MCP/plugin/skill permission policy model
+    - default tool-level permissions from MCP/plugin config
+    - skill-level policy overlays for business semantics
+    - service/entity-level overrides for high-risk actions
+    - migrate runtime guardrails like `homeassistant.restart -> admin` into declarative policy
 
 ## Phase 1: Skills Directory ✅
 - [x] Create `skills/` directory structure
