@@ -23,7 +23,7 @@ async def test_semantic_router():
         [0.0, 0.0, 1.0],  # Tool 3: Irrelevant
     ]
 
-    mock_embeddings.aembed_query.side_effect = lambda q: ([1.0, 0.0, 0.0] if "weather" in q else [0.0, 1.0, 0.0])
+    mock_embeddings.aembed_query.side_effect = lambda q: [1.0, 0.0, 0.0] if "weather" in q else [0.0, 1.0, 0.0]
 
     router.embeddings = mock_embeddings
 

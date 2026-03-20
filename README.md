@@ -178,9 +178,25 @@ graph TD
     ```bash
     docker-compose up -d --build
     ```
+    > The default entrypoint on `localhost:8000` is the bundled **Nginx** reverse proxy.
+    > Nginx forwards `/api/` to `nexus-app` and all other routes to the Next.js `web` service.
 
 4.  **Web UI / 访问控制台**
     Open [http://localhost:8000](http://localhost:8000)
+
+### 🔁 Nginx Reload / Nginx 配置重载
+
+If you update `deploy/nginx/nexus.conf`, reload Nginx without recreating the whole stack:
+
+```bash
+docker-compose exec nginx nginx -s reload
+```
+
+To verify the active config syntax first:
+
+```bash
+docker-compose exec nginx nginx -t
+```
 
 ## 🗺️ Roadmap / 路线图
 
