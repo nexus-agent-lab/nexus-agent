@@ -1,14 +1,14 @@
 # AI Agent Instructions
 
 <!-- BEGIN AI-GOVERNANCE -->
-## Shared Governance Layer (GCC Model v2.1)
-This repository uses a Git-Context-Controller (GCC) shared governance layer.
+## Project Context Layer (v3.2)
+This repository uses a Project Context shared context layer.
 
-**Rules**: `.ai-governance/AGENTS.shared.md` | **Contract**: `.ai-governance/repo-contract.md`
+**Rules**: `.project-context/AGENTS.shared.md` | **Contract**: `.project-context/repo-contract.md`
 
 ### Required Every Session
-**START**: Run `/gov-context` to load current task state and objective.
-**END**: Run `/gov-writeback` to leave a resumable summary for the next agent.
+**START**: Run `/ctx-load` to load current task state and objective.
+**END**: Run `/ctx-save` to leave a resumable summary for the next agent.
 
-GCC records context/decisions in `.ai-governance/docs/`. Do not treat IDE memory or chat history as durable state.
+Default mode uses a single active task in `.project-context/docs/task/active/`. Optional workstreams are advanced mode only.
 <!-- END AI-GOVERNANCE -->

@@ -35,15 +35,15 @@ Nexus Agent is an "AI Operating System" centered around an LLM "CPU" and LangGra
 - **Network**: Local dev uses Docker Bridge (no Tailscale auth required). Ports 8000/8501 exposed directly.
 
 <!-- BEGIN AI-GOVERNANCE -->
-## Shared Governance (GCC Model v2.1)
-- **Execution Metadata**: .ai-governance/docs/project/metadata.yaml
-- **Active Task View**: Run `/gov-context`
+## Project Context (v3.2)
+- **Execution Metadata**: .project-context/docs/project/metadata.yaml
+- **Active Task View**: Run `/ctx-load`
 
-Follow: `.ai-governance/CLAUDE.shared.md`
+Follow: `.project-context/CLAUDE.shared.md`
 
 ### Session Lifecycle
-**START**: Run `/gov-context` immediately.
-**END**: Run `/gov-writeback` before ending the session.
+**START**: Run `/ctx-load` immediately.
+**END**: Run `/ctx-save` before ending the session.
 
-GCC records our "Why" (decisions). Git records the "What" (code).
+Default mode uses the active task files in `.project-context/docs/task/active/`. Git records the "What"; Project Context records the resumable "Why" and "What next".
 <!-- END AI-GOVERNANCE -->

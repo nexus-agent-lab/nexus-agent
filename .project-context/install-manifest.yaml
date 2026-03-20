@@ -1,0 +1,24 @@
+version: "1.4.0"
+kit_source: "https://github.com/o3o3o/project-context-kit"
+installed_at: "2026-03-20T20:38:54.058493"
+
+managed_paths:
+  - ".project-context/"
+  - ".agents/"
+  - "docs/project/"
+  - "docs/task/"
+merge_targets:
+  - "AGENTS.md"
+  - "CLAUDE.md"
+  - "GEMINI.md"
+canonical_project_docs:
+  - "docs/project/context.md"
+  - "docs/project/architecture.md"
+  - "docs/project/coding-standards.md"
+  - "docs/project/verify-runbook.md"
+canonical_task_docs:
+  - "index.md"
+  - "task.md"
+  - "plan.md"
+  - "summary.md"
+  - "verification.md"
