@@ -1,29 +1,37 @@
 # Summary
 
 ## Branch Intent
-Advance P0-2 auth/login/permission UX by moving from Telegram-only practical binding toward a unified Telegram↔web handoff flow, while preserving the HA P0-1 validation baseline for later manual testing.
+Continue P0-2 auth/login hardening after the Telegram↔web handoff MVP: remove frontend reliance on decoded JWT `api_key` extraction and move web/backend auth toward backend-verified Bearer JWT.
 
 ## Current State
-- Added `docs/ha_p0_validation_checklist.md` and linked it from `docs/task.md` so HA reliability issues can be tracked and marked fixed over time.
-- Added auth design docs: `docs/auth_channel_strategy.md` and `docs/auth_binding_state_machine.md`.
-- Committed earlier work as `59ed1f1` (`tighten bind UX and add HA validation checklist`).
-- Implemented first Telegram↔web handoff MVP:
-  - Redis-backed challenge/exchange helpers in `app/core/auth_service.py`
-  - `POST /api/auth/telegram/start`, `GET /api/auth/telegram/status`, `POST /api/auth/telegram/complete` in `app/api/auth.py`
-  - Telegram `/start login_<challenge>` approval path in `app/interfaces/telegram.py`
-  - Web login page now offers `Continue with Telegram` and completes via `web/src/app/api/auth/telegram/complete/route.ts`
-  - Unbound Telegram users now mark the challenge as `rejected_unbound` so web stops polling instead of hanging
-- Focused tests added and passing:
-  - `tests/test_auth_telegram_handoff.py`
-  - `tests/test_telegram_login_handoff.py`
-  - Verified with `uv run pytest tests/test_auth_telegram_handoff.py tests/test_telegram_login_handoff.py -v` => 6 passed
-- Oracle-style review concluded the MVP handoff pattern is acceptable for P0, and the unbound-user polling issue was the only must-fix in this slice; that fix is already applied.
+- HA baseline work is documented in `docs/ha_p0_validation_checklist.md` and linked from `docs/task.md`.
+- Auth design docs are in place: `docs/auth_channel_strategy.md` and `docs/auth_binding_state_machine.md`.
+- Telegram bind UX was tightened earlier and committed (`59ed1f1`).
+- Telegram↔web handoff MVP is implemented and committed:
+  - `341e934` Document auth channel strategy
+  - `b5abcd1` Add Telegram web login handoff backend
+  - `4c116a9` Add Telegram handoff login UI
+  - `18d5895` Use local uv checks and retire Streamlit entrypoint
+- `scripts/dev_check.sh` now runs Ruff and pytest locally via `uv`; `docker-compose.yml` no longer starts the Streamlit dashboard service by default; README/agent docs now point to the web UI path.
+- Latest verification succeeded: `./scripts/dev_check.sh` passed with frontend build success and `154 passed` tests.
+- Exploration for the next auth-hardening slice has started:
+  - Direct evidence already gathered shows backend auth still depends on `X-API-Key` in `app/core/auth.py`.
+  - Many Next.js pages/actions still decode `access_token`, extract `payload.api_key`, and forward `X-API-Key`.
+  - Background exploration task launched: `bg_a564cd0f` (session `ses_2f7558a39ffekIFEWaGG3WdZXS`) to map the smallest Bearer JWT migration slice.
+- Infra follow-up completed for local Docker Compose routing:
+  - `deploy/nginx/nexus.conf` now uses Docker DNS resolver `127.0.0.11` with variable-based `proxy_pass` targets for `nexus-app` and `web`, so nginx can re-resolve container IPs after service restarts without restarting nginx.
+  - Verification completed with `docker compose config` and `docker run --rm ... nginx:1.27-alpine nginx -t`.
+- GCC tree is partially incomplete for the active task: `.ai-governance/docs/task/active/task.md` and `.ai-governance/docs/task/active/verification.md` were missing during this session, so execution proceeded from the live user request and existing summary.
+
+## Latest Commits
+- `2026-03-20-0858-nginx-dns-reresolve`: Switch nginx proxy targets to Docker DNS re-resolution so Compose service restarts do not leave nginx pinned to stale container IPs.
 
 ## Known Risks
-- Major pre-existing auth weakness remains: the Next.js web layer decodes JWT without signature verification and extracts `api_key` from the payload for backend requests. Oracle flagged this as the next must-fix security issue.
-- Python LSP reports many type errors in `app/interfaces/telegram.py` and `app/core/auth_service.py`, but these are largely existing repo typing noise / nullable PTB issues rather than verified runtime failures from this slice. No type-suppression was added.
-- Full end-to-end browser verification of the Telegram↔web handoff was not run; validation is currently backend/unit-focused only.
-- New handoff code is not yet committed.
+- Main unresolved security issue: web still decodes JWT client/server-side and forwards `payload.api_key` to the backend instead of relying on backend-verified Bearer JWT. Oracle previously flagged this as the next must-fix issue.
+- Streamlit code still exists under `dashboard/`; only the active compose/runtime entrypoint was removed.
+- `CLAUDE.md`, `.ai-governance/`, and other local/governance files remain uncommitted and were intentionally excluded from product commits.
+- No implementation has started yet for the Bearer JWT migration; current state is exploration + planning only.
+- Docker DNS re-resolution now depends on nginx querying `127.0.0.11`; if deployment topology later moves nginx outside the Compose network, this resolver must be adjusted.
 
 ## Next Action
-Harden web/backend auth by moving web requests off decoded JWT `api_key` extraction and onto backend-verified Bearer JWT handling, then update the web app to use that path consistently.
+Collect the result of `bg_a564cd0f`, then implement the smallest safe Bearer JWT hardening slice: add backend JWT auth support alongside existing API-key auth, centralize web auth headers around the raw `access_token`, and replace the highest-impact `payload.api_key` call sites first. If Compose routing regresses again, first re-check `deploy/nginx/nexus.conf` dynamic DNS behavior before changing service names or restart policies.
