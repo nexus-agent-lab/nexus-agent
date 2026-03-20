@@ -1,0 +1,44 @@
+# === 核心屏蔽 (最省 Token) ===
+.git/
+.svn/
+.hg/
+
+# === 依赖项 (绝对不要让 AI 读) ===
+node_modules/
+bower_components/
+venv/
+.venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# === 编译产物与缓存 ===
+dist/
+build/
+out/
+.next/
+.nuxt/
+.cache/
+*.swp
+*.tmp
+
+# === 敏感信息与配置 ===
+.env
+*.pem
+*.key
+.secrets/
+
+# === 大型文件与多模态素材 (除非你明确要分析它们) ===
+*.gif
+*.svg
+*.mp4
+*.zip
+*.tar.gz
+
+# === 日志与测试报告 ===
+*.log
+logs/
+coverage/
+.pytest_cache/

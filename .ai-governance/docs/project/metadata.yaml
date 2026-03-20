@@ -1,0 +1,32 @@
+# Project Structural & Execution Metadata (GCC v2.1)
+# This file provides repository-wide execution constraints for AI agents.
+
+# 1. Repository Structure
+repo_structure:
+  - path: src/
+    purpose: core logic
+  - path: tests/
+    purpose: unit and integration tests
+
+# 2. Execution Context (The "How-To" for Agents)
+execution_context:
+  runtime: "node 18+" # e.g., "python 3.10", "go 1.21"
+  commands:
+    install: "npm install"
+    build: "npm run build"
+    test: "npm test"
+    run: "npm run dev"
+
+# 3. Governance Rules
+governance_rules:
+  branch_prefix: "task-"
+  enforcement:
+    mandatory_commit_on_milestone: true
+    allow_summary_only_for_minor_sessions: true
+
+# 4. Architecture Constraints
+architecture:
+  style: "modular"
+  constraints:
+    - "no global state"
+    - "all public APIs must be documented in code"

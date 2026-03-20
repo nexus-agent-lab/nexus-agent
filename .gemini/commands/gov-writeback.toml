@@ -1,0 +1,6 @@
+prompt = """
+Write back the current execution state before ending the session.
+1. Use the `activate_skill` tool with `name='task-commit'` if you have completed a milestone.
+2. Otherwise, update `.ai-governance/docs/task/active/summary.md` directly with your current state and next steps.
+"""
+description = "Write back GCC context (Gemini CLI)"

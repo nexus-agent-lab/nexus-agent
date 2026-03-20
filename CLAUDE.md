@@ -33,3 +33,17 @@ Nexus Agent is an "AI Operating System" centered around an LLM "CPU" and LangGra
 - **Cross-cutting Concerns**: Use decorators like `@require_role` for access control.
 - **Git Protocol**: Do not skip hooks; ensure `bash scripts/dev_check.sh` passes before committing.
 - **Network**: Local dev uses Docker Bridge (no Tailscale auth required). Ports 8000/8501 exposed directly.
+
+<!-- BEGIN AI-GOVERNANCE -->
+## Shared Governance (GCC Model v2.1)
+- **Execution Metadata**: .ai-governance/docs/project/metadata.yaml
+- **Active Task View**: Run `/gov-context`
+
+Follow: `.ai-governance/CLAUDE.shared.md`
+
+### Session Lifecycle
+**START**: Run `/gov-context` immediately.
+**END**: Run `/gov-writeback` before ending the session.
+
+GCC records our "Why" (decisions). Git records the "What" (code).
+<!-- END AI-GOVERNANCE -->
