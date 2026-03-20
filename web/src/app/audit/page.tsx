@@ -1,14 +1,13 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { History, Shield, Activity, Search, ChevronLeft, ChevronRight } from "lucide-react";
 
-import { verifyAuthToken } from "@/lib/auth";
 import DataTable from "@/components/DataTable";
 import WireLogToggle from "@/components/WireLogToggle";
 import { cn } from "@/lib/utils";
 import TraceViewer from "./TraceViewer";
 import { GroupedTrace } from "@/components/TraceDetailModal";
+import { buildBearerHeaders, getServerAuthContext } from "@/lib/server-auth";
 
 interface AuditLog {
   id: number;
@@ -25,13 +24,11 @@ interface AuditLog {
  * Fetches audit logs from the backend.
  * @param apiKey Admin API key
  */
-async function getAuditLogs(apiKey: string, skip: number = 0, limit: number = 50): Promise<AuditLog[]> {
+async function getAuditLogs(token: string, skip: number = 0, limit: number = 50): Promise<AuditLog[]> {
   const baseUrl = process.env.API_URL || "http://127.0.0.1:8000/api";
   try {
     const res = await fetch(`${baseUrl}/audit?skip=${skip}&limit=${limit}`, {
-      headers: {
-        "X-API-Key": apiKey,
-      },
+      headers: buildBearerHeaders(token),
       cache: "no-store",
     });
     if (!res.ok) return [];
@@ -46,13 +43,11 @@ async function getAuditLogs(apiKey: string, skip: number = 0, limit: number = 50
  * Fetches LLM traces from the backend (grouped).
  * @param apiKey Admin API key
  */
-async function getTraces(apiKey: string, limit: number = 20): Promise<GroupedTrace[]> {
+async function getTraces(token: string, limit: number = 20): Promise<GroupedTrace[]> {
   const baseUrl = process.env.API_URL || "http://127.0.0.1:8000/api";
   try {
     const res = await fetch(`${baseUrl}/admin/traces/grouped?limit=${limit}`, {
-      headers: {
-        "X-API-Key": apiKey,
-      },
+      headers: buildBearerHeaders(token),
       cache: "no-store",
     });
     if (!res.ok) return [];
@@ -79,19 +74,11 @@ export default async function AuditPage({
   const limit = 50;
   const skip = (page - 1) * limit;
 
-  const cookieStore = await cookies();
-  const token = cookieStore.get("access_token")?.value;
-
-  if (!token) {
+  const authContext = await getServerAuthContext();
+  if (!authContext) {
     redirect("/login");
   }
-
-  let payload;
-  try {
-    payload = await verifyAuthToken(token);
-  } catch {
-    redirect("/login");
-  }
+  const { token, payload } = authContext;
 
   if (payload.role !== "admin") {
     return (
@@ -107,8 +94,8 @@ export default async function AuditPage({
     );
   }
 
-  const logs = await getAuditLogs(payload.api_key as string, skip, limit);
-  const traces = await getTraces(payload.api_key as string);
+  const logs = await getAuditLogs(token, skip, limit);
+  const traces = await getTraces(token);
   const formatDuration = (durationMs: number | null) => {
     if (durationMs === null) return "—";
     if (durationMs < 1000) return `${durationMs}ms`;
@@ -282,7 +269,7 @@ export default async function AuditPage({
               <Activity className="h-5 w-5 text-indigo-500" />
               LLM Traces
             </h2>
-            <WireLogToggle apiKey={payload.api_key as string} />
+          <WireLogToggle apiKey={token} />
           </div>
           <TraceViewer initialTraces={traces} />
         </section>

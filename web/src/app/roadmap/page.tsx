@@ -1,10 +1,9 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { Map, Lightbulb, CheckCircle2, XCircle, Trash2, Clock, Filter } from "lucide-react";
-import { verifyAuthToken } from "@/lib/auth";
 import DataTable from "@/components/DataTable";
 import { cn } from "@/lib/utils";
 import RoadmapActions from "./RoadmapActions";
+import { buildBearerHeaders, getServerAuthContext } from "@/lib/server-auth";
 
 interface Suggestion {
   id: number;
@@ -19,11 +18,11 @@ interface Suggestion {
 
 const API_URL = process.env.API_URL || "http://127.0.0.1:8000/api";
 
-async function getSuggestions(apiKey: string, status?: string) {
+async function getSuggestions(token: string, status?: string) {
   const url = status ? `${API_URL}/roadmap/?status=${status}` : `${API_URL}/roadmap/`;
   try {
     const res = await fetch(url, {
-      headers: { "X-API-Key": apiKey },
+      headers: buildBearerHeaders(token),
       cache: "no-store",
     });
     if (!res.ok) return [];
@@ -39,20 +38,12 @@ export default async function RoadmapPage(props: {
   const searchParams = await props.searchParams;
   const statusFilter = searchParams.status || "";
   
-  const cookieStore = await cookies();
-  const token = cookieStore.get("access_token")?.value;
-
-  if (!token) redirect("/login");
-
-  let payload;
-  try {
-    payload = await verifyAuthToken(token);
-  } catch (e) {
+  const authContext = await getServerAuthContext();
+  if (!authContext) {
     redirect("/login");
   }
-
-  const apiKey = payload.api_key as string;
-  const suggestions = await getSuggestions(apiKey, statusFilter);
+  const { token, payload } = authContext;
+  const suggestions = await getSuggestions(token, statusFilter);
 
   const columns = [
     {

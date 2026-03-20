@@ -1,10 +1,9 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { Network, Shield, AlertCircle, Laptop, Server, Activity } from "lucide-react";
 
-import { verifyAuthToken } from "@/lib/auth";
 import DataTable from "@/components/DataTable";
 import { cn } from "@/lib/utils";
+import { buildBearerHeaders, getServerAuthContext } from "@/lib/server-auth";
 
 interface NetworkNode {
   hostname: string;
@@ -20,13 +19,11 @@ interface NetworkStatusResponse {
   error: string | null;
 }
 
-async function getNetworkStatus(apiKey: string): Promise<NetworkStatusResponse> {
+async function getNetworkStatus(token: string): Promise<NetworkStatusResponse> {
   const baseUrl = process.env.API_URL || "http://127.0.0.1:8000/api";
   try {
     const res = await fetch(`${baseUrl}/system/network`, {
-      headers: {
-        "X-API-Key": apiKey,
-      },
+      headers: buildBearerHeaders(token),
       cache: "no-store",
     });
     if (!res.ok) {
@@ -40,19 +37,11 @@ async function getNetworkStatus(apiKey: string): Promise<NetworkStatusResponse> 
 }
 
 export default async function NetworkPage() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get("access_token")?.value;
-
-  if (!token) {
+  const authContext = await getServerAuthContext();
+  if (!authContext) {
     redirect("/login");
   }
-
-  let payload;
-  try {
-    payload = await verifyAuthToken(token);
-  } catch (e) {
-    redirect("/login");
-  }
+  const { token, payload } = authContext;
 
   if (payload.role !== "admin") {
     return (
@@ -68,7 +57,7 @@ export default async function NetworkPage() {
     );
   }
 
-  const { status, nodes, error } = await getNetworkStatus(payload.api_key as string);
+  const { status, nodes, error } = await getNetworkStatus(token);
 
   const columns = [
     {

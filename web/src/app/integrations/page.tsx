@@ -1,7 +1,5 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { Puzzle, Shield, Info } from "lucide-react";
-import { verifyAuthToken } from "@/lib/auth";
 import DataTable from "@/components/DataTable";
 import PluginForm from "./PluginForm";
 import ReloadMCPButton from "./ReloadMCPButton";
@@ -9,6 +7,7 @@ import { cn } from "@/lib/utils";
 import DeletePluginButton from "./DeletePluginButton";
 import EditPluginButton from "./EditPluginButton";
 import ViewSkillButton from "./ViewSkillButton";
+import { buildBearerHeaders, getServerAuthContext } from "@/lib/server-auth";
 
 interface Plugin {
   id: number;
@@ -22,13 +21,11 @@ interface Plugin {
   manifest_id: string | null;
 }
 
-async function getPlugins(apiKey: string): Promise<Plugin[]> {
+async function getPlugins(token: string): Promise<Plugin[]> {
   const baseUrl = process.env.API_URL || "http://127.0.0.1:8000/api";
   try {
     const res = await fetch(`${baseUrl}/plugins/`, {
-      headers: {
-        "X-API-Key": apiKey,
-      },
+      headers: buildBearerHeaders(token),
       cache: "no-store",
     });
     if (!res.ok) return [];
@@ -40,19 +37,11 @@ async function getPlugins(apiKey: string): Promise<Plugin[]> {
 }
 
 export default async function IntegrationsPage() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get("access_token")?.value;
-
-  if (!token) {
+  const authContext = await getServerAuthContext();
+  if (!authContext) {
     redirect("/login");
   }
-
-  let payload;
-  try {
-    payload = await verifyAuthToken(token);
-  } catch (e) {
-    redirect("/login");
-  }
+  const { token, payload } = authContext;
 
   if (payload.role !== "admin") {
     return (
@@ -68,8 +57,7 @@ export default async function IntegrationsPage() {
     );
   }
 
-  const apiKey = payload.api_key as string;
-  const plugins = await getPlugins(apiKey);
+  const plugins = await getPlugins(token);
 
   const columns = [
     { 
@@ -121,8 +109,8 @@ export default async function IntegrationsPage() {
       accessorKey: "id" as keyof Plugin,
       cell: (item: Plugin) => (
         <div className="flex items-center gap-2">
-          <ViewSkillButton pluginId={item.id} apiKey={apiKey} />
-          <EditPluginButton plugin={item} apiKey={apiKey} />
+          <ViewSkillButton pluginId={item.id} apiKey={token} />
+          <EditPluginButton plugin={item} apiKey={token} />
           <DeletePluginButton pluginId={item.id} pluginName={item.name} />
         </div>
       )
@@ -149,7 +137,7 @@ export default async function IntegrationsPage() {
       <div className="space-y-12">
         <div className="space-y-6">
           <ReloadMCPButton />
-          <PluginForm apiKey={apiKey} />
+          <PluginForm apiKey={token} />
         </div>
 
         <div className="space-y-4">
