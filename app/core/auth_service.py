@@ -1,6 +1,8 @@
+import json
 import logging
 import os
 import random
+import secrets
 import string
 from datetime import datetime
 from enum import Enum
@@ -47,7 +49,140 @@ class AuthService:
         return token
 
     @staticmethod
-    async def verify_bind_token(token: str) -> int:
+    async def create_telegram_login_challenge(bot_username: str) -> dict:
+        challenge_id = secrets.token_urlsafe(24)
+        csrf_token = secrets.token_urlsafe(24)
+        payload = {
+            "status": "pending",
+            "csrf_token": csrf_token,
+            "approved_user_id": None,
+            "telegram_user_id": None,
+            "exchange_token": None,
+            "created_at": datetime.utcnow().isoformat(),
+        }
+
+        r = AuthService._get_redis()
+        await r.setex(f"auth_challenge:{challenge_id}", 300, json.dumps(payload))
+        await r.close()
+
+        return {
+            "challenge_id": challenge_id,
+            "csrf_token": csrf_token,
+            "expires_in": 300,
+            "telegram_deep_link_url": f"https://t.me/{bot_username}?start=login_{challenge_id}",
+        }
+
+    @staticmethod
+    async def get_telegram_login_challenge(challenge_id: str) -> dict | None:
+        r = AuthService._get_redis()
+        raw = await r.get(f"auth_challenge:{challenge_id}")
+        await r.close()
+        if not raw:
+            return None
+        return json.loads(raw)
+
+    @staticmethod
+    async def approve_telegram_login_challenge(challenge_id: str, user_id: int, telegram_user_id: str) -> str | None:
+        r = AuthService._get_redis()
+        key = f"auth_challenge:{challenge_id}"
+        raw = await r.get(key)
+        if not raw:
+            await r.close()
+            return None
+
+        payload = json.loads(raw)
+        exchange_token = secrets.token_urlsafe(24)
+        payload.update(
+            {
+                "status": "approved",
+                "approved_user_id": user_id,
+                "telegram_user_id": telegram_user_id,
+                "exchange_token": exchange_token,
+                "approved_at": datetime.utcnow().isoformat(),
+            }
+        )
+
+        ttl = await r.ttl(key)
+        ttl = ttl if ttl and ttl > 0 else 300
+        await r.setex(key, ttl, json.dumps(payload))
+        await r.setex(
+            f"auth_exchange:{exchange_token}",
+            ttl,
+            json.dumps({"challenge_id": challenge_id, "user_id": user_id}),
+        )
+        await r.close()
+        return exchange_token
+
+    @staticmethod
+    async def get_telegram_login_status(challenge_id: str) -> dict:
+        payload = await AuthService.get_telegram_login_challenge(challenge_id)
+        if not payload:
+            return {"status": "expired"}
+        result = {"status": payload.get("status", "pending")}
+        if payload.get("status") == "approved" and payload.get("exchange_token"):
+            result["exchange_token"] = payload["exchange_token"]
+        return result
+
+    @staticmethod
+    async def reject_telegram_login_challenge(challenge_id: str, reason: str) -> bool:
+        r = AuthService._get_redis()
+        key = f"auth_challenge:{challenge_id}"
+        raw = await r.get(key)
+        if not raw:
+            await r.close()
+            return False
+
+        payload = json.loads(raw)
+        payload.update(
+            {
+                "status": reason,
+                "exchange_token": None,
+                "approved_user_id": None,
+                "rejected_at": datetime.utcnow().isoformat(),
+            }
+        )
+        ttl = await r.ttl(key)
+        ttl = ttl if ttl and ttl > 0 else 300
+        await r.setex(key, ttl, json.dumps(payload))
+        await r.close()
+        return True
+
+    @staticmethod
+    async def consume_telegram_login_exchange(challenge_id: str, exchange_token: str, csrf_token: str) -> int | None:
+        r = AuthService._get_redis()
+        challenge_key = f"auth_challenge:{challenge_id}"
+        exchange_key = f"auth_exchange:{exchange_token}"
+
+        raw_challenge = await r.get(challenge_key)
+        raw_exchange = await r.get(exchange_key)
+
+        if not raw_challenge or not raw_exchange:
+            await r.close()
+            return None
+
+        challenge_payload = json.loads(raw_challenge)
+        exchange_payload = json.loads(raw_exchange)
+
+        if challenge_payload.get("status") != "approved":
+            await r.close()
+            return None
+        if challenge_payload.get("csrf_token") != csrf_token:
+            await r.close()
+            return None
+        if challenge_payload.get("exchange_token") != exchange_token:
+            await r.close()
+            return None
+        if exchange_payload.get("challenge_id") != challenge_id:
+            await r.close()
+            return None
+
+        await r.delete(challenge_key)
+        await r.delete(exchange_key)
+        await r.close()
+        return int(exchange_payload["user_id"])
+
+    @staticmethod
+    async def verify_bind_token(token: str) -> int | None:
         """Return user_id if token is valid, else None."""
         r = AuthService._get_redis()
         user_id = await r.get(f"bind:{token}")
@@ -59,7 +194,9 @@ class AuthService:
         return None
 
     @staticmethod
-    async def bind_identity(user_id: int, provider: str, provider_user_id: str, username: str = None) -> BindResult:
+    async def bind_identity(
+        user_id: int, provider: str, provider_user_id: str, username: str | None = None
+    ) -> BindResult:
         """Link a provider ID to a User."""
         async with AsyncSessionLocal() as session:
             # Check if this provider ID is already taken
@@ -126,7 +263,7 @@ class AuthService:
             return False
 
     @staticmethod
-    async def get_user_by_identity(provider: str, provider_user_id: str) -> User:
+    async def get_user_by_identity(provider: str, provider_user_id: str) -> User | None:
         """Resolve a User from an incoming message ID."""
         async with AsyncSessionLocal() as session:
             stmt = select(UserIdentity).where(
@@ -148,7 +285,7 @@ class AuthService:
             return None
 
     @staticmethod
-    async def notify_admins(content: str, meta: dict = None):
+    async def notify_admins(content: str, meta: dict | None = None):
         """Send a message to all users with role 'admin'."""
         async with AsyncSessionLocal() as session:
             # 1. Find all admin users

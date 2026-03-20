@@ -3,7 +3,7 @@ import os
 from datetime import datetime, timedelta
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +19,25 @@ logger = logging.getLogger(__name__)
 
 SECRET_KEY = os.getenv("JWT_SECRET", "super-secret-default-key-1234")
 ALGORITHM = "HS256"
+
+
+def _issue_access_token(user: User) -> dict:
+    access_token_expires = timedelta(hours=24)
+    expire = datetime.utcnow() + access_token_expires
+    to_encode = {
+        "sub": str(user.id),
+        "username": user.username,
+        "role": user.role,
+        "api_key": user.api_key,
+        "exp": expire,
+    }
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    logger.info(f"JWT token issued for user: {user.username} (ID: {user.id})")
+    return {
+        "access_token": encoded_jwt,
+        "token_type": "bearer",
+        "user": {"id": user.id, "username": user.username, "role": user.role},
+    }
 
 
 @router.post("/token")
@@ -39,29 +58,30 @@ async def login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    access_token_expires = timedelta(hours=24)
-    expire = datetime.utcnow() + access_token_expires
-    to_encode = {
-        "sub": str(user.id),
-        "username": user.username,
-        "role": user.role,
-        "api_key": user.api_key,
-        "exp": expire,
-    }
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-
-    logger.info(f"JWT token issued for user: {user.username} (ID: {user.id})")
-
-    return {
-        "access_token": encoded_jwt,
-        "token_type": "bearer",
-        "user": {"id": user.id, "username": user.username, "role": user.role},
-    }
+    return _issue_access_token(user)
 
 
 class BindTokenResponse(BaseModel):
     token: str
     expires_in: int = 300
+
+
+class TelegramLoginStartResponse(BaseModel):
+    challenge_id: str
+    csrf_token: str
+    expires_in: int
+    telegram_deep_link_url: str
+
+
+class TelegramLoginStatusResponse(BaseModel):
+    status: str
+    exchange_token: str | None = None
+
+
+class TelegramLoginCompleteRequest(BaseModel):
+    challenge_id: str
+    exchange_token: str
+    csrf_token: str
 
 
 @router.post("/bind-token", response_model=BindTokenResponse)
@@ -73,3 +93,37 @@ async def generate_bind_token(current_user: User = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail="User ID is missing")
     token = await AuthService.create_bind_token(current_user.id)
     return BindTokenResponse(token=token)
+
+
+@router.post("/telegram/start", response_model=TelegramLoginStartResponse)
+async def start_telegram_login():
+    bot_username = os.getenv("TELEGRAM_BOT_USERNAME")
+    if not bot_username:
+        raise HTTPException(status_code=503, detail="Telegram bot username is not configured")
+    challenge = await AuthService.create_telegram_login_challenge(bot_username)
+    return TelegramLoginStartResponse(**challenge)
+
+
+@router.get("/telegram/status", response_model=TelegramLoginStatusResponse)
+async def telegram_login_status(challenge_id: str = Query(...)):
+    status_payload = await AuthService.get_telegram_login_status(challenge_id)
+    return TelegramLoginStatusResponse(**status_payload)
+
+
+@router.post("/telegram/complete")
+async def complete_telegram_login(
+    request: TelegramLoginCompleteRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    user_id = await AuthService.consume_telegram_login_exchange(
+        request.challenge_id, request.exchange_token, request.csrf_token
+    )
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Invalid, expired, or already used login handoff")
+
+    result = await session.execute(select(User).where(User.id == user_id))
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Linked user no longer exists")
+
+    return _issue_access_token(user)

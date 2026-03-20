@@ -275,6 +275,29 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat_id = str(update.effective_chat.id)
 
+    if context.args:
+        login_payload = context.args[0]
+        if login_payload.startswith("login_"):
+            challenge_id = login_payload.removeprefix("login_")
+            lang = await get_user_language(str(user.id), update.effective_user.language_code)
+            nexus_user = await AuthService.get_user_by_identity("telegram", str(user.id))
+
+            if not nexus_user:
+                await AuthService.reject_telegram_login_challenge(challenge_id, "rejected_unbound")
+                await update.message.reply_markdown(get_text("login_handoff_bind_required", lang))
+                return
+
+            exchange_token = await AuthService.approve_telegram_login_challenge(
+                challenge_id, nexus_user.id, str(user.id)
+            )
+            if not exchange_token:
+                await update.message.reply_markdown(get_text("login_handoff_expired", lang))
+                return
+
+            await refresh_user_commands(context.bot, chat_id, nexus_user, lang)
+            await update.message.reply_markdown(get_text("login_handoff_approved", lang))
+            return
+
     # Identify user for auto-login or guest welcome
     nexus_user = await AuthService.get_user_by_identity("telegram", str(user.id))
     lang = resolve_language(nexus_user, update.message.text)
