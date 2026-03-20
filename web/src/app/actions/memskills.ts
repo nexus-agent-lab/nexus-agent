@@ -1,26 +1,9 @@
 "use server";
 
-import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { verifyAuthToken } from "@/lib/auth";
+import { buildBearerHeaders, getServerAccessToken } from "@/lib/server-auth";
 
 const API_URL = process.env.API_URL || "http://127.0.0.1:8000/api";
-
-/**
- * Utility to get API key from session.
- */
-async function getApiKey() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get("access_token")?.value;
-  if (!token) return null;
-  
-  try {
-    const payload = await verifyAuthToken(token);
-    return payload.api_key as string;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Approve a canary changelog.
@@ -28,15 +11,13 @@ async function getApiKey() {
  * @param changelogId The ID of the changelog to approve
  */
 export async function approveChangelog(changelogId: number) {
-  const apiKey = await getApiKey();
-  if (!apiKey) return { error: "Unauthorized" };
+  const token = await getServerAccessToken();
+  if (!token) return { error: "Unauthorized" };
 
   try {
     const response = await fetch(`${API_URL}/memskills/changelogs/${changelogId}/approve`, {
       method: "POST",
-      headers: {
-        "X-API-Key": apiKey,
-      },
+      headers: buildBearerHeaders(token),
     });
 
     if (!response.ok) {
@@ -58,15 +39,13 @@ export async function approveChangelog(changelogId: number) {
  * @param changelogId The ID of the changelog to reject
  */
 export async function rejectChangelog(changelogId: number) {
-  const apiKey = await getApiKey();
-  if (!apiKey) return { error: "Unauthorized" };
+  const token = await getServerAccessToken();
+  if (!token) return { error: "Unauthorized" };
 
   try {
     const response = await fetch(`${API_URL}/memskills/changelogs/${changelogId}/reject`, {
       method: "POST",
-      headers: {
-        "X-API-Key": apiKey,
-      },
+      headers: buildBearerHeaders(token),
     });
 
     if (!response.ok) {

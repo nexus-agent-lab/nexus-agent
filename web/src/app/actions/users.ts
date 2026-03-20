@@ -1,40 +1,23 @@
 "use server";
 
-import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { verifyAuthToken } from "@/lib/auth";
+import { buildBearerHeaders, getServerAccessToken } from "@/lib/server-auth";
 
 const API_URL = process.env.API_URL || "http://127.0.0.1:8000/api";
-
-async function getApiKey() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get("access_token")?.value;
-  if (!token) return null;
-  
-  try {
-    const payload = await verifyAuthToken(token);
-    return payload.api_key as string;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Server action to create a new user.
  */
 export async function createUser(formData: { username: string; role: string }) {
-  const apiKey = await getApiKey();
-  if (!apiKey) {
+  const token = await getServerAccessToken();
+  if (!token) {
     return { error: "Unauthorized" };
   }
 
   try {
     const response = await fetch(`${API_URL}/users/`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": apiKey,
-      },
+      headers: buildBearerHeaders(token, { "Content-Type": "application/json" }),
       body: JSON.stringify(formData),
     });
 
@@ -65,18 +48,15 @@ export async function updateUser(userId: number, formData: {
   groups?: string[];
 
 }) {
-  const apiKey = await getApiKey();
-  if (!apiKey) {
+  const token = await getServerAccessToken();
+  if (!token) {
     return { error: "Unauthorized" };
   }
 
   try {
     const response = await fetch(`${API_URL}/users/${userId}`, {
       method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": apiKey,
-      },
+      headers: buildBearerHeaders(token, { "Content-Type": "application/json" }),
       body: JSON.stringify(formData),
     });
 

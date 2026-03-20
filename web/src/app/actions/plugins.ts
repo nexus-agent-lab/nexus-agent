@@ -1,26 +1,9 @@
 "use server";
 
-import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { verifyAuthToken } from "@/lib/auth";
+import { buildBearerHeaders, getServerAccessToken } from "@/lib/server-auth";
 
 const API_URL = process.env.API_URL || "http://127.0.0.1:8000/api";
-
-/**
- * Helper to get the API key from the session.
- */
-async function getApiKey() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get("access_token")?.value;
-  if (!token) return null;
-  
-  try {
-    const payload = await verifyAuthToken(token);
-    return payload.api_key as string;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Server action to create a new plugin.
@@ -36,18 +19,15 @@ export async function createPlugin(formData: {
   allowed_groups?: string[];
   secrets?: Record<string, string>;
 }) {
-  const apiKey = await getApiKey();
-  if (!apiKey) {
+  const token = await getServerAccessToken();
+  if (!token) {
     return { error: "Unauthorized" };
   }
 
   try {
     const response = await fetch(`${API_URL}/plugins/`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": apiKey,
-      },
+      headers: buildBearerHeaders(token, { "Content-Type": "application/json" }),
       body: JSON.stringify(formData),
     });
 
@@ -79,18 +59,15 @@ export async function updatePlugin(pluginId: number, formData: {
   allowed_groups?: string[];
   secrets?: Record<string, string>;
 }) {
-  const apiKey = await getApiKey();
-  if (!apiKey) {
+  const token = await getServerAccessToken();
+  if (!token) {
     return { error: "Unauthorized" };
   }
 
   try {
     const response = await fetch(`${API_URL}/plugins/${pluginId}`, {
       method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": apiKey,
-      },
+      headers: buildBearerHeaders(token, { "Content-Type": "application/json" }),
       body: JSON.stringify(formData),
     });
 
@@ -112,17 +89,15 @@ export async function updatePlugin(pluginId: number, formData: {
  * Server action to delete a plugin.
  */
 export async function deletePlugin(pluginId: number) {
-  const apiKey = await getApiKey();
-  if (!apiKey) {
+  const token = await getServerAccessToken();
+  if (!token) {
     return { error: "Unauthorized" };
   }
 
   try {
     const response = await fetch(`${API_URL}/plugins/${pluginId}`, {
       method: "DELETE",
-      headers: {
-        "X-API-Key": apiKey,
-      },
+      headers: buildBearerHeaders(token),
     });
 
     if (!response.ok) {
@@ -142,17 +117,15 @@ export async function deletePlugin(pluginId: number) {
  * Server action to reload MCP servers.
  */
 export async function reloadMCP() {
-  const apiKey = await getApiKey();
-  if (!apiKey) {
+  const token = await getServerAccessToken();
+  if (!token) {
     return { error: "Unauthorized" };
   }
 
   try {
     const response = await fetch(`${API_URL}/admin/mcp/reload`, {
       method: "POST",
-      headers: {
-        "X-API-Key": apiKey,
-      },
+      headers: buildBearerHeaders(token),
     });
 
     if (!response.ok) {
