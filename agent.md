@@ -22,8 +22,8 @@
 | **API/Gateway** | `FastAPI` | REST API for frontend and webhooks. |
 | **Database** | `PostgreSQL` + `pgvector` | User data, memory, and semantic knowledge retrieval. |
 | **Identity** | `Redis` + `AuthService` | Session management and Bind Tokens for Telegram/Feishu. |
-| **Frontend** | `Streamlit` | Admin Dashboard (`dashboard/`) for management and visualization. |
-| **Async Runtime** | `asyncio` + `uvloop` | High-concurrency async execution (critical for Streamlit/DB). |
+| **Frontend** | `Next.js` | Web UI for management, audit, and fallback access flows. |
+| **Async Runtime** | `asyncio` + `uvloop` | High-concurrency async execution for the API/runtime layer. |
 
 ---
 
@@ -69,13 +69,10 @@ Refer to `PROJECT_RULES.md` for the full list.
 2.  **Decorators**:
     - Use `@with_user()` (factory pattern with parens!) for tools requiring user context.
     - Use `@require_role("admin")` for privileged tools.
-3.  **Streamlit Async**:
-    - **NEVER** use `asyncio.run()` directly inside Streamlit pages.
-    - **ALWAYS** use the `run_async(coro)` helper (check `dashboard/pages/6_Roadmap.py` for implementation) to avoid event loop conflicts.
-4.  **Database & MCP**:
+3.  **Database & MCP**:
     - Use `async with AsyncSessionLocal() as session:`.
-    - Dashboard files must use `from utils import ...` instead of `from dashboard.utils ...`.
-    - **MCP Lifecycle**: `MCPManager` is loop-sensitive. Dashboard MUST use fresh instances and call `await mcp.cleanup()`.
+    - Historical Streamlit dashboard code still exists in `dashboard/`, but it is no longer the active UI/runtime path.
+    - **MCP Lifecycle**: loop-sensitive integrations should use fresh instances and call `await mcp.cleanup()` where appropriate.
 
 ---
 
@@ -184,7 +181,7 @@ Do **not** restart pure LangGraph refactoring unless a concrete P0 issue forces 
 ## 8. Key File Locations
 - **Agent Logic**: `app/core/agent.py` & `app/core/worker.py`
 - **Tool Registry**: `app/tools/registry.py`
-- **Dashboard**: `dashboard/pages/`
+- **Historical Dashboard Code**: `dashboard/pages/` (not the primary UI path)
 - **Testing**: `tests/` and `scripts/debug/`
 
 ---

@@ -27,23 +27,12 @@ echo "   ✅ All Python files parse correctly."
 
 # 2. Static Analysis (Ruff)
 echo -e "\n🔍 [2/4] Running Static Analysis (Ruff)..."
-# We check if ruff is available, either via 'uv' or direct command.
-if command -v ruff &> /dev/null; then
-    ruff check app/ tests/ scripts/ --select E,F,I --ignore E501
-elif command -v uv &> /dev/null; then
-    echo "   Using local 'uv'..."
-    uv run ruff check app/ tests/ scripts/ --select E,F,I --ignore E501
-else
-    # Fallback to docker if available
-    if docker-compose ps | grep "nexus-app" &> /dev/null; then
-        echo "   Using Docker ruff..."
-        docker-compose exec -T nexus-app ruff check app/ tests/ scripts/ --select E,F,I --ignore E501
-    else
-        echo "   ❌ 'ruff' not found and Docker container not running."
-        echo "   Please install ruff: pip install ruff"
-        exit 1
-    fi
+if ! command -v uv &> /dev/null; then
+    echo "   ❌ 'uv' not found. Please install uv first."
+    exit 1
 fi
+
+uv run ruff check app/ tests/ scripts/ --select E,F,I --ignore E501
 echo "   ✅ Ruff passed."
 
 # 3. Frontend Verification (Conditional Docker Build)
@@ -61,15 +50,7 @@ else
 fi
 
 # 4. Logic & Integration Tests (Pytest)
-echo -e "\n🧪 [4/4] Running Unit Tests (Docker)..."
-if docker-compose ps | grep "nexus-app" &> /dev/null; then
-    echo "   Running tests in 'nexus-app' container..."
-    # Execute pytest with short traceback and local project root in path
-    docker-compose exec -T nexus-app env PYTHONPATH=/app pytest tests/ -v --tb=short
-else
-    echo "   ❌ Nexus App container is NOT running."
-    echo "   Running tests requires Docker. Start with: docker-compose up -d"
-    exit 1
-fi
+echo -e "\n🧪 [4/4] Running Unit Tests (Local uv)..."
+PYTHONPATH=. uv run pytest tests/ -v --tb=short
 
 echo -e "\n✅ Check Complete! All systems go."

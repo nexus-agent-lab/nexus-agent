@@ -62,24 +62,6 @@ services:
       - redis
       - postgres
 
-  dashboard:
-    build: .
-    command: streamlit run dashboard/Main.py --server.port 8501 --server.address 0.0.0.0
-    # network_mode: service:ts-nexus # Disabled Tailscale
-    volumes:
-      - .:/app
-    environment:
-      - API_URL=http://nexus-app:8000/api
-      - DATABASE_URL=postgresql+asyncpg://nexus:nexus_password@postgres:5432/nexus_db
-      
-      # LLM Configuration (For Skill Generation & Local Tools)
-      - LLM_API_KEY=${LLM_API_KEY:-ollama}
-      - LLM_BASE_URL=${LLM_BASE_URL:-http://host.docker.internal:11434/v1}
-      - LLM_MODEL=${LLM_MODEL:-qwen2.5:14b}
-    depends_on:
-      - nexus-app
-      - postgres
-
   redis:
     image: redis:alpine
 

@@ -46,7 +46,7 @@
 -   **Universal Skills**: 
     -   **MCP Native**: Supports Model Context Protocol for file system and API access.
     -   **Smart Home**: Deep integration with Home Assistant.
--   **Mission Control**: Streamlit dashboard for monitoring health, audit logs, and memory state.
+-   **Web Frontend**: Next.js interface for monitoring, audit views, and management flows.
 
 ### 📌 Current Execution Baseline
 The current `main` branch already includes a LangGraph-oriented execution baseline with:
@@ -179,8 +179,8 @@ graph TD
     docker-compose up -d --build
     ```
 
-4.  **Dashboard / 访问控制台**
-    Open [http://localhost:8501](http://localhost:8501)
+4.  **Web UI / 访问控制台**
+    Open [http://localhost:8000](http://localhost:8000)
 
 ## 🗺️ Roadmap / 路线图
 
@@ -198,12 +198,12 @@ Nexus Agent 把安全放在首位，无论是家庭还是企业部署：
 
 1.  **Private Network (Tailscale) / 私有网络**:
     - 内置 **Tailscale Sidecar**，无需在路由器开放端口即可实现加密安全访问。
-    - 无需公网 IP，通过 MagicDNS 直接访问 (例如: `http://nexus-agent-server:8501`)。
+    - 无需公网 IP，通过 MagicDNS 直接访问 (例如: `http://nexus-agent-server:8000`)。
     - [安装指南](https://tailscale.com/kb/1017/install) | [管理后台](https://login.tailscale.com/admin/machines)
 
 2.  **Audit Logs / 审计日志**:
     - 所有的工具调用和“自我学习”规则变更都会被记录在 PostgreSQL 审计日志中。
-    - 可以通过 **Mission Control Dashboard** (任务控制台) 查看。
+    - 可以通过 Web UI 中的审计页面查看。
 
 3.  **Authentication / 权限管理**:
     - Telegram 和 API 端点均支持基于角色的访问控制 (Admin/User)。
