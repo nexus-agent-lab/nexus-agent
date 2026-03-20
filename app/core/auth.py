@@ -1,5 +1,8 @@
+import os
+
+import jwt
 from fastapi import Depends, HTTPException, Security, status
-from fastapi.security import APIKeyHeader
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -7,11 +10,37 @@ from app.core.db import get_session
 from app.models import User
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+bearer_scheme = HTTPBearer(auto_error=False)
+SECRET_KEY = os.getenv("JWT_SECRET", "super-secret-default-key-1234")
+ALGORITHM = "HS256"
 
 
 async def get_current_user(
-    api_key: str = Security(api_key_header), session: AsyncSession = Depends(get_session)
+    api_key: str = Security(api_key_header),
+    bearer: HTTPAuthorizationCredentials | None = Security(bearer_scheme),
+    session: AsyncSession = Depends(get_session),
 ) -> User:
+    if bearer and bearer.scheme.lower() == "bearer":
+        try:
+            payload = jwt.decode(bearer.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+            user_id = int(payload.get("sub"))
+        except (jwt.InvalidTokenError, TypeError, ValueError):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid bearer token",
+            )
+
+        result = await session.execute(select(User).where(User.id == user_id))
+        user = result.scalars().first()
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Bearer token user not found",
+            )
+
+        return user
+
     if not api_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
