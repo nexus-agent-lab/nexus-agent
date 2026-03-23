@@ -37,13 +37,13 @@ Nexus Agent is an "AI Operating System" centered around an LLM "CPU" and LangGra
 <!-- BEGIN AI-GOVERNANCE -->
 ## Project Context (v3.2)
 - **Execution Metadata**: .project-context/docs/project/metadata.yaml
-- **Active Task View**: Run `/ctx-load`
+- **Active Task View**: Invoke the project-context agent command `ctx-load`. Do not execute it in bash.
 
 Follow: `.project-context/CLAUDE.shared.md`
 
 ### Session Lifecycle
-**START**: Run `/ctx-load` immediately.
-**END**: Run `/ctx-save` before ending the session.
+**START**: Invoke the project-context agent command `ctx-load` immediately. Do not execute it in bash.
+**END**: Invoke the project-context agent command `ctx-save` before ending the session. Do not execute it in bash.
 
 Default mode uses the active task files in `.project-context/docs/task/active/`. Git records the "What"; Project Context records the resumable "Why" and "What next".
 <!-- END AI-GOVERNANCE -->

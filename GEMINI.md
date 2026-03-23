@@ -6,6 +6,6 @@
 - **Rules**: @.agents/rules/00-repo-contract.md
 - **Shared Rules**: @.project-context/GEMINI.shared.md
 
-**Required on every session start**: Run `/ctx-load`.
-**Required on every session end**: Run `/ctx-save`.
+**Required on every session start**: Invoke the project-context agent command `ctx-load`. Do not execute it in bash.
+**Required on every session end**: Invoke the project-context agent command `ctx-save`. Do not execute it in bash.
 <!-- END AI-GOVERNANCE -->

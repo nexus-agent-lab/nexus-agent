@@ -1,6 +1,6 @@
 version: "1.4.0"
 kit_source: "https://github.com/o3o3o/project-context-kit"
-installed_at: "2026-03-20T20:38:54.058493"
+installed_at: "2026-03-21T22:36:10.425968"
 
 managed_paths:
   - ".project-context/"

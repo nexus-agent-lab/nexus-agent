@@ -32,3 +32,13 @@ Advance P0-2 access/auth hardening and resilient ingress. Bearer JWT migration f
 
 ## Next Action
 Decide whether to continue with product-facing P0-2 work (permission-denied / recovery UX) or to explicitly reconcile/close the superseded Nginx todo chain after reviewing the user’s Nginx commit `1557166`.
+
+## Session Update (2026-03-22)
+- Added `docs/architecture/autoskill_self_evolution_integration.md` to map the AutoSkill paper onto the current Nexus skill/designer architecture.
+- Recommendation from this session:
+  - keep `MemSkillDesigner` specialized for `MemorySkill.prompt_template` evolution
+  - add a future `SkillEvolutionEngine` that turns normalized runtime failures into typed patch candidates
+  - begin with low-risk `append_rule` evolution on existing skill cards rather than full autonomous skill mutation
+- Important context discovered while loading project context:
+  - `.project-context/docs/task/active/index.md` was missing and has now been recreated
+  - `.project-context/docs/task/active/task.md` and `.project-context/docs/task/active/verification.md` are still absent
