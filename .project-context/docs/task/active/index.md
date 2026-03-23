@@ -4,24 +4,29 @@
 Keep advancing the active P0-2 auth/ingress thread while also capturing architecture decisions that shape the skill, worker, and learning stack.
 
 ## Current State
-- Bearer JWT migration for web/backend is complete.
-- User independently fixed and committed the nginx DNS rediscovery issue.
-- The Project Context tree had been partially incomplete; `index.md` has now been restored.
-- A new architecture note now exists at `docs/architecture/autoskill_self_evolution_integration.md` describing how to adapt AutoSkill-style experience-driven skill evolution to this repository.
-- These documentation/context updates were committed on `2026-03-23` as `d4be5d0`.
-- A new estimate note now exists at `docs/architecture/p0_entry_binding_loop_estimate.md` covering the recommended next product slice.
-- A new implementation plan now exists at `docs/architecture/p0_entry_binding_loop_implementation_plan.md`.
-- A new WeChat channel plan now exists at `docs/architecture/wechat_channel_integration_plan.md`, based on the local `vendor/weixin-ClawBot-API` reference project.
-- A new bootstrap owner-flow plan now exists at `docs/architecture/bootstrap_owner_flow.md`.
-- README and startup docs are being updated to document the practical first-run flow instead of implementing a bootstrap UI immediately.
-- The local pre-commit path now uses `scripts/check.sh` as a staged-only gate for Python lint, staged web ESLint, and inferred related pytest targets instead of running repo-wide checks on every commit.
-- Milestone 1 of the Telegram/web entry-loop plan is now partially implemented: shared derived identity-access state plus clearer Telegram/web onboarding and handoff messaging.
-- Milestone 2 has also started: Telegram bind outcomes and handoff status payloads now use shared structured helpers instead of duplicating branch-specific message mapping.
+- The repo now has current planning docs for:
+  - entry/binding loop: `docs/architecture/p0_entry_binding_loop_estimate.md`
+  - implementation milestones: `docs/architecture/p0_entry_binding_loop_implementation_plan.md`
+  - WeChat channel integration: `docs/architecture/wechat_channel_integration_plan.md`
+  - future bootstrap direction: `docs/architecture/bootstrap_owner_flow.md`
+- Product direction has been re-aligned toward a docs-first first-run flow rather than implementing a bootstrap UI immediately.
+- The admin web surface no longer uses `X-API-Key` inside `web/src`; audit, cortex, users, and integrations pages now use bearer auth consistently in the JWT-backed admin flow.
 
 ## Recent Decision
-- Treat AutoSkill-inspired learning as a typed patch pipeline rather than a single "append rule" action.
-- Keep `MemSkillDesigner` focused on memory prompts.
-- Introduce a future `SkillEvolutionEngine` for skill-card, routing-hint, and policy evolution.
+- For now, keep first-run setup simple:
+  - configure `.env`
+  - launch the stack
+  - read initial admin credentials from backend logs
+  - optionally configure Telegram afterwards
+- Defer bootstrap/setup UI until real setup pain is better validated.
+- Treat WeChat as a strategically important family-facing entry candidate, but only after current setup and post-bootstrap flows are validated.
 
 ## Next Action
-If continuing product work, prefer documentation-first setup guidance over immediate bootstrap UI implementation: finish clarifying README / `.env` / first-run flow, then keep validating Telegram, web, HA, and future WeChat entry against real usage. If focusing on developer workflow, validate the new staged-only hook behavior against representative Python and `web/` changes before broadening or tightening the affected-test heuristic.
+Priority queue from here:
+1. Validate the current docs-first first-run flow end-to-end:
+   - minimal `.env`
+   - initial admin from logs
+   - web login
+   - optional Telegram setup and bind
+2. Validate the Home Assistant core loop and identify the highest-friction real daily-use failures.
+3. Reassess whether WeChat should become the next major entry-path spike after those validations.

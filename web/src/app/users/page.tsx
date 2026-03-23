@@ -1,12 +1,10 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { Users, Shield } from "lucide-react";
-import { verifyAuthToken } from "@/lib/auth";
 import DataTable from "@/components/DataTable";
-import CreateUserForm from "./CreateUserForm";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { Settings2 } from "lucide-react";
+import { buildBearerHeaders, getServerAuthContext } from "@/lib/server-auth";
 interface User {
   id: number;
   username: string;
@@ -15,16 +13,14 @@ interface User {
   language: string;
   timezone?: string;
   notes?: string;
-  policy: Record<string, any>;
+  policy: Record<string, unknown>;
 }
 
-async function getUsers(apiKey: string): Promise<User[]> {
+async function getUsers(token: string): Promise<User[]> {
   const baseUrl = process.env.API_URL || "http://127.0.0.1:8000/api";
   try {
     const res = await fetch(`${baseUrl}/users/`, {
-      headers: {
-        "X-API-Key": apiKey,
-      },
+      headers: buildBearerHeaders(token),
       cache: "no-store",
     });
     if (!res.ok) return [];
@@ -36,19 +32,11 @@ async function getUsers(apiKey: string): Promise<User[]> {
 }
 
 export default async function UsersPage() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get("access_token")?.value;
-
-  if (!token) {
+  const authContext = await getServerAuthContext();
+  if (!authContext) {
     redirect("/login");
   }
-
-  let payload;
-  try {
-    payload = await verifyAuthToken(token);
-  } catch (e) {
-    redirect("/login");
-  }
+  const { token, payload } = authContext;
 
   if (payload.role !== "admin") {
     return (
@@ -64,7 +52,7 @@ export default async function UsersPage() {
     );
   }
 
-  const users = await getUsers(payload.api_key as string);
+  const users = await getUsers(token);
 
   const columns = [
     { 

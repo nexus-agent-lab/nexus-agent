@@ -6,10 +6,10 @@ import { toast } from "@/lib/toast";
 
 interface ViewSkillButtonProps {
   pluginId: number;
-  apiKey: string;
+  token: string;
 }
 
-export default function ViewSkillButton({ pluginId, apiKey }: ViewSkillButtonProps) {
+export default function ViewSkillButton({ pluginId, token }: ViewSkillButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [content, setContent] = useState<string | null>(null);
@@ -20,7 +20,7 @@ export default function ViewSkillButton({ pluginId, apiKey }: ViewSkillButtonPro
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
       const response = await fetch(`${backendUrl}/plugins/${pluginId}/skill`, {
         headers: {
-          "X-API-Key": apiKey,
+          Authorization: `Bearer ${token}`,
         },
       });
 
@@ -103,7 +103,7 @@ export default function ViewSkillButton({ pluginId, apiKey }: ViewSkillButtonPro
 
             <div className="p-6 border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-800/50 text-center">
               <p className="text-xs text-neutral-400">
-                These rules are automatically injected into the Agent's system prompt when this plugin is relevant.
+                These rules are automatically injected into the Agent&apos;s system prompt when this plugin is relevant.
               </p>
             </div>
           </div>

@@ -161,3 +161,51 @@ Decide whether to continue with product-facing P0-2 work (permission-denied / re
 - Decision:
   - keep `scripts/dev_check.sh` unchanged as the full-repository validation path
   - use `scripts/check.sh` as the faster pre-commit gate
+
+## Session Update (2026-03-23, admin wirelog auth fix)
+- Fixed the admin audit page wirelog toggle to use bearer auth consistently with the rest of the JWT-backed admin UI.
+- Root cause:
+  - `web/src/app/audit/page.tsx` passed the signed-in JWT into `WireLogToggle`
+  - `web/src/components/WireLogToggle.tsx` still sent that value as `X-API-Key`
+  - backend auth then rejected it as `Invalid API Key`
+- Changes made:
+  - `WireLogToggle` now accepts a `token` prop instead of `apiKey`
+  - both `GET /admin/config` and `POST /admin/config` now send `Authorization: Bearer <token>`
+  - unauthorized copy now tells the admin to sign in again instead of checking an API key
+- Verification completed:
+  - `cd web && npm run lint -- src/components/WireLogToggle.tsx src/app/audit/page.tsx` passed
+
+## Session Update (2026-03-23, admin web bearer cleanup)
+- Searched the admin web surface for similar legacy `X-API-Key` usage after the wirelog bug.
+- Cleaned up the remaining JWT-backed admin pages/components:
+  - `web/src/app/cortex/page.tsx`
+  - `web/src/app/users/page.tsx`
+  - `web/src/app/users/[user_id]/page.tsx`
+  - `web/src/app/integrations/page.tsx`
+  - `web/src/app/integrations/PluginForm.tsx`
+  - `web/src/app/integrations/EditPluginButton.tsx`
+  - `web/src/app/integrations/ViewSkillButton.tsx`
+- Main changes:
+  - server-rendered admin pages now use `getServerAuthContext()` plus bearer headers instead of reading the JWT and then forwarding `payload.api_key`
+  - client admin components now take `token` props instead of `apiKey`
+  - plugin catalog/schema/skill fetches now send `Authorization: Bearer <token>`
+- Verification completed:
+  - `rg -n 'X-API-Key' web/src -S` found no remaining matches
+  - `git diff --check` passed for all edited admin files
+- Remaining verification gap:
+  - targeted admin lint still fails due to pre-existing issues in these files (`any`, unused imports, hook dependency warnings, unescaped apostrophes), not because of the bearer-auth cleanup itself
+
+## Priority Snapshot
+- Highest priority now is not new UI or new auth architecture. It is validating the current docs-first first-run path in real usage:
+  - configure `.env`
+  - start the stack
+  - obtain the initial admin credentials from backend logs
+  - confirm web login works
+  - optionally configure and bind Telegram afterwards
+- After that, the next important product validation is the home daily-use loop:
+  - message entry
+  - identity/binding
+  - safe Home Assistant control
+  - audit visibility
+- WeChat remains strategically important, but should be treated as the next major spike only after the current setup path and post-setup usage are validated.
+- Bootstrap/setup UI is explicitly deferred for now. Keep `docs/architecture/bootstrap_owner_flow.md` as future direction, not the immediate build target.

@@ -17,7 +17,7 @@ interface Plugin {
   status: string;
   required_role: string;
   allowed_groups: string[];
-  config: Record<string, any>;
+  config: Record<string, unknown>;
   manifest_id: string | null;
 }
 
@@ -109,8 +109,8 @@ export default async function IntegrationsPage() {
       accessorKey: "id" as keyof Plugin,
       cell: (item: Plugin) => (
         <div className="flex items-center gap-2">
-          <ViewSkillButton pluginId={item.id} apiKey={token} />
-          <EditPluginButton plugin={item} apiKey={token} />
+          <ViewSkillButton pluginId={item.id} token={token} />
+          <EditPluginButton plugin={item} token={token} />
           <DeletePluginButton pluginId={item.id} pluginName={item.name} />
         </div>
       )
@@ -137,7 +137,7 @@ export default async function IntegrationsPage() {
       <div className="space-y-12">
         <div className="space-y-6">
           <ReloadMCPButton />
-          <PluginForm apiKey={token} />
+          <PluginForm token={token} />
         </div>
 
         <div className="space-y-4">

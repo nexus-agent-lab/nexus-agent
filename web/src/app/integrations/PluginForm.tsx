@@ -6,12 +6,50 @@ import { createPlugin } from "@/app/actions/plugins";
 import { Puzzle, Loader2, AlertCircle, CheckCircle2, Store, Wrench, Shield, Plus, Info, ExternalLink, ArrowRight, Code, X, Save } from "lucide-react";
 import { toast } from "@/lib/toast";
 
+type JsonPrimitive = string | number | boolean | null;
+type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
+type JsonObject = { [key: string]: JsonValue };
+
+interface CatalogEnvField {
+  type: "text" | "password" | "url";
+  label?: string;
+  required?: boolean;
+  description?: string;
+}
+
+type CatalogEnvSchema = Record<string, CatalogEnvField>;
+
+interface CatalogPluginItem {
+  id: string;
+  name: string;
+  description: string;
+  icon?: string;
+  type: string;
+  source_url: string;
+  required_role?: string;
+  allowed_groups?: string[];
+  config?: JsonObject;
+  env_schema?: CatalogEnvSchema;
+}
+
 interface PluginFormProps {
-  apiKey: string;
+  token: string;
   onSuccess?: () => void;
 }
 
-export default function PluginForm({ apiKey, onSuccess }: PluginFormProps) {
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function parseJsonObject(value: string): JsonObject {
+  const parsed: unknown = JSON.parse(value);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Configuration must be a JSON object");
+  }
+  return parsed as JsonObject;
+}
+
+export default function PluginForm({ token, onSuccess }: PluginFormProps) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"store" | "custom">("store");
   const [name, setName] = useState("");
@@ -23,11 +61,11 @@ export default function PluginForm({ apiKey, onSuccess }: PluginFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [catalog, setCatalog] = useState<any[]>([]);
+  const [catalog, setCatalog] = useState<CatalogPluginItem[]>([]);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
-  const [selectedCatalogItem, setSelectedCatalogItem] = useState<any>(null);
+  const [selectedCatalogItem, setSelectedCatalogItem] = useState<CatalogPluginItem | null>(null);
   const [installFormValues, setInstallFormValues] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -42,11 +80,11 @@ export default function PluginForm({ apiKey, onSuccess }: PluginFormProps) {
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
       const response = await fetch(`${backendUrl}/plugins/catalog`, {
         headers: {
-          "X-API-Key": apiKey,
+          Authorization: `Bearer ${token}`,
         }
       });
       if (response.ok) {
-        const data = await response.json();
+        const data = (await response.json()) as CatalogPluginItem[];
         setCatalog(data);
       } else if (response.status === 401) {
         toast.error("Unauthorized: Session might have expired. Please log in again.");
@@ -69,12 +107,7 @@ export default function PluginForm({ apiKey, onSuccess }: PluginFormProps) {
     setSuccess(false);
 
     try {
-      let config = {};
-      try {
-        config = JSON.parse(configStr);
-      } catch (err) {
-        throw new Error("Invalid JSON configuration");
-      }
+      const config = parseJsonObject(configStr);
 
       const result = await createPlugin({
         name,
@@ -99,14 +132,14 @@ export default function PluginForm({ apiKey, onSuccess }: PluginFormProps) {
       onSuccess?.();
       router.refresh();
       setTimeout(() => setSuccess(false), 3000);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to create plugin"));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleInstallFromStore = (item: any) => {
+  const handleInstallFromStore = (item: CatalogPluginItem) => {
     if (item.env_schema && Object.keys(item.env_schema).length > 0) {
       setSelectedCatalogItem(item);
       const initialValues: Record<string, string> = {};
@@ -120,12 +153,16 @@ export default function PluginForm({ apiKey, onSuccess }: PluginFormProps) {
     }
   };
 
-  const executeInstall = async (item: any, configValues: Record<string, any>, secretValues: Record<string, string>) => {
+  const executeInstall = async (
+    item: CatalogPluginItem,
+    configValues: Record<string, string>,
+    secretValues: Record<string, string>,
+  ) => {
     setLoading(true);
     setError(null);
     setSuccess(false);
     try {
-      const finalConfig = { ...(item.config || {}), ...configValues };
+      const finalConfig: JsonObject = { ...(item.config || {}), ...configValues };
       const result = await createPlugin({
         name: item.name,
         type: item.type,
@@ -146,8 +183,8 @@ export default function PluginForm({ apiKey, onSuccess }: PluginFormProps) {
       onSuccess?.();
       router.refresh();
       setTimeout(() => setSuccess(false), 3000);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to install plugin"));
     } finally {
       setLoading(false);
     }
@@ -156,9 +193,9 @@ export default function PluginForm({ apiKey, onSuccess }: PluginFormProps) {
   const handleModalSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedCatalogItem) return;
-    const configValues: Record<string, any> = {};
+    const configValues: Record<string, string> = {};
     const secretValues: Record<string, string> = {};
-    Object.entries(selectedCatalogItem.env_schema).forEach(([key, schema]: [string, any]) => {
+    Object.entries(selectedCatalogItem.env_schema || {}).forEach(([key, schema]) => {
       const value = installFormValues[key];
       if (schema.type === "password") {
         secretValues[key] = value;
@@ -179,7 +216,7 @@ export default function PluginForm({ apiKey, onSuccess }: PluginFormProps) {
           </div>
           <div>
             <h2 className="text-xl font-bold text-neutral-900 dark:text-white">Plugin Engine</h2>
-            <p className="text-sm text-neutral-500">Expand your agent's capabilities</p>
+            <p className="text-sm text-neutral-500">Expand your agent&apos;s capabilities</p>
           </div>
         </div>
         
@@ -420,7 +457,7 @@ export default function PluginForm({ apiKey, onSuccess }: PluginFormProps) {
             </div>
 
             <form onSubmit={handleModalSubmit} className="p-6 space-y-4">
-              {Object.entries(selectedCatalogItem.env_schema).map(([key, schema]: [string, any]) => (
+              {Object.entries(selectedCatalogItem.env_schema || {}).map(([key, schema]) => (
                 <div key={key}>
                   <label className="mb-2 block text-sm font-bold text-neutral-700 dark:text-neutral-300">
                     {schema.label || key} {schema.required && <span className="text-rose-500">*</span>}

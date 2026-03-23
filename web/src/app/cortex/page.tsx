@@ -1,13 +1,12 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Brain, Database, Cpu, History, Info, Activity, Shield } from "lucide-react";
-import { verifyAuthToken } from "@/lib/auth";
 import DataTable from "@/components/DataTable";
 import MetricCard from "@/components/MetricCard";
 import { cn } from "@/lib/utils";
 import ChangelogActions from "./ChangelogActions";
 import MemoryActions from "./MemoryActions";
+import { buildBearerHeaders, getServerAuthContext } from "@/lib/server-auth";
 
 
 interface Memory {
@@ -60,12 +59,12 @@ interface Changelog {
 const API_URL = process.env.API_URL || "http://127.0.0.1:8000/api";
 
 /**
- * Fetch data from backend with API key.
+ * Fetch data from backend using the current bearer token.
  */
-async function fetchData(endpoint: string, apiKey: string) {
+async function fetchData(endpoint: string, token: string) {
   try {
     const res = await fetch(`${API_URL}${endpoint}`, {
-      headers: { "X-API-Key": apiKey },
+      headers: buildBearerHeaders(token),
       cache: "no-store",
     });
     if (!res.ok) return null;
@@ -81,20 +80,11 @@ export default async function CortexPage(props: {
 }) {
   const searchParams = await props.searchParams;
   const activeTab = searchParams.tab || "memories";
-  
-  const cookieStore = await cookies();
-  const token = cookieStore.get("access_token")?.value;
-
-  if (!token) {
+  const authContext = await getServerAuthContext();
+  if (!authContext) {
     redirect("/login");
   }
-
-  let payload;
-  try {
-    payload = await verifyAuthToken(token);
-  } catch (e) {
-    redirect("/login");
-  }
+  const { token, payload } = authContext;
 
   if (payload.role !== "admin") {
     return (
@@ -105,8 +95,6 @@ export default async function CortexPage(props: {
       </div>
     );
   }
-
-  const apiKey = payload.api_key as string;
 
   // Tabs configuration
   const tabs = [
@@ -152,9 +140,9 @@ export default async function CortexPage(props: {
 
       {/* Tab Content */}
       <div className="mt-8">
-        {activeTab === "memories" && <MemoriesTab apiKey={apiKey} />}
-        {activeTab === "skills" && <SkillsTab apiKey={apiKey} />}
-        {activeTab === "evolution" && <EvolutionTab apiKey={apiKey} />}
+        {activeTab === "memories" && <MemoriesTab token={token} />}
+        {activeTab === "skills" && <SkillsTab token={token} />}
+        {activeTab === "evolution" && <EvolutionTab token={token} />}
       </div>
     </div>
   );
@@ -163,10 +151,10 @@ export default async function CortexPage(props: {
 /**
  * Memory Storage Tab
  */
-async function MemoriesTab({ apiKey }: { apiKey: string }) {
+async function MemoriesTab({ token }: { token: string }) {
   const [memories, stats] = await Promise.all([
-    fetchData("/memories", apiKey) as Promise<Memory[] | null>,
-    fetchData("/memories/stats", apiKey) as Promise<MemoryStats | null>,
+    fetchData("/memories", token) as Promise<Memory[] | null>,
+    fetchData("/memories/stats", token) as Promise<MemoryStats | null>,
   ]);
 
   const memoryColumns = [
@@ -223,10 +211,10 @@ async function MemoriesTab({ apiKey }: { apiKey: string }) {
 /**
  * Skills Management Tab
  */
-async function SkillsTab({ apiKey }: { apiKey: string }) {
+async function SkillsTab({ token }: { token: string }) {
   const [skills, stats] = await Promise.all([
-    fetchData("/memskills", apiKey) as Promise<MemorySkill[] | null>,
-    fetchData("/memskills/stats", apiKey) as Promise<MemorySkillStats | null>,
+    fetchData("/memskills", token) as Promise<MemorySkill[] | null>,
+    fetchData("/memskills/stats", token) as Promise<MemorySkillStats | null>,
   ]);
 
   const skillColumns = [
@@ -293,8 +281,8 @@ async function SkillsTab({ apiKey }: { apiKey: string }) {
 /**
  * Evolution History Tab
  */
-async function EvolutionTab({ apiKey }: { apiKey: string }) {
-  const changelogs = (await fetchData("/memskills/changelogs", apiKey)) as Changelog[] | null;
+async function EvolutionTab({ token }: { token: string }) {
+  const changelogs = (await fetchData("/memskills/changelogs", token)) as Changelog[] | null;
 
   const changelogColumns = [
     { header: "Skill", accessorKey: "skill_name" as keyof Changelog },

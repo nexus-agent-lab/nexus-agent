@@ -6,14 +6,14 @@ import { cn } from "@/lib/utils";
 import { toast } from "@/lib/toast";
 
 interface WireLogToggleProps {
-  apiKey: string;
+  token: string;
 }
 
 /**
  * A toggle component for controlling the LLM Wire Logging setting.
  * Calls POST /admin/config to update the configuration.
  */
-export default function WireLogToggle({ apiKey }: WireLogToggleProps) {
+export default function WireLogToggle({ token }: WireLogToggleProps) {
   const [isEnabled, setIsEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
@@ -24,21 +24,21 @@ export default function WireLogToggle({ apiKey }: WireLogToggleProps) {
         const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
         const response = await fetch(`${backendUrl}/admin/config?key=DEBUG_WIRE_LOG`, {
           headers: {
-            "X-API-Key": apiKey,
+            Authorization: `Bearer ${token}`,
           },
         });
         if (response.ok) {
           const data = await response.json();
           setIsEnabled(data.value === "true");
         } else if (response.status === 401) {
-          toast.error("Unauthorized: Please check your API key.");
+          toast.error("Unauthorized: Please sign in again.");
         }
       } catch (error) {
         console.error("Failed to fetch config:", error);
       }
     };
     fetchConfig();
-  }, [apiKey]);
+  }, [token]);
 
   const toggleWireLog = async () => {
     setIsLoading(true);
@@ -51,7 +51,7 @@ export default function WireLogToggle({ apiKey }: WireLogToggleProps) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-API-Key": apiKey,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           key: "DEBUG_WIRE_LOG",

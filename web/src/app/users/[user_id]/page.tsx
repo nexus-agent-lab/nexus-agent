@@ -1,9 +1,8 @@
-import { cookies } from "next/headers";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, User as UserIcon, Shield, Fingerprint } from "lucide-react";
-import { verifyAuthToken } from "@/lib/auth";
 import EditUserForm from "./EditUserForm";
+import { buildBearerHeaders, getServerAuthContext } from "@/lib/server-auth";
 
 interface User {
   id: number;
@@ -13,17 +12,15 @@ interface User {
   groups: string[];
   timezone?: string;
   notes?: string;
-  policy: Record<string, any>;
+  policy: Record<string, unknown>;
   api_key: string;
 }
 
-async function getUser(userId: string, apiKey: string): Promise<User | null> {
+async function getUser(userId: string, token: string): Promise<User | null> {
   const baseUrl = process.env.API_URL || "http://127.0.0.1:8000/api";
   try {
     const res = await fetch(`${baseUrl}/users/${userId}`, {
-      headers: {
-        "X-API-Key": apiKey,
-      },
+      headers: buildBearerHeaders(token),
       cache: "no-store",
     });
     if (!res.ok) {
@@ -47,17 +44,11 @@ export default async function UserDetailPage({
   params: Promise<{ user_id: string }>;
 }) {
   const { user_id } = await params;
-  const cookieStore = await cookies();
-  const token = cookieStore.get("access_token")?.value;
-
-  if (!token) redirect("/login");
-
-  let payload;
-  try {
-    payload = await verifyAuthToken(token);
-  } catch (e) {
+  const authContext = await getServerAuthContext();
+  if (!authContext) {
     redirect("/login");
   }
+  const { token, payload } = authContext;
 
   if (payload.role !== "admin") {
     return (
@@ -73,7 +64,7 @@ export default async function UserDetailPage({
     );
   }
 
-  const user = await getUser(user_id, payload.api_key as string);
+  const user = await getUser(user_id, token);
 
   if (!user) {
     notFound();

@@ -269,7 +269,7 @@ export default async function AuditPage({
               <Activity className="h-5 w-5 text-indigo-500" />
               LLM Traces
             </h2>
-          <WireLogToggle apiKey={token} />
+          <WireLogToggle token={token} />
           </div>
           <TraceViewer initialTraces={traces} />
         </section>

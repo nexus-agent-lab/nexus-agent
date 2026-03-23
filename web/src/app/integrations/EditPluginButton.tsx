@@ -1,12 +1,28 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Settings2, Loader2, X, Save, Shield, ExternalLink, Code, Puzzle, Info } from "lucide-react";
+import { Settings2, Loader2, X, Save, Shield } from "lucide-react";
 import { updatePlugin } from "@/app/actions/plugins";
 import { toast } from "@/lib/toast";
 
+type JsonPrimitive = string | number | boolean | null;
+type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
+type JsonObject = { [key: string]: JsonValue };
+
+interface SchemaField {
+  type: "text" | "password" | "url";
+  label?: string;
+  required?: boolean;
+  description?: string;
+}
+
+interface PluginSchemaResponse {
+  env_schema: Record<string, SchemaField> | null;
+  bundled_skills: string[];
+}
+
 interface EditPluginButtonProps {
-  apiKey: string;
+  token: string;
   plugin: {
     id: number;
     name: string;
@@ -14,15 +30,37 @@ interface EditPluginButtonProps {
     source_url: string;
     required_role: string;
     allowed_groups: string[];
-    config: Record<string, any>;
+    config: Record<string, unknown>;
     manifest_id: string | null;
   };
 }
 
-export default function EditPluginButton({ plugin, apiKey }: EditPluginButtonProps) {
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function parseJsonObject(value: string): JsonObject {
+  const parsed: unknown = JSON.parse(value);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Configuration must be a JSON object");
+  }
+  return parsed as JsonObject;
+}
+
+function asFormValue(value: unknown) {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return "";
+}
+
+export default function EditPluginButton({ plugin, token }: EditPluginButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [schema, setSchema] = useState<any>(null);
+  const [schema, setSchema] = useState<PluginSchemaResponse | null>(null);
   const [installFormValues, setInstallFormValues] = useState<Record<string, string>>({});
   const [fetchingSchema, setFetchingSchema] = useState(false);
   const [formData, setFormData] = useState({
@@ -46,21 +84,22 @@ export default function EditPluginButton({ plugin, apiKey }: EditPluginButtonPro
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
       const response = await fetch(`${backendUrl}/plugins/${plugin.id}/schema`, {
         headers: {
-          "X-API-Key": apiKey,
+          Authorization: `Bearer ${token}`,
         }
       });
       if (response.ok) {
-        const data = await response.json();
+        const data = (await response.json()) as PluginSchemaResponse;
         setSchema(data);
         
         if (data.env_schema) {
+          const envSchema = data.env_schema;
           const initialValues: Record<string, string> = {};
-          Object.keys(data.env_schema).forEach(key => {
-            const schemaItem = data.env_schema[key];
+          Object.keys(envSchema).forEach(key => {
+            const schemaItem = envSchema[key];
             if (schemaItem.type === "password") {
               initialValues[key] = "";
             } else {
-              initialValues[key] = plugin.config[key] || "";
+              initialValues[key] = asFormValue(plugin.config[key]);
             }
           });
           setInstallFormValues(initialValues);
@@ -78,26 +117,22 @@ export default function EditPluginButton({ plugin, apiKey }: EditPluginButtonPro
     setLoading(true);
 
     try {
-      let config = {};
+      let config: JsonObject = {};
       const secretValues: Record<string, string> = {};
 
       if (schema?.env_schema) {
-        Object.entries(schema.env_schema).forEach(([key, schemaItem]: [string, any]) => {
+        Object.entries(schema.env_schema).forEach(([key, schemaItem]) => {
           const value = installFormValues[key];
           if (schemaItem.type === "password") {
             if (value) {
               secretValues[key] = value;
             }
           } else {
-            (config as any)[key] = value;
+            config[key] = value;
           }
         });
       } else {
-        try {
-          config = JSON.parse(formData.configStr);
-        } catch (err) {
-          throw new Error("Invalid JSON in configuration field");
-        }
+        config = parseJsonObject(formData.configStr);
       }
 
       const result = await updatePlugin(plugin.id, {
@@ -116,8 +151,8 @@ export default function EditPluginButton({ plugin, apiKey }: EditPluginButtonPro
         toast.success("Plugin updated successfully");
         setIsOpen(false);
       }
-    } catch (err: any) {
-      toast.error(err.message);
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err, "Failed to update plugin"));
     } finally {
       setLoading(false);
     }
@@ -226,7 +261,7 @@ export default function EditPluginButton({ plugin, apiKey }: EditPluginButtonPro
                     <Shield className="h-4 w-4 text-indigo-500" />
                     <h3 className="text-sm font-bold uppercase tracking-wider text-neutral-500">Configuration</h3>
                   </div>
-                  {Object.entries(schema.env_schema).map(([key, schemaItem]: [string, any]) => (
+                  {Object.entries(schema.env_schema).map(([key, schemaItem]) => (
                     <div key={key}>
                       <label className="mb-1.5 block text-sm font-bold text-neutral-700 dark:text-neutral-300">
                         {schemaItem.label || key} {schemaItem.required && <span className="text-rose-500">*</span>}
