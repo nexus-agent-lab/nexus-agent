@@ -12,6 +12,8 @@ Keep advancing the active P0-2 auth/ingress thread while also capturing architec
 - A new estimate note now exists at `docs/architecture/p0_entry_binding_loop_estimate.md` covering the recommended next product slice.
 - A new implementation plan now exists at `docs/architecture/p0_entry_binding_loop_implementation_plan.md`.
 - A new WeChat channel plan now exists at `docs/architecture/wechat_channel_integration_plan.md`, based on the local `vendor/weixin-ClawBot-API` reference project.
+- A new bootstrap owner-flow plan now exists at `docs/architecture/bootstrap_owner_flow.md`.
+- README and startup docs are being updated to document the practical first-run flow instead of implementing a bootstrap UI immediately.
 - The local pre-commit path now uses `scripts/check.sh` as a staged-only gate for Python lint, staged web ESLint, and inferred related pytest targets instead of running repo-wide checks on every commit.
 - Milestone 1 of the Telegram/web entry-loop plan is now partially implemented: shared derived identity-access state plus clearer Telegram/web onboarding and handoff messaging.
 - Milestone 2 has also started: Telegram bind outcomes and handoff status payloads now use shared structured helpers instead of duplicating branch-specific message mapping.
@@ -22,4 +24,4 @@ Keep advancing the active P0-2 auth/ingress thread while also capturing architec
 - Introduce a future `SkillEvolutionEngine` for skill-card, routing-hint, and policy evolution.
 
 ## Next Action
-If continuing product work, keep moving through Milestone 2 from `docs/architecture/p0_entry_binding_loop_implementation_plan.md` (bind-flow simplification and shared outcome shapes), then move to the WeChat transport spike. If focusing on developer workflow, validate the new staged-only hook behavior against representative Python and `web/` changes before broadening or tightening the affected-test heuristic.
+If continuing product work, prefer documentation-first setup guidance over immediate bootstrap UI implementation: finish clarifying README / `.env` / first-run flow, then keep validating Telegram, web, HA, and future WeChat entry against real usage. If focusing on developer workflow, validate the new staged-only hook behavior against representative Python and `web/` changes before broadening or tightening the affected-test heuristic.

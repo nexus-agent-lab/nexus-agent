@@ -142,47 +142,146 @@ graph TD
 
 ## 🚀 Quick Start / 快速开始
 
-1.  **Install & Configure Ollama** / **安装 Ollama**
-    - Download from [Ollama.com](https://ollama.com).
-    - Pull the **GLM-4.7-flash** Model (Required for high performance):
-      ```bash
-      # Mac mini M4 (32GB) Requirement
-      # Create custom model with 32k context
-      ollama create nexus-glm -f ./scripts/glm4-flash-nexus.Modelfile
+### First-Time Setup / 首次启动建议
 
-      
-      # Pull Embedding Model (Required for RAG)
-      ollama pull bge-m3
-      # or for lower resource: ollama pull nomic-embed-text
-      ```
+For the current project stage, the simplest path is:
 
-2.  **Environment Setup** / **环境配置**
-    ```bash
-    git clone https://github.com/nexus-agent-lab/nexus-agent.git
-    cd nexus-agent
-    
-    # Configure Tailscale & Env (Interactive Script)
-    ./scripts/admin/setup_tailscale.sh
-    
-    # Or manually copy config
-    # cp .env.example .env
-    ```
-    
-    > **Tip / 提示**: 
-    > To enable Telegram control:
-    > 1. Talk to `@BotFather` to create a bot -> Get `TELEGRAM_BOT_TOKEN`.
-    > 2. Talk to `@userinfobot` -> Get your ID -> Set `TELEGRAM_ALLOWED_USERS`.
-    > 3. Add them to your `.env` file.
+1. configure a minimal `.env`
+2. start the stack with Docker Compose
+3. read the startup logs for the initial admin credentials
+4. log into the web UI as admin
+5. optionally configure Telegram and bind it afterwards
 
-3.  **Launch** / **启动服务**
-    ```bash
-    docker-compose up -d --build
-    ```
-    > The default entrypoint on `localhost:8000` is the bundled **Nginx** reverse proxy.
-    > Nginx forwards `/api/` to `nexus-app` and all other routes to the Next.js `web` service.
+There is **not yet** a polished bootstrap/setup wizard. For now, the recommended first-run flow is document-driven.
 
-4.  **Web UI / 访问控制台**
-    Open [http://localhost:8000](http://localhost:8000)
+### 1. Clone the Repository / 拉取代码
+
+```bash
+git clone https://github.com/nexus-agent-lab/nexus-agent.git
+cd nexus-agent
+cp .env.example .env
+```
+
+### 2. Minimum `.env` You Should Review / 最少需要确认的配置
+
+At minimum, review these values in `.env`:
+
+```bash
+# LLM
+LLM_API_KEY=ollama
+LLM_BASE_URL=http://host.docker.internal:11434/v1
+LLM_MODEL=qwen2.5:14b
+
+# Embedding
+EMBEDDING_API_KEY=ollama
+EMBEDDING_BASE_URL=http://host.docker.internal:11434/v1
+EMBEDDING_MODEL=bge-m3:latest
+EMBEDDING_DIMENSION=1024
+
+# Security
+JWT_SECRET=change-me
+NEXUS_MASTER_KEY=your_generated_fernet_key_here=
+
+# Initial admin username
+INITIAL_ADMIN_USERNAME=admin
+```
+
+Optional but commonly needed:
+
+```bash
+# Telegram
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_BOT_USERNAME=
+TELEGRAM_ALLOWED_USERS=
+
+# Home Assistant
+HOMEASSISTANT_URL=
+HOMEASSISTANT_TOKEN=
+```
+
+### 3. If You Use Ollama / 如果你使用 Ollama
+
+Install Ollama from [Ollama.com](https://ollama.com), then pull the models you want.
+
+Example:
+
+```bash
+ollama pull qwen2.5:14b
+ollama pull bge-m3
+```
+
+If you want to use a cloud model instead, set `LLM_API_KEY`, `LLM_BASE_URL`, and `LLM_MODEL` accordingly in `.env`.
+
+### 4. Launch the Stack / 启动服务
+
+```bash
+docker-compose up -d --build
+```
+
+The default entrypoint on `localhost:8000` is the bundled **Nginx** reverse proxy.
+
+- `/api/` -> FastAPI (`nexus-app`)
+- all other routes -> Next.js (`web`)
+
+### 5. First Admin Login / 第一次管理员登录
+
+On first startup, if the database has no users, Nexus automatically creates an initial admin user.
+
+The generated credentials are printed in the backend startup logs.
+
+To view them:
+
+```bash
+docker-compose logs nexus-app
+```
+
+Look for the `INITIAL ADMIN USER CREATED` block.
+
+Then open:
+
+- [http://localhost:8000](http://localhost:8000)
+
+and log in with:
+
+- `username = INITIAL_ADMIN_USERNAME`
+- `password = generated API key from the logs`
+
+If you need to inspect or reset users later:
+
+```bash
+python scripts/admin/manage_user.py --list
+python scripts/admin/manage_user.py --reset admin
+```
+
+### 6. Telegram Is Optional for First Launch / Telegram 不是首次启动必需项
+
+You do **not** need Telegram configured to bring the system up and complete the first admin login.
+
+Telegram becomes useful after the admin can already access the web UI.
+
+To configure Telegram later:
+
+1. Create a bot with `@BotFather`
+2. Save:
+   - `TELEGRAM_BOT_TOKEN`
+   - `TELEGRAM_BOT_USERNAME` (without the `@`)
+3. Optionally get your Telegram user ID and set `TELEGRAM_ALLOWED_USERS`
+4. restart the stack
+
+After that, you can:
+
+- use Telegram as a chat entry
+- bind Telegram identities
+- use Telegram-assisted web sign-in
+
+### 7. Suggested First Post-Login Steps / 管理员首次登录后的建议步骤
+
+After the admin gets into the web UI, the most practical next steps are:
+
+1. verify LLM connectivity
+2. configure Telegram if you want chat entry
+3. configure Home Assistant if you want device control
+4. add or bind other family members later
 
 ### 🔁 Nginx Reload / Nginx 配置重载
 

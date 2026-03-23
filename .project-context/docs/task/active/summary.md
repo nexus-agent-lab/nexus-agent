@@ -121,6 +121,28 @@ Decide whether to continue with product-facing P0-2 work (permission-denied / re
   - `uv run pytest tests/test_telegram_bind_flow.py tests/test_telegram_login_handoff.py tests/test_auth_telegram_handoff.py tests/test_auth_core.py`
   - all 15 tests passed
 
+## Session Update (2026-03-23, bootstrap reprioritization)
+- Added `docs/architecture/bootstrap_owner_flow.md`.
+- Key product decision:
+  - a fresh Nexus deployment should not start with normal login
+  - it should start with a restricted bootstrap / owner-claim flow
+  - the owner should bind Telegram during bootstrap and become the initial admin
+- Priority order was updated accordingly:
+  - first: bootstrap owner flow
+  - second: post-bootstrap Telegram/web auth polish
+  - third: WeChat transport spike
+
+## Session Update (2026-03-23, docs-first adjustment)
+- After further discussion, the team decided a full bootstrap/setup UI is likely premature for the current stage.
+- Updated direction:
+  - document the first-run flow clearly in `README.md`
+  - keep startup simple: configure `.env`, launch, read initial admin credentials from logs, then optionally configure Telegram
+  - postpone bootstrap UI/productization until real setup pain is better validated
+- Supporting updates made:
+  - `README.md` now describes the practical first launch path
+  - `.env.example` now includes `TELEGRAM_BOT_USERNAME` and `JWT_SECRET`
+  - `docker-compose.yml` now passes `TELEGRAM_BOT_USERNAME` into `nexus-app`
+
 ## Session Update (2026-03-23, hook workflow)
 - Adjusted `scripts/check.sh`, which is invoked by `.git/hooks/pre-commit`, to operate on staged files instead of the whole repository.
 - New hook behavior:
