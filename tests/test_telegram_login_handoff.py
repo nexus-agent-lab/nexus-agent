@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.core.auth_service import IdentityAccessState
 from app.interfaces.telegram import start
 
 
@@ -25,7 +26,17 @@ async def test_start_login_handoff_approves_for_bound_user(mocker):
     bound_user = SimpleNamespace(id=42, role="user", language="en")
 
     mocker.patch("app.interfaces.telegram.get_user_language", AsyncMock(return_value="en"))
-    mocker.patch("app.interfaces.telegram.AuthService.get_user_by_identity", AsyncMock(return_value=bound_user))
+    mocker.patch(
+        "app.interfaces.telegram.AuthService.describe_identity_access",
+        AsyncMock(
+            return_value=IdentityAccessState(
+                provider="telegram",
+                provider_user_id="123456",
+                status="verified",
+                user=bound_user,
+            )
+        ),
+    )
     approve_mock = mocker.patch(
         "app.interfaces.telegram.AuthService.approve_telegram_login_challenge",
         AsyncMock(return_value="exchange-token"),
@@ -46,7 +57,17 @@ async def test_start_login_handoff_requires_existing_binding(mocker):
     context = _make_context(["login_test"])
 
     mocker.patch("app.interfaces.telegram.get_user_language", AsyncMock(return_value="en"))
-    mocker.patch("app.interfaces.telegram.AuthService.get_user_by_identity", AsyncMock(return_value=None))
+    mocker.patch(
+        "app.interfaces.telegram.AuthService.describe_identity_access",
+        AsyncMock(
+            return_value=IdentityAccessState(
+                provider="telegram",
+                provider_user_id="123456",
+                status="guest",
+                user=None,
+            )
+        ),
+    )
     reject_mock = mocker.patch(
         "app.interfaces.telegram.AuthService.reject_telegram_login_challenge",
         AsyncMock(return_value=True),

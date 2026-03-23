@@ -175,17 +175,9 @@ class AgentWorker:
                         if u and u.language:
                             target_lang = u.language
 
+                    bind_outcome = AuthService.describe_bind_attempt(result, user_id=target_user_id)
                     meta_extras = {}
-                    reply_text = get_text("bind_fail", target_lang)
-
-                    if result == BindResult.SUCCESS:
-                        reply_text = get_text("bind_success", target_lang, user_id=target_user_id)
-                        # Fetch Allowed Tools to update Menu
-                        # ... (existing logic) ...
-                    elif result == BindResult.PROVIDER_CONFLICT:
-                        reply_text = get_text("bind_conflict_provider", target_lang)
-                    elif result == BindResult.USER_CONFLICT:
-                        reply_text = get_text("bind_conflict_user", target_lang)
+                    reply_text = get_text(bind_outcome.message_key, target_lang, user_id=target_user_id)
 
                     if result == BindResult.SUCCESS:
                         # Fetch Allowed Tools to update Menu

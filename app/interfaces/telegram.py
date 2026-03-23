@@ -280,9 +280,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if login_payload.startswith("login_"):
             challenge_id = login_payload.removeprefix("login_")
             lang = await get_user_language(str(user.id), update.effective_user.language_code)
-            nexus_user = await AuthService.get_user_by_identity("telegram", str(user.id))
+            identity_access = await AuthService.describe_identity_access("telegram", str(user.id))
+            nexus_user = identity_access.user
 
-            if not nexus_user:
+            if not identity_access.is_bound:
                 await AuthService.reject_telegram_login_challenge(challenge_id, "rejected_unbound")
                 await update.message.reply_markdown(get_text("login_handoff_bind_required", lang))
                 return
@@ -299,7 +300,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
     # Identify user for auto-login or guest welcome
-    nexus_user = await AuthService.get_user_by_identity("telegram", str(user.id))
+    identity_access = await AuthService.describe_identity_access("telegram", str(user.id))
+    nexus_user = identity_access.user
     lang = resolve_language(nexus_user, update.message.text)
 
     # Auto-refresh menu
@@ -316,7 +318,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a message when the command /help is issued."""
     chat_id = str(update.effective_chat.id)
-    nexus_user = await AuthService.get_user_by_identity("telegram", str(update.effective_user.id))
+    identity_access = await AuthService.describe_identity_access("telegram", str(update.effective_user.id))
+    nexus_user = identity_access.user
     lang = resolve_language(nexus_user, update.message.text)
 
     # Refresh menu to be safe
@@ -394,6 +397,7 @@ async def process_bind_token(update: Update, context: ContextTypes.DEFAULT_TYPE,
         bind_result = await AuthService.bind_identity(
             user_id=target_user_id, provider="telegram", provider_user_id=user_id, username=username
         )
+        bind_outcome = AuthService.describe_bind_attempt(bind_result, user_id=target_user_id)
 
         if bind_result == BindResult.SUCCESS:
             logger.info(f"Account bind successful for {user_id}")
@@ -411,21 +415,15 @@ async def process_bind_token(update: Update, context: ContextTypes.DEFAULT_TYPE,
                         await session.commit()
 
             await context.bot.send_message(
-                chat_id=chat_id, text=get_text("bind_success", lang, user_id=target_user_id), parse_mode="Markdown"
+                chat_id=chat_id,
+                text=get_text(bind_outcome.message_key, lang, user_id=target_user_id),
+                parse_mode="Markdown",
             )
             bound_user = await AuthService.get_user_by_identity("telegram", user_id)
             await refresh_user_commands(context.bot, chat_id, bound_user, lang)
         else:
             logger.warning(f"Account bind failed for {user_id}. Conflict or already linked.")
-
-            if bind_result == BindResult.PROVIDER_CONFLICT:
-                text = get_text("bind_conflict_provider", lang)
-            elif bind_result == BindResult.USER_CONFLICT:
-                text = get_text("bind_conflict_user", lang)
-            else:
-                text = get_text("bind_fail", lang)
-
-            await context.bot.send_message(chat_id=chat_id, text=text)
+            await context.bot.send_message(chat_id=chat_id, text=get_text(bind_outcome.message_key, lang))
 
     except Exception as e:
         logger.error(f"Failed to bind account: {e}", exc_info=True)

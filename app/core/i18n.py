@@ -25,10 +25,10 @@ STRINGS = {
         "cmd_bind": "Link your account using a code",
         "cmd_unbind": "Unlink your Telegram account",
         "cmd_reset": "Clear your conversation history",
-        "welcome_guest": "👋 **Welcome to Nexus!**\n\nI don't recognize this account yet. To use the agent, please link your account:\n\n1. Contact your Administrator to generate a **Bind Token** from the Dashboard.\n2. Send `/bind <token>` here.",
+        "welcome_guest": "👋 **Welcome to Nexus!**\n\nThis Telegram account is not linked yet.\n\n**Next step:**\n1. Ask the Nexus owner for a **Bind Token**.\n2. Send `/bind <token>` here.\n\nAfter binding, you can use chat commands and approve web login handoff from Telegram.",
         "login_handoff_approved": "✅ Telegram login confirmed. You can return to the browser and continue.",
         "login_handoff_expired": "⚠️ This web login request is invalid or expired. Please start again from the web login page.",
-        "login_handoff_bind_required": "⚠️ This Telegram account is not linked yet, so web login cannot be approved here. Please bind your account first with `/bind <code>`.",
+        "login_handoff_bind_required": "⚠️ This Telegram account is not linked yet, so web login cannot be approved here.\n\nAsk the Nexus owner for a Bind Token, then send `/bind <code>` here first.",
     },
     "zh": {
         "welcome": "🚀 **Nexus Agent 已上线**\n\n我已经连接并准备好为您服务。\n\n**可用指令：**\n• `/help` - 显示此帮助信息\n• `/bind <code>` - 绑定您的账户\n• `/unbind` - 解除账户绑定\n• `/reset` - 清除对话历史\n\n直接发送消息即可开始！",
@@ -51,10 +51,10 @@ STRINGS = {
         "cmd_bind": "使用代码绑定账户",
         "cmd_unbind": "解除 Telegram 账户绑定",
         "cmd_reset": "清除对话历史",
-        "welcome_guest": "👋 **欢迎来到 Nexus!**\n\n我暂时还不认识这个账户。请先绑定您的账户：\n\n1. 联系您的管理员从仪表板生成 **绑定代码**。\n2. 发送 `/bind <代码>` 给我们。",
+        "welcome_guest": "👋 **欢迎来到 Nexus!**\n\n这个 Telegram 账户还没有绑定。\n\n**下一步：**\n1. 向 Nexus 管理员索取 **绑定代码**。\n2. 在这里发送 `/bind <代码>`。\n\n绑定后，您就可以正常聊天，也可以在 Telegram 里批准网页登录。",
         "login_handoff_approved": "✅ Telegram 登录确认成功。请返回浏览器继续。",
         "login_handoff_expired": "⚠️ 这个网页登录请求无效或已过期。请回到网页登录页重新开始。",
-        "login_handoff_bind_required": "⚠️ 这个 Telegram 账户还没有绑定，因此不能在这里批准网页登录。请先使用 `/bind <代码>` 完成绑定。",
+        "login_handoff_bind_required": "⚠️ 这个 Telegram 账户还没有绑定，因此不能在这里批准网页登录。\n\n请先向管理员索取绑定代码，并在这里发送 `/bind <代码>` 完成绑定。",
     },
 }
 

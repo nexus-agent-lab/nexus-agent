@@ -86,7 +86,7 @@ append_unique() {
     [[ -n "$candidate" && -f "$candidate" ]] || return 0
 
     local existing
-    for existing in "${TEST_TARGETS[@]}"; do
+    for existing in "${TEST_TARGETS[@]-}"; do
         [[ "$existing" == "$candidate" ]] && return 0
     done
     TEST_TARGETS+=("$candidate")

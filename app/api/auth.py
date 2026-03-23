@@ -76,6 +76,8 @@ class TelegramLoginStartResponse(BaseModel):
 class TelegramLoginStatusResponse(BaseModel):
     status: str
     exchange_token: str | None = None
+    detail: str | None = None
+    next_step: str | None = None
 
 
 class TelegramLoginCompleteRequest(BaseModel):

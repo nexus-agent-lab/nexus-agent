@@ -4,6 +4,7 @@ import os
 import random
 import secrets
 import string
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import List
@@ -27,6 +28,33 @@ class BindResult(str, Enum):
     SUCCESS = "success"
     PROVIDER_CONFLICT = "provider_conflict"  # Social ID already linked to another user
     USER_CONFLICT = "user_conflict"  # User already linked to another Social ID of this type
+
+
+@dataclass
+class IdentityAccessState:
+    provider: str
+    provider_user_id: str
+    status: str
+    user: User | None = None
+
+    @property
+    def is_bound(self) -> bool:
+        return self.status == "verified" and self.user is not None
+
+
+@dataclass
+class BindAttemptOutcome:
+    status: str
+    message_key: str
+    user_id: int | None = None
+
+
+@dataclass
+class LoginHandoffStatus:
+    status: str
+    exchange_token: str | None = None
+    detail: str | None = None
+    next_step: str | None = None
 
 
 class AuthService:
@@ -117,11 +145,21 @@ class AuthService:
     async def get_telegram_login_status(challenge_id: str) -> dict:
         payload = await AuthService.get_telegram_login_challenge(challenge_id)
         if not payload:
-            return {"status": "expired"}
-        result = {"status": payload.get("status", "pending")}
+            return LoginHandoffStatus(
+                status="expired",
+                detail="This Telegram sign-in request is invalid or expired.",
+                next_step="restart_login",
+            ).__dict__
+        result = LoginHandoffStatus(status=payload.get("status", "pending"))
         if payload.get("status") == "approved" and payload.get("exchange_token"):
-            result["exchange_token"] = payload["exchange_token"]
-        return result
+            result.exchange_token = payload["exchange_token"]
+        elif payload.get("status") == "rejected_unbound":
+            result.detail = "This Telegram account is not linked to Nexus yet."
+            result.next_step = "bind_telegram"
+        elif payload.get("status") == "expired":
+            result.detail = "This Telegram sign-in request is invalid or expired."
+            result.next_step = "restart_login"
+        return result.__dict__
 
     @staticmethod
     async def reject_telegram_login_challenge(challenge_id: str, reason: str) -> bool:
@@ -283,6 +321,41 @@ class AuthService:
                 return res_user.scalar_one_or_none()
 
             return None
+
+    @staticmethod
+    async def describe_identity_access(provider: str, provider_user_id: str) -> IdentityAccessState:
+        """
+        Return a lightweight derived access state for a channel identity.
+
+        Current repository state does not yet persist explicit binding lifecycle
+        fields, so this helper centralizes the derived interpretation used by
+        messaging and web handoff flows.
+        """
+        user = await AuthService.get_user_by_identity(provider, provider_user_id)
+        if user:
+            return IdentityAccessState(
+                provider=provider,
+                provider_user_id=provider_user_id,
+                status="verified",
+                user=user,
+            )
+
+        return IdentityAccessState(
+            provider=provider,
+            provider_user_id=provider_user_id,
+            status="guest",
+            user=None,
+        )
+
+    @staticmethod
+    def describe_bind_attempt(bind_result: BindResult | None, *, user_id: int | None = None) -> BindAttemptOutcome:
+        if bind_result == BindResult.SUCCESS:
+            return BindAttemptOutcome(status="success", message_key="bind_success", user_id=user_id)
+        if bind_result == BindResult.PROVIDER_CONFLICT:
+            return BindAttemptOutcome(status="provider_conflict", message_key="bind_conflict_provider")
+        if bind_result == BindResult.USER_CONFLICT:
+            return BindAttemptOutcome(status="user_conflict", message_key="bind_conflict_user")
+        return BindAttemptOutcome(status="failed", message_key="bind_fail")
 
     @staticmethod
     async def notify_admins(content: str, meta: dict | None = None):

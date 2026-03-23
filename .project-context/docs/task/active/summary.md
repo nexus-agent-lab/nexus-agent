@@ -42,3 +42,100 @@ Decide whether to continue with product-facing P0-2 work (permission-denied / re
 - Important context discovered while loading project context:
   - `.project-context/docs/task/active/index.md` was missing and has now been recreated
   - `.project-context/docs/task/active/task.md` and `.project-context/docs/task/active/verification.md` are still absent
+
+## Session Update (2026-03-23)
+- Committed the AutoSkill architecture note and related project-context updates as `d4be5d0` (`Document autoskill self-evolution integration`).
+- That commit also included already-staged repo/governance file updates:
+  - `.project-context/install-manifest.yaml`
+  - `AGENTS.md`
+  - `CLAUDE.md`
+  - `GEMINI.md`
+  - rename `.agent/workflows/dev-rules.md` -> `.agents/workflows/dev-rules.md`
+- After reading `docs/project_focus_and_direction.md`, the recommended next estimation target is not generalized self-evolution. The strongest next estimate is the P0 user entry path:
+  - family-facing messaging entry
+  - identity binding
+  - permission-aware home control loop
+  - audit visibility
+
+## Session Update (2026-03-23, follow-up)
+- Added `docs/architecture/p0_entry_binding_loop_estimate.md`.
+- Recommendation in that estimate:
+  - commit to Telegram + web fallback tightening first
+  - defer any new family-facing channel to a later explicit decision gate
+- Estimated size for the recommended slice:
+  - roughly 6 to 12 working days for focused implementation, audit visibility, and validation
+
+## Session Update (2026-03-23, implementation planning)
+- Added `docs/architecture/p0_entry_binding_loop_implementation_plan.md`.
+- The plan breaks the work into four milestones:
+  - binding-state-aware UX
+  - bind flow simplification
+  - permission-denied and recovery UX
+  - audit coverage and admin visibility
+- Recommended first engineering task:
+  - Milestone 1: shared auth outcome shaping plus clearer Telegram/web onboarding and state handling
+
+## Session Update (2026-03-23, WeChat planning)
+- Read the local `vendor/weixin-ClawBot-API` reference project.
+- Important finding:
+  - this WeChat path is not a webhook/public-account-only design; it uses QR login + bot token + long-poll `getupdates`, which makes it architecturally much closer to Telegram than initially assumed
+- Added `docs/architecture/wechat_channel_integration_plan.md`.
+- Priority conclusion after re-checking `docs/project_focus_and_direction.md`:
+  - WeChat is strategically high priority because the direction doc explicitly calls for exploring WeChat or another easier family-facing entry
+  - but immediate coding priority still starts with Telegram/web Milestone 1, because WeChat should reuse the same shared binding-state and auth-outcome layer
+  - recommended sequence:
+    - immediate next: Telegram/web Milestone 1
+    - next major spike: WeChat transport integration
+
+## Session Update (2026-03-23, Milestone 1 implementation)
+- Implemented a shared derived identity-access helper in `app/core/auth_service.py`:
+  - `IdentityAccessState`
+  - `AuthService.describe_identity_access(provider, provider_user_id)`
+- Updated Telegram entry flow in `app/interfaces/telegram.py` to use the shared access-state helper for:
+  - `/start login_*` handoff approval gating
+  - guest vs bound welcome/help behavior
+- Improved onboarding/handoff wording in `app/core/i18n.py` so unbound Telegram users get clearer next steps.
+- Updated `web/src/app/login/page.tsx` to:
+  - position Telegram as the primary sign-in path
+  - keep API key login framed as admin/recovery fallback
+  - show clearer guidance when Telegram sign-in is rejected because the account is not linked
+- Updated targeted tests in `tests/test_telegram_login_handoff.py`.
+- Verification completed:
+  - `uv run pytest tests/test_telegram_bind_flow.py tests/test_telegram_login_handoff.py tests/test_auth_telegram_handoff.py tests/test_auth_core.py`
+  - all 13 tests passed
+  - `cd web && npm run lint -- src/app/login/page.tsx` passed with one remaining pre-existing warning about raw `<img>` usage
+
+## Session Update (2026-03-23, Milestone 2 partial)
+- Added shared structured auth/bind outcome helpers in `app/core/auth_service.py`:
+  - `BindAttemptOutcome`
+  - `LoginHandoffStatus`
+  - `AuthService.describe_bind_attempt(...)`
+- `AuthService.get_telegram_login_status(...)` now returns structured `detail` and `next_step` fields in addition to `status` / `exchange_token`.
+- `app/api/auth.py` response model was extended to expose those fields.
+- `app/interfaces/telegram.py` and `app/core/worker.py` now reuse the same bind-outcome mapping instead of hand-writing provider/user conflict message selection.
+- `web/src/app/login/page.tsx` now consumes backend-provided status detail for rejected/expired Telegram handoff states.
+- Added focused tests for:
+  - structured Telegram handoff status payloads
+  - bind-outcome message-key mapping
+- Verification completed:
+  - `uv run pytest tests/test_telegram_bind_flow.py tests/test_telegram_login_handoff.py tests/test_auth_telegram_handoff.py tests/test_auth_core.py`
+  - all 15 tests passed
+
+## Session Update (2026-03-23, hook workflow)
+- Adjusted `scripts/check.sh`, which is invoked by `.git/hooks/pre-commit`, to operate on staged files instead of the whole repository.
+- New hook behavior:
+  - Python syntax check runs only for staged Python files under `app/`, `tests/`, and `scripts/`
+  - Ruff check/format runs only on those staged Python files and re-stages any autofixes
+  - ESLint runs for staged `web/` JS/TS files; changes to `web/package.json`, `web/package-lock.json`, `web/eslint.config.mjs`, or `web/tsconfig.json` trigger a full web lint run
+  - pytest runs only on directly changed test files plus inferred related tests matching changed source-file stems
+  - shared test/config changes such as `tests/conftest.py`, `pyproject.toml`, and `requirements-dev.txt` still trigger a full pytest run
+  - staged `web/` changes still trigger the frontend build path
+- Verification completed:
+  - `bash -n scripts/check.sh` passed
+  - `bash scripts/check.sh` passed in the current workspace state and exited early with no staged files
+  - `cd web && npm run lint -- src/lib/auth.ts` reached ESLint successfully and reported an existing rule violation
+- Existing issue surfaced by the new web lint:
+  - `web/src/lib/auth.ts:22` uses `any` and currently fails `@typescript-eslint/no-explicit-any`
+- Decision:
+  - keep `scripts/dev_check.sh` unchanged as the full-repository validation path
+  - use `scripts/check.sh` as the faster pre-commit gate

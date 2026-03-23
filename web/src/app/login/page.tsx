@@ -43,7 +43,7 @@ export default function LoginPage() {
         status: "pending",
       });
       completionStartedRef.current = false;
-    } catch (error) {
+    } catch {
       setTelegramState({ status: "idle", error: "Failed to connect to authentication server" });
     }
   }
@@ -68,7 +68,11 @@ export default function LoginPage() {
         }
 
         if (data.status === "expired") {
-          setTelegramState((current) => ({ ...current, status: "expired", error: "Telegram login expired. Please start again." }));
+          setTelegramState((current) => ({
+            ...current,
+            status: "expired",
+            error: data.detail || "Telegram login expired. Please start again.",
+          }));
           return;
         }
 
@@ -76,7 +80,7 @@ export default function LoginPage() {
           setTelegramState((current) => ({
             ...current,
             status: "rejected_unbound",
-            error: "This Telegram account is not linked yet. Please bind it first, then try Telegram login again.",
+            error: data.detail || "This Telegram account is not linked yet. Please bind it first, then try Telegram login again.",
           }));
           return;
         }
@@ -108,7 +112,7 @@ export default function LoginPage() {
 
           window.location.href = completeData.redirectTo || "/dashboard";
         }
-      } catch (error) {
+      } catch {
         if (!cancelled) {
           setTelegramState((current) => ({ ...current, error: "Failed to poll Telegram login status" }));
         }
@@ -136,7 +140,7 @@ export default function LoginPage() {
             Sign in to Nexus Agent
           </h2>
           <p className="mt-2 text-center text-sm text-gray-500">
-            Use API key login or confirm a web handoff from your linked Telegram account.
+            Confirm sign-in from your linked Telegram account. API key login remains available as a fallback for admins and recovery.
           </p>
         </div>
         
@@ -202,7 +206,7 @@ export default function LoginPage() {
               disabled={telegramState.status === "starting" || telegramState.status === "completing"}
               className="group relative flex w-full justify-center rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
             >
-              {telegramState.status === "starting" ? "Starting Telegram login..." : "Continue with Telegram"}
+              {telegramState.status === "starting" ? "Starting Telegram sign-in..." : "Continue with Telegram"}
             </button>
 
             {telegramState.error && (
@@ -216,7 +220,7 @@ export default function LoginPage() {
                 <p className="font-medium">Telegram handoff started</p>
                 <ol className="mt-2 list-decimal space-y-1 pl-5 text-blue-800">
                   <li>Open the link below in Telegram.</li>
-                  <li>Confirm login from your already linked Telegram account.</li>
+                  <li>Confirm sign-in from the Telegram account that is already linked to Nexus.</li>
                   <li>Come back here and this page will continue automatically.</li>
                 </ol>
                 <a
@@ -229,6 +233,15 @@ export default function LoginPage() {
                 </a>
                 <p className="mt-3 text-xs text-blue-700">
                   Status: {telegramState.status === "completing" ? "Completing sign-in..." : "Waiting for Telegram confirmation..."}
+                </p>
+              </div>
+            )}
+
+            {telegramState.status === "rejected_unbound" && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                <p className="font-medium">Telegram account not linked yet</p>
+                <p className="mt-2">
+                  Ask the Nexus owner for a bind token, send <code>/bind &lt;token&gt;</code> in Telegram, then start Telegram sign-in again.
                 </p>
               </div>
             )}
