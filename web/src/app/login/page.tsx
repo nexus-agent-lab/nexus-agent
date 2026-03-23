@@ -89,7 +89,7 @@ export default function LoginPage() {
           completionStartedRef.current = true;
           setTelegramState((current) => ({ ...current, status: "completing" }));
 
-          const completeResponse = await fetch("/api/auth/telegram/complete", {
+          const completeResponse = await fetch("/auth/telegram/complete-web", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
