@@ -195,6 +195,28 @@ Decide whether to continue with product-facing P0-2 work (permission-denied / re
 - Remaining verification gap:
   - targeted admin lint still fails due to pre-existing issues in these files (`any`, unused imports, hook dependency warnings, unescaped apostrophes), not because of the bearer-auth cleanup itself
 
+## Session Update (2026-03-24, P0 recovery and audit detail)
+- Improved recovery-oriented user messaging for key post-bind failure categories:
+  - `permission_denied`
+  - `invalid_input`
+  - `unsafe_state`
+- `WorkerDispatcher.build_report_message(...)` now tailors the suggested next step based on classification instead of always using one generic fallback.
+- Added structured audit events for the auth and denial lifecycle:
+  - `auth.bind_token_created`
+  - `auth.binding_succeeded`
+  - `auth.binding_conflict`
+  - `auth.binding_failed`
+  - `auth.binding_revoked`
+  - `auth.telegram_login_started`
+  - `auth.telegram_login_approved`
+  - `auth.telegram_login_rejected`
+  - `auth.telegram_login_completed`
+  - `policy.action_denied`
+- Telegram bind/login failure paths and auth API completion failure now emit audit events as part of normal execution.
+- Verification completed:
+  - `uv run pytest tests/test_auth_telegram_handoff.py tests/test_telegram_bind_flow.py tests/unit/test_worker_dispatcher.py tests/unit/test_audit.py`
+  - `59 passed`
+
 ## Priority Snapshot
 - Highest priority now is not new UI or new auth architecture. It is validating the current docs-first first-run path in real usage:
   - configure `.env`
@@ -207,5 +229,8 @@ Decide whether to continue with product-facing P0-2 work (permission-denied / re
   - identity/binding
   - safe Home Assistant control
   - audit visibility
+- Immediate next engineering/product check after this session:
+  - do a real-device pass on denied action wording and the new auth/policy audit events
+  - verify the admin audit page is sufficient for diagnosing bind/login/denied flows during that pass
 - WeChat remains strategically important, but should be treated as the next major spike only after the current setup path and post-setup usage are validated.
 - Bootstrap/setup UI is explicitly deferred for now. Keep `docs/architecture/bootstrap_owner_flow.md` as future direction, not the immediate build target.

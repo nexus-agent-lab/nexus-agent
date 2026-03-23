@@ -41,8 +41,23 @@ class TestTelegramAuthHandoff:
         assert payload["csrf_token"] == "csrf-1"
         assert payload["telegram_deep_link_url"].endswith("login_challenge-1")
 
+    def test_complete_telegram_login_logs_failed_handoff(self, api_client: TestClient, mocker):
+        mocker.patch("app.api.auth.AuthService.consume_telegram_login_exchange", return_value=None)
+        record_mock = mocker.patch("app.api.auth.record_audit_event")
+
+        response = api_client.post(
+            "/api/auth/telegram/complete",
+            json={"challenge_id": "challenge-1", "exchange_token": "bad", "csrf_token": "csrf-1"},
+        )
+
+        assert response.status_code == 400
+        record_mock.assert_called_once()
+        assert record_mock.await_args.kwargs["action"] == "auth.telegram_login_completed"
+        assert record_mock.await_args.kwargs["status"] == "FAILURE"
+
     def test_complete_telegram_login_rejects_invalid_exchange(self, api_client: TestClient, mocker):
         mocker.patch("app.api.auth.AuthService.consume_telegram_login_exchange", return_value=None)
+        mocker.patch("app.api.auth.record_audit_event")
 
         response = api_client.post(
             "/api/auth/telegram/complete",

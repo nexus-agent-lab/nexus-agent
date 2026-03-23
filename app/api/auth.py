@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
+from app.core.audit import record_audit_event
 from app.core.auth import get_current_user
 from app.core.auth_service import AuthService
 from app.core.db import get_session
@@ -121,6 +122,14 @@ async def complete_telegram_login(
         request.challenge_id, request.exchange_token, request.csrf_token
     )
     if not user_id:
+        await record_audit_event(
+            action="auth.telegram_login_completed",
+            user_id=None,
+            tool_name="auth_api",
+            tool_args={"challenge_id": request.challenge_id, "provider": "telegram"},
+            status="FAILURE",
+            error_message="invalid_or_expired_login_handoff",
+        )
         raise HTTPException(status_code=400, detail="Invalid, expired, or already used login handoff")
 
     result = await session.execute(select(User).where(User.id == user_id))

@@ -5,6 +5,7 @@ import os
 from telegram import BotCommand, BotCommandScopeChat, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 
+from app.core.audit import record_audit_event
 from app.core.auth_service import AuthService, BindResult
 from app.core.dispatcher import InterfaceDispatcher
 from app.core.i18n import get_text, resolve_language
@@ -387,6 +388,14 @@ async def process_bind_token(update: Update, context: ContextTypes.DEFAULT_TYPE,
         target_user_id = await AuthService.verify_bind_token(token)
         if not target_user_id:
             logger.warning(f"Invalid or expired bind token {token} for Telegram user {user_id}")
+            await record_audit_event(
+                action="auth.binding_failed",
+                user_id=None,
+                tool_name="telegram",
+                tool_args={"provider": "telegram", "provider_user_id": user_id, "reason": "invalid_or_expired_token"},
+                status="FAILURE",
+                error_message="invalid_or_expired_token",
+            )
             await context.bot.send_message(chat_id=chat_id, text=get_text("bind_invalid", lang))
             return
 
@@ -423,6 +432,18 @@ async def process_bind_token(update: Update, context: ContextTypes.DEFAULT_TYPE,
             await refresh_user_commands(context.bot, chat_id, bound_user, lang)
         else:
             logger.warning(f"Account bind failed for {user_id}. Conflict or already linked.")
+            await record_audit_event(
+                action="auth.binding_conflict",
+                user_id=target_user_id,
+                tool_name="telegram",
+                tool_args={
+                    "provider": "telegram",
+                    "provider_user_id": user_id,
+                    "reason": bind_outcome.status,
+                },
+                status="FAILURE",
+                error_message=bind_outcome.status,
+            )
             await context.bot.send_message(chat_id=chat_id, text=get_text(bind_outcome.message_key, lang))
 
     except Exception as e:

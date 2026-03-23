@@ -12,6 +12,7 @@ from typing import List
 import redis.asyncio as redis
 from sqlalchemy.future import select
 
+from app.core.audit import record_audit_event
 from app.core.db import AsyncSessionLocal
 from app.models.user import User, UserIdentity
 
@@ -74,6 +75,12 @@ class AuthService:
         # Key: bind:123456 -> user_id
         await r.setex(f"bind:{token}", 300, str(user_id))
         await r.close()
+        await record_audit_event(
+            action="auth.bind_token_created",
+            user_id=user_id,
+            tool_name="auth_service",
+            tool_args={"provider": "telegram", "expires_in": 300},
+        )
         return token
 
     @staticmethod
@@ -92,6 +99,12 @@ class AuthService:
         r = AuthService._get_redis()
         await r.setex(f"auth_challenge:{challenge_id}", 300, json.dumps(payload))
         await r.close()
+        await record_audit_event(
+            action="auth.telegram_login_started",
+            user_id=None,
+            tool_name="auth_service",
+            tool_args={"challenge_id": challenge_id, "provider": "telegram", "expires_in": 300},
+        )
 
         return {
             "challenge_id": challenge_id,
@@ -139,6 +152,12 @@ class AuthService:
             json.dumps({"challenge_id": challenge_id, "user_id": user_id}),
         )
         await r.close()
+        await record_audit_event(
+            action="auth.telegram_login_approved",
+            user_id=user_id,
+            tool_name="auth_service",
+            tool_args={"challenge_id": challenge_id, "provider": "telegram", "telegram_user_id": telegram_user_id},
+        )
         return exchange_token
 
     @staticmethod
@@ -183,6 +202,14 @@ class AuthService:
         ttl = ttl if ttl and ttl > 0 else 300
         await r.setex(key, ttl, json.dumps(payload))
         await r.close()
+        await record_audit_event(
+            action="auth.telegram_login_rejected",
+            user_id=None,
+            tool_name="auth_service",
+            tool_args={"challenge_id": challenge_id, "provider": "telegram", "reason": reason},
+            status="FAILURE",
+            error_message=reason,
+        )
         return True
 
     @staticmethod
@@ -217,6 +244,12 @@ class AuthService:
         await r.delete(challenge_key)
         await r.delete(exchange_key)
         await r.close()
+        await record_audit_event(
+            action="auth.telegram_login_completed",
+            user_id=int(exchange_payload["user_id"]),
+            tool_name="auth_service",
+            tool_args={"challenge_id": challenge_id, "provider": "telegram"},
+        )
         return int(exchange_payload["user_id"])
 
     @staticmethod
@@ -282,6 +315,12 @@ class AuthService:
 
             await session.commit()
             logger.info(f"Bound {provider}:{provider_user_id} to User {user_id}")
+            await record_audit_event(
+                action="auth.binding_succeeded",
+                user_id=user_id,
+                tool_name="auth_service",
+                tool_args={"provider": provider, "provider_user_id": provider_user_id},
+            )
             return BindResult.SUCCESS
 
     @staticmethod
@@ -297,6 +336,12 @@ class AuthService:
                 await session.delete(identity)
                 await session.commit()
                 logger.info(f"Unbound {provider}:{provider_user_id}")
+                await record_audit_event(
+                    action="auth.binding_revoked",
+                    user_id=identity.user_id,
+                    tool_name="auth_service",
+                    tool_args={"provider": provider, "provider_user_id": provider_user_id},
+                )
                 return True
             return False
 

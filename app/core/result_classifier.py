@@ -81,7 +81,7 @@ class ResultClassifier:
                     retryable=False,
                     should_switch_worker=False,
                     requires_handoff=False,
-                    user_facing_summary="Permission denied.",
+                    user_facing_summary="This action is restricted for your account. Ask an admin for access or try a lower-risk request.",
                     debug_summary=debug_summary,
                     suggested_next_action="ask_user",
                 )
@@ -92,7 +92,7 @@ class ResultClassifier:
                     retryable=False,
                     should_switch_worker=False,
                     requires_handoff=True,
-                    user_facing_summary="The system reported an unsafe state.",
+                    user_facing_summary="The system reported an unsafe state, so the action was not completed.",
                     debug_summary=debug_summary,
                     suggested_next_action="handoff",
                 )
@@ -103,7 +103,7 @@ class ResultClassifier:
                     retryable=False,
                     should_switch_worker=False,
                     requires_handoff=False,
-                    user_facing_summary="The requested resource could not be found.",
+                    user_facing_summary="I could not find the requested device or resource. Try naming it more specifically.",
                     debug_summary=debug_summary,
                     suggested_next_action="run_discovery",
                 )
@@ -135,7 +135,7 @@ class ResultClassifier:
                 retryable=False,
                 should_switch_worker=False,
                 requires_handoff=False,
-                user_facing_summary="Permission denied.",
+                user_facing_summary="This action is restricted for your account. Ask an admin for access or try a lower-risk request.",
                 debug_summary=debug_summary,
                 suggested_next_action="ask_user",
             )

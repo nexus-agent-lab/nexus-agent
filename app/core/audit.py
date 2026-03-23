@@ -11,6 +11,17 @@ from app.core.db import engine
 from app.models.audit import AuditLog
 
 
+def normalize_trace_id(trace_id: uuid.UUID | str | None = None) -> uuid.UUID:
+    if isinstance(trace_id, uuid.UUID):
+        return trace_id
+    if isinstance(trace_id, str):
+        try:
+            return uuid.UUID(trace_id)
+        except ValueError:
+            return uuid.uuid5(uuid.NAMESPACE_URL, trace_id)
+    return uuid.uuid4()
+
+
 def mask_secrets(data: Any) -> Any:
     """Recursively mask sensitive keys in a dictionary or list."""
     if not data:
@@ -42,7 +53,7 @@ def mask_secrets(data: Any) -> Any:
 
 
 async def create_audit_entry(
-    trace_id: uuid.UUID,
+    trace_id: uuid.UUID | str,
     action: str,
     user_id: Optional[int],
     tool_name: str,
@@ -52,7 +63,7 @@ async def create_audit_entry(
     masked_args = mask_secrets(tool_args)
     async with AsyncSession(engine) as session:
         log_entry = AuditLog(
-            trace_id=trace_id,
+            trace_id=normalize_trace_id(trace_id),
             user_id=user_id,
             action=action,
             tool_name=tool_name,
@@ -65,6 +76,39 @@ async def create_audit_entry(
         await session.refresh(log_entry)
         if log_entry.id is None:
             raise RuntimeError("Failed to create audit entry: ID is None")
+        return log_entry.id
+
+
+async def record_audit_event(
+    *,
+    action: str,
+    user_id: Optional[int],
+    tool_name: Optional[str] = None,
+    tool_args: Optional[Dict[str, Any]] = None,
+    status: str = "SUCCESS",
+    error_message: Optional[str] = None,
+    duration_ms: float = 0,
+    trace_id: uuid.UUID | str | None = None,
+) -> int:
+    """Create a completed audit event for auth/policy lifecycle transitions."""
+    async with AsyncSession(engine) as session:
+        log_entry = AuditLog(
+            trace_id=normalize_trace_id(trace_id),
+            user_id=user_id,
+            action=action,
+            tool_name=tool_name,
+            tool_args=mask_secrets(tool_args),
+            status=status,
+            error_message=error_message,
+            created_at=datetime.utcnow(),
+            completed_at=datetime.utcnow(),
+            duration_ms=duration_ms,
+        )
+        session.add(log_entry)
+        await session.commit()
+        await session.refresh(log_entry)
+        if log_entry.id is None:
+            raise RuntimeError("Failed to create audit event: ID is None")
         return log_entry.id
 
 
@@ -115,12 +159,23 @@ class AuditInterceptor:
         allowed = PolicyMatrix.is_allowed(self.user_role, self.context, self.tool_tags)
 
         if not allowed:
-            await create_audit_entry(
+            error_message = (
+                f"Access denied for role '{self.user_role}' using '{self.tool_name}' "
+                f"in context '{self.context}' with tags {self.tool_tags}"
+            )
+            await record_audit_event(
                 trace_id=self.trace_id,
                 user_id=self.user_id,
-                action="tool_denied",
+                action="policy.action_denied",
                 tool_name=self.tool_name,
-                tool_args=self.tool_args,
+                tool_args={
+                    **self.tool_args,
+                    "user_role": self.user_role,
+                    "context": self.context,
+                    "tool_tags": self.tool_tags,
+                },
+                status="FAILURE",
+                error_message=error_message,
             )
             raise PermissionError(
                 f"Access Denied: Role '{self.user_role}' cannot use '{self.tool_name}' "

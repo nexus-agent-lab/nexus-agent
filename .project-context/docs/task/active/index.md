@@ -11,6 +11,7 @@ Keep advancing the active P0-2 auth/ingress thread while also capturing architec
   - future bootstrap direction: `docs/architecture/bootstrap_owner_flow.md`
 - Product direction has been re-aligned toward a docs-first first-run flow rather than implementing a bootstrap UI immediately.
 - The admin web surface no longer uses `X-API-Key` inside `web/src`; audit, cortex, users, and integrations pages now use bearer auth consistently in the JWT-backed admin flow.
+- The current P0 slice now also has improved denied/recovery wording plus structured auth/policy audit events for bind/login/denied flows.
 
 ## Recent Decision
 - For now, keep first-run setup simple:
@@ -23,10 +24,10 @@ Keep advancing the active P0-2 auth/ingress thread while also capturing architec
 
 ## Next Action
 Priority queue from here:
-1. Validate the current docs-first first-run flow end-to-end:
-   - minimal `.env`
-   - initial admin from logs
-   - web login
-   - optional Telegram setup and bind
-2. Validate the Home Assistant core loop and identify the highest-friction real daily-use failures.
-3. Reassess whether WeChat should become the next major entry-path spike after those validations.
+1. Run a real-device P0 validation pass for:
+   - denied Home Assistant actions
+   - ambiguous or missing entity recovery
+   - Telegram bind/login success and failure cases
+   - admin audit visibility for the new auth/policy events
+2. Fold any wording or audit-field gaps found in that pass back into the current P0 slice.
+3. After that validation, return to the broader docs-first first-run path and HA core-loop validation queue.

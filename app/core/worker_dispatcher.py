@@ -95,6 +95,36 @@ class WorkerDispatcher:
         return False
 
     @staticmethod
+    def build_recovery_guidance(classification: dict[str, Any], *, prefers_chinese: bool) -> str:
+        category = classification.get("category")
+        next_action = classification.get("suggested_next_action")
+
+        if prefers_chinese:
+            if category == "permission_denied":
+                return "下一步：请改为低风险请求，或联系管理员调整权限后再试。"
+            if category == "invalid_input":
+                return "下一步：请补充更准确的设备名、房间名或目标对象后再试。"
+            if category == "unsafe_state":
+                return "下一步：请先确认设备当前状态安全，再决定是否继续操作。"
+            if category == "verification_failed":
+                return "下一步：结果还没有被确认，请检查设备状态或补充反馈。"
+            if next_action == "run_discovery":
+                return "下一步：请先确认目标对象名称，必要时先做发现查询。"
+            return "下一步：请检查输入、权限或外部系统状态后再继续。"
+
+        if category == "permission_denied":
+            return "Next step: try a lower-risk request or ask an admin to grant access."
+        if category == "invalid_input":
+            return "Next step: provide a more specific device, room, or resource name."
+        if category == "unsafe_state":
+            return "Next step: check the device state first, then retry only when it is safe."
+        if category == "verification_failed":
+            return "Next step: verify the device state or provide more detail before retrying."
+        if next_action == "run_discovery":
+            return "Next step: confirm the target resource name and run discovery before acting again."
+        return "Next step: check the inputs, permissions, or external system state before trying again."
+
+    @staticmethod
     def build_report_message(state: AgentState) -> str:
         classification = state.get("last_classification") or {}
         outcome = state.get("last_outcome") or {}
@@ -108,17 +138,13 @@ class WorkerDispatcher:
         if len(detail) > 300:
             detail = detail[:300] + "..."
 
-        if WorkerDispatcher.prefers_chinese(state.get("messages", [])):
-            return (
-                f"本次执行未能完成。\n原因：{summary}\n细节：{detail}\n下一步：请检查输入、权限或外部系统状态后再继续。"
-            )
+        prefers_chinese = WorkerDispatcher.prefers_chinese(state.get("messages", []))
+        next_step = WorkerDispatcher.build_recovery_guidance(classification, prefers_chinese=prefers_chinese)
 
-        return (
-            f"The execution could not be completed.\n"
-            f"Reason: {summary}\n"
-            f"Details: {detail}\n"
-            f"Next step: check the inputs, permissions, or external system state before trying again."
-        )
+        if prefers_chinese:
+            return f"本次执行未能完成。\n原因：{summary}\n细节：{detail}\n{next_step}"
+
+        return f"The execution could not be completed.\nReason: {summary}\nDetails: {detail}\n{next_step}"
 
     @staticmethod
     def build_verify_context(state: AgentState) -> dict[str, str]:

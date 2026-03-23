@@ -444,6 +444,23 @@ def test_build_report_message_prefers_user_language():
     assert "Traceback: boom" in message
 
 
+def test_build_report_message_gives_permission_recovery_guidance():
+    message = WorkerDispatcher.build_report_message(
+        {
+            "messages": [HumanMessage(content="please restart home assistant")],
+            "last_classification": {
+                "category": "permission_denied",
+                "user_facing_summary": "This action is restricted for your account.",
+                "debug_summary": "Access denied for role 'user'",
+                "suggested_next_action": "ask_user",
+            },
+        }
+    )
+
+    assert "restricted for your account" in message
+    assert "ask an admin to grant access" in message
+
+
 def test_build_verify_context_normalizes_latest_state():
     context = WorkerDispatcher.build_verify_context(
         {

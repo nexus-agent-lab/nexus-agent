@@ -65,12 +65,15 @@ async def test_process_bind_token_invalid_token(mocker):
     context = _make_context()
 
     mocker.patch("app.interfaces.telegram.AuthService.verify_bind_token", AsyncMock(return_value=None))
+    audit_mock = mocker.patch("app.interfaces.telegram.record_audit_event", AsyncMock())
 
     await process_bind_token(update, context, "000000", "en")
 
     context.bot.send_message.assert_awaited_once()
     kwargs = context.bot.send_message.await_args.kwargs
     assert "Invalid or expired bind code" in kwargs["text"]
+    audit_mock.assert_awaited_once()
+    assert audit_mock.await_args.kwargs["action"] == "auth.binding_failed"
 
 
 @pytest.mark.asyncio
@@ -83,6 +86,7 @@ async def test_process_bind_token_provider_conflict(mocker):
         "app.interfaces.telegram.AuthService.bind_identity",
         AsyncMock(return_value=BindResult.PROVIDER_CONFLICT),
     )
+    audit_mock = mocker.patch("app.interfaces.telegram.record_audit_event", AsyncMock())
     refresh_mock = mocker.patch("app.interfaces.telegram.refresh_user_commands", AsyncMock())
 
     await process_bind_token(update, context, "123456", "en")
@@ -91,6 +95,8 @@ async def test_process_bind_token_provider_conflict(mocker):
     kwargs = context.bot.send_message.await_args.kwargs
     assert "already linked to another Nexus User" in kwargs["text"]
     refresh_mock.assert_not_awaited()
+    audit_mock.assert_awaited_once()
+    assert audit_mock.await_args.kwargs["action"] == "auth.binding_conflict"
 
 
 @pytest.mark.asyncio
@@ -103,6 +109,7 @@ async def test_process_bind_token_user_conflict(mocker):
         "app.interfaces.telegram.AuthService.bind_identity",
         AsyncMock(return_value=BindResult.USER_CONFLICT),
     )
+    audit_mock = mocker.patch("app.interfaces.telegram.record_audit_event", AsyncMock())
     refresh_mock = mocker.patch("app.interfaces.telegram.refresh_user_commands", AsyncMock())
 
     await process_bind_token(update, context, "123456", "en")
@@ -111,3 +118,5 @@ async def test_process_bind_token_user_conflict(mocker):
     kwargs = context.bot.send_message.await_args.kwargs
     assert "already linked to another Telegram account" in kwargs["text"]
     refresh_mock.assert_not_awaited()
+    audit_mock.assert_awaited_once()
+    assert audit_mock.await_args.kwargs["action"] == "auth.binding_conflict"
