@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.core.auth_service import BindResult
-from app.interfaces.telegram import process_bind_token
+from app.interfaces.telegram import bind_command, process_bind_token
 
 
 def _make_update():
@@ -120,3 +120,24 @@ async def test_process_bind_token_user_conflict(mocker):
     refresh_mock.assert_not_awaited()
     audit_mock.assert_awaited_once()
     assert audit_mock.await_args.kwargs["action"] == "auth.binding_conflict"
+
+
+@pytest.mark.asyncio
+async def test_bind_command_for_already_linked_user_clears_interactive_state(mocker):
+    update = _make_update()
+    update.message = SimpleNamespace(reply_markdown=AsyncMock())
+    context = _make_context()
+    context.args = ["123456"]
+    context.user_data["awaiting_bind_token"] = True
+
+    mocker.patch(
+        "app.interfaces.telegram.AuthService.get_user_by_identity",
+        AsyncMock(return_value=SimpleNamespace(id=42, role="user")),
+    )
+
+    await bind_command(update, context)
+
+    context.bot.send_message.assert_awaited_once()
+    kwargs = context.bot.send_message.await_args.kwargs
+    assert "already linked" in kwargs["text"]
+    assert "awaiting_bind_token" not in context.user_data

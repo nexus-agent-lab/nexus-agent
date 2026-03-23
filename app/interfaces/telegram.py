@@ -361,6 +361,16 @@ async def bind_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.effective_chat.id)
     # Don't check DB for lang here to be fast, use telegram pref
     lang = update.effective_user.language_code
+    context.user_data.pop("awaiting_bind_token", None)
+
+    existing_user = await AuthService.get_user_by_identity("telegram", str(update.effective_user.id))
+    if existing_user:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=get_text("bind_already_linked", lang),
+            parse_mode="Markdown",
+        )
+        return
 
     if not context.args:
         # Interactive mode: Ask user for token
