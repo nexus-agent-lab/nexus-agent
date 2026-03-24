@@ -35,6 +35,35 @@ class AgentWorker:
     def get_tools(cls) -> list:
         return cls._tools
 
+    @staticmethod
+    def _extract_provider_identity(msg: UnifiedMessage) -> str:
+        provider_id = str(msg.channel_id)
+        if msg.channel == ChannelType.TELEGRAM and "telegram_user_id" in msg.meta:
+            return str(msg.meta["telegram_user_id"])
+        if msg.channel == ChannelType.FEISHU and "feishu_sender_id" in msg.meta:
+            return str(msg.meta["feishu_sender_id"])
+        if msg.channel == ChannelType.WECHAT and "wechat_from_user_id" in msg.meta:
+            return str(msg.meta["wechat_from_user_id"])
+        return provider_id
+
+    @staticmethod
+    def _extract_provider_username(msg: UnifiedMessage) -> str | None:
+        return (
+            msg.meta.get("username")
+            or msg.meta.get("wechat_username")
+            or msg.meta.get("wechat_from_user_id")
+            or msg.meta.get("feishu_sender_id")
+            or msg.meta.get("telegram_username")
+        )
+
+    @staticmethod
+    def _is_bind_command(content: str) -> bool:
+        clean_content = content.strip()
+        lower_content = clean_content.lower()
+        return (
+            lower_content.startswith("/bind") or lower_content.startswith("bind ") or clean_content.startswith("绑定")
+        )
+
     @classmethod
     async def start(cls):
         if cls._running:
@@ -64,12 +93,7 @@ class AgentWorker:
         from app.core.auth_service import AuthService
 
         # 1. Try to find existing Identity binding
-        # Determine the most specific provider ID available
-        provider_id = str(msg.channel_id)
-        if msg.channel == ChannelType.TELEGRAM and "telegram_user_id" in msg.meta:
-            provider_id = str(msg.meta["telegram_user_id"])
-        elif msg.channel == ChannelType.FEISHU and "feishu_sender_id" in msg.meta:
-            provider_id = str(msg.meta["feishu_sender_id"])
+        provider_id = cls._extract_provider_identity(msg)
 
         user = await AuthService.get_user_by_identity(msg.channel.value, provider_id)
         role = user.role if user else "N/A"
@@ -128,9 +152,9 @@ class AgentWorker:
         logger.info(f"Processing Message: {msg.id} [{msg.content}]")
 
         # 0. Intercept Binding Command
-        # /bind 123456 or 绑定 123456
+        # /bind 123456, bind 123456, or 绑定 123456
         clean_content = msg.content.strip()
-        if clean_content.startswith(("/bind", "绑定")):
+        if cls._is_bind_command(clean_content):
             try:
                 parts = clean_content.split()
                 if len(parts) < 2:
@@ -143,21 +167,14 @@ class AgentWorker:
 
                 if target_user_id:
                     # Bind it!
-                    # Determine the most specific provider ID for binding
-                    provider_id = str(msg.channel_id)
-                    if msg.channel == ChannelType.TELEGRAM and "telegram_user_id" in msg.meta:
-                        provider_id = str(msg.meta["telegram_user_id"])
-                    elif msg.channel == ChannelType.FEISHU and "feishu_sender_id" in msg.meta:
-                        provider_id = str(msg.meta["feishu_sender_id"])
+                    provider_id = cls._extract_provider_identity(msg)
 
                     logger.info(f"Worker attempting to bind {msg.channel} ID {provider_id} to User {target_user_id}")
                     result = await AuthService.bind_identity(
                         user_id=target_user_id,
                         provider=msg.channel.value,
                         provider_user_id=provider_id,
-                        username=msg.meta.get("username")
-                        or msg.meta.get("feishu_sender_id")
-                        or msg.meta.get("telegram_username"),
+                        username=cls._extract_provider_username(msg),
                     )
 
                     from app.core.auth_service import BindResult
@@ -214,7 +231,7 @@ class AgentWorker:
                     reply_text = "❌ Invalid or expired token. Generate a new one in Dashboard."
                     meta_extras = {}
             except Exception:
-                reply_text = "Usage: /bind <6-digit-code>"
+                reply_text = "Usage: bind <6-digit-code>"
                 meta_extras = {}
 
             # Send immediate reply

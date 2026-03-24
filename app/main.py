@@ -33,6 +33,7 @@ from app.core.state_watcher import StateWatcher
 from app.core.tool_router import tool_router
 from app.core.voice import transcribe_audio
 from app.interfaces.telegram import run_telegram_bot
+from app.interfaces.wechat import run_wechat_bot
 from app.models.user import User
 from app.tools.registry import get_static_tools
 
@@ -92,6 +93,7 @@ async def lifespan(app: FastAPI):
     from app.core.scheduler import SchedulerService
     from app.interfaces.feishu import run_feishu_bot
 
+    asyncio.create_task(run_wechat_bot())
     asyncio.create_task(run_feishu_bot())
     asyncio.create_task(InterfaceDispatcher.start())
     asyncio.create_task(AgentWorker.start())

@@ -79,7 +79,7 @@ class AuthService:
             action="auth.bind_token_created",
             user_id=user_id,
             tool_name="auth_service",
-            tool_args={"provider": "telegram", "expires_in": 300},
+            tool_args={"provider": "generic", "expires_in": 300},
         )
         return token
 

@@ -28,6 +28,10 @@ class InterfaceDispatcher:
             from app.interfaces.feishu import send_feishu_message
 
             return send_feishu_message
+        elif channel == ChannelType.WECHAT:
+            from app.interfaces.wechat import send_wechat_message
+
+            return send_wechat_message
 
         elif channel == ChannelType.DINGTALK:
             # Placeholder for DingTalk
