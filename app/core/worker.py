@@ -64,6 +64,10 @@ class AgentWorker:
             lower_content.startswith("/bind") or lower_content.startswith("bind ") or clean_content.startswith("绑定")
         )
 
+    @staticmethod
+    def _supports_typing_indicator(channel: ChannelType) -> bool:
+        return channel in {ChannelType.TELEGRAM, ChannelType.WECHAT}
+
     @classmethod
     async def start(cls):
         if cls._running:
@@ -335,8 +339,17 @@ class AgentWorker:
             from app.core.agent import stream_agent_events
 
             # === THINKING VISIBILITY ===
-            # Initial status is covered by Telegram "typing" action.
-            # We only send updates for concrete actions (tools).
+            # Channels with native typing indicators get an immediate keepalive signal.
+            if cls._supports_typing_indicator(msg.channel):
+                await MQService.push_outbox(
+                    UnifiedMessage(
+                        channel=msg.channel,
+                        channel_id=msg.channel_id,
+                        user_id=msg.user_id,
+                        content="typing",
+                        msg_type=MessageType.ACTION,
+                    )
+                )
 
             async for event in stream_agent_events(cls._agent_graph, initial_state):
                 ev_type = event["event"]
@@ -470,12 +483,13 @@ class AgentWorker:
                             )
                         )
 
-                    # For Telegram, we keep typing status alive
-                    if msg.channel == ChannelType.TELEGRAM:
+                    # Keep typing alive for channels that support transient typing indicators.
+                    if cls._supports_typing_indicator(msg.channel):
                         await MQService.push_outbox(
                             UnifiedMessage(
                                 channel=msg.channel,
                                 channel_id=msg.channel_id,
+                                user_id=msg.user_id,
                                 content="typing",
                                 msg_type=MessageType.ACTION,
                             )
