@@ -1,0 +1,38 @@
+{
+  "id": "task_03_multi_step",
+  "name": "Multi Step Reasoning",
+  "category": "multi_step",
+  "description": "Verify reasoning plus tool use and synthesis.",
+  "user_input": "Search the deployment checklist for Nexus Agent and summarize the three actions I should do before release.",
+  "available_tools": [
+    "fixture_search",
+    "fixture_read_file",
+    "fixture_calculator"
+  ],
+  "expectations": {
+    "required_tools": [
+      "fixture_search"
+    ],
+    "allowed_tools": [
+      "fixture_search",
+      "fixture_read_file",
+      "fixture_calculator"
+    ],
+    "ideal_tool_order": [
+      "fixture_search"
+    ],
+    "expected_response_contains": [
+      "validate config",
+      "verify auth",
+      "run smoke test"
+    ],
+    "forbidden_response_contains": [
+      "book a flight",
+      "restart kubernetes"
+    ],
+    "max_retries": 0,
+    "require_grounded_response": true
+  },
+  "fixture_context": {}
+}
+

@@ -1,0 +1,78 @@
+{
+  "id": "task_05_long_context",
+  "name": "Long Context",
+  "category": "long_context",
+  "description": "Verify the model keeps long-context facts stable before using a tool.",
+  "user_input": "Based on our earlier discussion, search the release window for Project Atlas and tell me the final release date together with the owner we already confirmed.",
+  "available_tools": [
+    "fixture_search",
+    "fixture_read_file"
+  ],
+  "history": [
+    {
+      "role": "user",
+      "content": "We are tracking two projects this week."
+    },
+    {
+      "role": "assistant",
+      "content": "Understood. I will keep both projects separate."
+    },
+    {
+      "role": "user",
+      "content": "Project Atlas is the one that matters for this release review."
+    },
+    {
+      "role": "assistant",
+      "content": "Got it. Atlas is the active release target."
+    },
+    {
+      "role": "user",
+      "content": "The owner for Atlas is Maya Chen."
+    },
+    {
+      "role": "assistant",
+      "content": "Recorded: Maya Chen owns Project Atlas."
+    },
+    {
+      "role": "user",
+      "content": "Do not mix this up with Project Beacon."
+    },
+    {
+      "role": "assistant",
+      "content": "I will not mix Atlas with Beacon."
+    },
+    {
+      "role": "user",
+      "content": "We still need the release window from the search tool."
+    },
+    {
+      "role": "assistant",
+      "content": "Understood. I still need to query the release window."
+    }
+  ],
+  "expectations": {
+    "required_tools": [
+      "fixture_search"
+    ],
+    "allowed_tools": [
+      "fixture_search",
+      "fixture_read_file"
+    ],
+    "ideal_tool_order": [
+      "fixture_search"
+    ],
+    "expected_response_contains": [
+      "2026-04-12",
+      "maya chen",
+      "project atlas"
+    ],
+    "forbidden_response_contains": [
+      "beacon",
+      "2026-04-30"
+    ],
+    "max_retries": 0,
+    "require_grounded_response": true
+  },
+  "fixture_context": {}
+}
+

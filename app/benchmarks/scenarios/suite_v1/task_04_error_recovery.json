@@ -1,0 +1,38 @@
+{
+  "id": "task_04_error_recovery",
+  "name": "Error Recovery",
+  "category": "error_recovery",
+  "description": "Verify the model detects a transient tool error and retries to a correct final answer.",
+  "user_input": "Search the benchmark policy and explain the rule about standardized benchmark suites.",
+  "available_tools": [
+    "fixture_search",
+    "fixture_read_file"
+  ],
+  "expectations": {
+    "required_tools": [
+      "fixture_search"
+    ],
+    "allowed_tools": [
+      "fixture_search",
+      "fixture_read_file"
+    ],
+    "ideal_tool_order": [
+      "fixture_search",
+      "fixture_search"
+    ],
+    "expected_response_contains": [
+      "standardized benchmark suite"
+    ],
+    "forbidden_response_contains": [
+      "different prompt for each model"
+    ],
+    "max_retries": 2,
+    "require_grounded_response": true
+  },
+  "fixture_context": {
+    "fail_once_queries": [
+      "benchmark policy"
+    ]
+  }
+}
+

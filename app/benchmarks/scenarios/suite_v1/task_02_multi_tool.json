@@ -1,0 +1,39 @@
+{
+  "id": "task_02_multi_tool",
+  "name": "Multi Tool Routing",
+  "category": "multi_tool",
+  "description": "Verify correct tool choice across file reading and calculation.",
+  "user_input": "Read docs/benchmark_notes.txt, then calculate 3*7, and tell me both the release version and the result.",
+  "available_tools": [
+    "fixture_read_file",
+    "fixture_calculator",
+    "fixture_search"
+  ],
+  "expectations": {
+    "required_tools": [
+      "fixture_read_file",
+      "fixture_calculator"
+    ],
+    "allowed_tools": [
+      "fixture_read_file",
+      "fixture_calculator",
+      "fixture_search"
+    ],
+    "ideal_tool_order": [
+      "fixture_read_file",
+      "fixture_calculator"
+    ],
+    "expected_response_contains": [
+      "2.4.1",
+      "21"
+    ],
+    "forbidden_response_contains": [
+      "2.5.0",
+      "24"
+    ],
+    "max_retries": 0,
+    "require_grounded_response": true
+  },
+  "fixture_context": {}
+}
+

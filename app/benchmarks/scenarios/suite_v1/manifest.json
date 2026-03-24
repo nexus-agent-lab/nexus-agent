@@ -1,0 +1,22 @@
+{
+  "suite_id": "nexus_local_models_v1",
+  "suite_version": 1,
+  "description": "Agent-first local model benchmark for current Nexus tool-selection, response quality, and error rate evaluation.",
+  "defaults": {
+    "temperature": 0.2,
+    "top_p": 0.9,
+    "max_tokens": 2048,
+    "repetitions_per_task": 5,
+    "max_steps": 6,
+    "timeout_seconds": 120
+  },
+  "tasks": [
+    "task_01_tool_call",
+    "task_02_multi_tool",
+    "task_03_multi_step",
+    "task_04_error_recovery",
+    "task_05_long_context"
+  ],
+  "models": []
+}
+

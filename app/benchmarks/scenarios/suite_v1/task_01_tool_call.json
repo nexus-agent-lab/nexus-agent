@@ -1,0 +1,36 @@
+{
+  "id": "task_01_tool_call",
+  "name": "Basic Tool Call",
+  "category": "tool_call",
+  "description": "Verify simple tool selection and a grounded final answer.",
+  "user_input": "What is the weather in Shanghai right now? Use the available tools.",
+  "available_tools": [
+    "fixture_get_weather",
+    "fixture_calculator"
+  ],
+  "expectations": {
+    "required_tools": [
+      "fixture_get_weather"
+    ],
+    "allowed_tools": [
+      "fixture_get_weather",
+      "fixture_calculator"
+    ],
+    "ideal_tool_order": [
+      "fixture_get_weather"
+    ],
+    "expected_response_contains": [
+      "22c",
+      "cloudy",
+      "shanghai"
+    ],
+    "forbidden_response_contains": [
+      "sunny",
+      "beijing"
+    ],
+    "max_retries": 0,
+    "require_grounded_response": true
+  },
+  "fixture_context": {}
+}
+
