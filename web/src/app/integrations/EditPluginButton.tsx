@@ -73,44 +73,46 @@ export default function EditPluginButton({ plugin, token }: EditPluginButtonProp
   });
 
   useEffect(() => {
-    if (isOpen) {
-      fetchSchema();
+    if (!isOpen) {
+      return;
     }
-  }, [isOpen]);
 
-  const fetchSchema = async () => {
-    setFetchingSchema(true);
-    try {
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
-      const response = await fetch(`${backendUrl}/plugins/${plugin.id}/schema`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
+    const fetchSchema = async () => {
+      setFetchingSchema(true);
+      try {
+        const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+        const response = await fetch(`${backendUrl}/plugins/${plugin.id}/schema`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          }
+        });
+        if (response.ok) {
+          const data = (await response.json()) as PluginSchemaResponse;
+          setSchema(data);
+
+          if (data.env_schema) {
+            const envSchema = data.env_schema;
+            const initialValues: Record<string, string> = {};
+            Object.keys(envSchema).forEach(key => {
+              const schemaItem = envSchema[key];
+              if (schemaItem.type === "password") {
+                initialValues[key] = "";
+              } else {
+                initialValues[key] = asFormValue(plugin.config[key]);
+              }
+            });
+            setInstallFormValues(initialValues);
+          }
         }
-      });
-      if (response.ok) {
-        const data = (await response.json()) as PluginSchemaResponse;
-        setSchema(data);
-        
-        if (data.env_schema) {
-          const envSchema = data.env_schema;
-          const initialValues: Record<string, string> = {};
-          Object.keys(envSchema).forEach(key => {
-            const schemaItem = envSchema[key];
-            if (schemaItem.type === "password") {
-              initialValues[key] = "";
-            } else {
-              initialValues[key] = asFormValue(plugin.config[key]);
-            }
-          });
-          setInstallFormValues(initialValues);
-        }
+      } catch (error) {
+        console.error("Failed to fetch schema:", error);
+      } finally {
+        setFetchingSchema(false);
       }
-    } catch (error) {
-      console.error("Failed to fetch schema:", error);
-    } finally {
-      setFetchingSchema(false);
-    }
-  };
+    };
+
+    void fetchSchema();
+  }, [isOpen, plugin.config, plugin.id, token]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();

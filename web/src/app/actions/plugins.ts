@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { clearSession } from "@/app/actions/auth";
 import { buildBearerHeaders, getServerAccessToken } from "@/lib/server-auth";
 
 const API_URL = process.env.API_URL || "http://127.0.0.1:8000/api";
@@ -13,7 +15,7 @@ export async function createPlugin(formData: {
   type: string;
   source_url: string;
   status?: string;
-  config?: Record<string, any>;
+  config?: Record<string, unknown>;
   manifest_id?: string;
   required_role?: string;
   allowed_groups?: string[];
@@ -21,7 +23,8 @@ export async function createPlugin(formData: {
 }) {
   const token = await getServerAccessToken();
   if (!token) {
-    return { error: "Unauthorized" };
+    await clearSession();
+    redirect("/login");
   }
 
   try {
@@ -32,6 +35,10 @@ export async function createPlugin(formData: {
     });
 
     if (!response.ok) {
+      if (response.status === 401) {
+        await clearSession();
+        redirect("/login");
+      }
       const data = await response.json();
       return { error: data.detail || "Failed to create plugin" };
     }
@@ -53,7 +60,7 @@ export async function updatePlugin(pluginId: number, formData: {
   type?: string;
   source_url?: string;
   status?: string;
-  config?: Record<string, any>;
+  config?: Record<string, unknown>;
   manifest_id?: string;
   required_role?: string;
   allowed_groups?: string[];
@@ -61,7 +68,8 @@ export async function updatePlugin(pluginId: number, formData: {
 }) {
   const token = await getServerAccessToken();
   if (!token) {
-    return { error: "Unauthorized" };
+    await clearSession();
+    redirect("/login");
   }
 
   try {
@@ -72,6 +80,10 @@ export async function updatePlugin(pluginId: number, formData: {
     });
 
     if (!response.ok) {
+      if (response.status === 401) {
+        await clearSession();
+        redirect("/login");
+      }
       const data = await response.json();
       return { error: data.detail || "Failed to update plugin" };
     }
@@ -91,7 +103,8 @@ export async function updatePlugin(pluginId: number, formData: {
 export async function deletePlugin(pluginId: number) {
   const token = await getServerAccessToken();
   if (!token) {
-    return { error: "Unauthorized" };
+    await clearSession();
+    redirect("/login");
   }
 
   try {
@@ -101,6 +114,10 @@ export async function deletePlugin(pluginId: number) {
     });
 
     if (!response.ok) {
+      if (response.status === 401) {
+        await clearSession();
+        redirect("/login");
+      }
       const data = await response.json();
       return { error: data.detail || "Failed to delete plugin" };
     }
@@ -119,7 +136,8 @@ export async function deletePlugin(pluginId: number) {
 export async function reloadMCP() {
   const token = await getServerAccessToken();
   if (!token) {
-    return { error: "Unauthorized" };
+    await clearSession();
+    redirect("/login");
   }
 
   try {
@@ -129,6 +147,10 @@ export async function reloadMCP() {
     });
 
     if (!response.ok) {
+      if (response.status === 401) {
+        await clearSession();
+        redirect("/login");
+      }
       const data = await response.json();
       return { error: data.detail || "Failed to reload MCP servers" };
     }

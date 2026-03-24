@@ -69,36 +69,36 @@ export default function PluginForm({ token, onSuccess }: PluginFormProps) {
   const [installFormValues, setInstallFormValues] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (activeTab === "store" && !catalogLoaded) {
-      fetchCatalog();
+    if (activeTab !== "store" || catalogLoaded) {
+      return;
     }
-  }, [activeTab, catalogLoaded]);
 
-  const fetchCatalog = async () => {
-    setLoadingCatalog(true);
-    try {
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
-      const response = await fetch(`${backendUrl}/plugins/catalog`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
+    const fetchCatalog = async () => {
+      setLoadingCatalog(true);
+      try {
+        const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+        const response = await fetch(`${backendUrl}/plugins/catalog`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          }
+        });
+        if (response.ok) {
+          const data = (await response.json()) as CatalogPluginItem[];
+          setCatalog(data);
+        } else {
+          toast.error(`Failed to load catalog: ${response.statusText}`);
         }
-      });
-      if (response.ok) {
-        const data = (await response.json()) as CatalogPluginItem[];
-        setCatalog(data);
-      } else if (response.status === 401) {
-        toast.error("Unauthorized: Session might have expired. Please log in again.");
-      } else {
-        toast.error(`Failed to load catalog: ${response.statusText}`);
+      } catch (error) {
+        console.error("Failed to fetch plugin catalog:", error);
+        toast.error("Failed to connect to plugin registry.");
+      } finally {
+        setLoadingCatalog(false);
+        setCatalogLoaded(true);
       }
-    } catch (error) {
-      console.error("Failed to fetch plugin catalog:", error);
-      toast.error("Failed to connect to plugin registry.");
-    } finally {
-      setLoadingCatalog(false);
-      setCatalogLoaded(true);
-    }
-  };
+    };
+
+    void fetchCatalog();
+  }, [activeTab, catalogLoaded, token]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

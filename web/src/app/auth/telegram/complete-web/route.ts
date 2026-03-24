@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     secure: process.env.REQUIRE_HTTPS === "true",
     sameSite: "lax",
     path: "/",
-    maxAge: 24 * 60 * 60,
+    maxAge: typeof data.expires_in === "number" ? data.expires_in : 24 * 60 * 60,
   });
 
   return NextResponse.json({ ok: true, redirectTo: "/dashboard" });

@@ -2,6 +2,24 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { verifyAuthToken } from "@/lib/auth";
+
+const DEFAULT_SESSION_MAX_AGE = 24 * 60 * 60;
+
+function getSessionMaxAge(data: { expires_in?: unknown }) {
+  return typeof data.expires_in === "number" ? data.expires_in : DEFAULT_SESSION_MAX_AGE;
+}
+
+async function writeAccessTokenCookie(accessToken: string, maxAge: number) {
+  const cookieStore = await cookies();
+  cookieStore.set("access_token", accessToken, {
+    httpOnly: true,
+    secure: process.env.REQUIRE_HTTPS === "true",
+    sameSite: "lax",
+    path: "/",
+    maxAge,
+  });
+}
 
 /**
  * Server action to handle user login.
@@ -42,16 +60,7 @@ export async function login(prevState: { error?: string } | null | undefined, fo
 
     const data = await response.json();
     
-    const cookieStore = await cookies();
-    cookieStore.set("access_token", data.access_token, {
-      httpOnly: true,
-      // For local AI OS deployments, disable Secure flag unless explicitly requested via REQUIRE_HTTPS.
-      // This prevents the cookie from being dropped on local HTTP connections.
-      secure: process.env.REQUIRE_HTTPS === "true",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 24 * 60 * 60,
-    });
+    await writeAccessTokenCookie(data.access_token, getSessionMaxAge(data));
 
   } catch (error) {
     console.error("Login action error:", error);
@@ -65,7 +74,58 @@ export async function login(prevState: { error?: string } | null | undefined, fo
  * Server action to log out the user by deleting the access_token cookie.
  */
 export async function logout() {
+  await clearSession();
+  redirect("/login");
+}
+
+/**
+ * Server action to clear the access_token cookie without redirecting.
+ * Useful when the client needs to recover from an expired session first.
+ */
+export async function clearSession() {
   const cookieStore = await cookies();
   cookieStore.delete("access_token");
-  redirect("/login");
+}
+
+export async function refreshSession() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get("access_token")?.value;
+  if (!token) {
+    await clearSession();
+    return { expired: true };
+  }
+
+  try {
+    await verifyAuthToken(token);
+  } catch {
+    await clearSession();
+    return { expired: true };
+  }
+
+  try {
+    const backendUrl = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+    const response = await fetch(`${backendUrl}/auth/refresh`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        await clearSession();
+        return { expired: true };
+      }
+      return { error: "Failed to refresh session" };
+    }
+
+    const data = await response.json();
+    await writeAccessTokenCookie(data.access_token, getSessionMaxAge(data));
+    const payload = await verifyAuthToken(data.access_token);
+    return { exp: payload.exp ?? null };
+  } catch (error) {
+    console.error("Refresh session error:", error);
+    return { error: "Failed to refresh session" };
+  }
 }

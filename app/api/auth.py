@@ -20,10 +20,11 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
 
 ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_SECONDS = 24 * 60 * 60
 
 
 def _issue_access_token(user: User) -> dict:
-    access_token_expires = timedelta(hours=24)
+    access_token_expires = timedelta(seconds=ACCESS_TOKEN_EXPIRE_SECONDS)
     expire = datetime.utcnow() + access_token_expires
     to_encode = {
         "sub": str(user.id),
@@ -37,6 +38,7 @@ def _issue_access_token(user: User) -> dict:
     return {
         "access_token": encoded_jwt,
         "token_type": "bearer",
+        "expires_in": ACCESS_TOKEN_EXPIRE_SECONDS,
         "user": {"id": user.id, "username": user.username, "role": user.role},
     }
 
@@ -138,3 +140,8 @@ async def complete_telegram_login(
         raise HTTPException(status_code=404, detail="Linked user no longer exists")
 
     return _issue_access_token(user)
+
+
+@router.post("/refresh")
+async def refresh_access_token(current_user: User = Depends(get_current_user)):
+    return _issue_access_token(current_user)

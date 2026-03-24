@@ -2,8 +2,11 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { cookies } from "next/headers";
 import { verifyAuthToken } from "@/lib/auth";
+import type { UserPayload } from "@/lib/auth";
 import "./globals.css";
+import AuthRedirectOnUnauthorized from "@/components/AuthRedirectOnUnauthorized";
 import Layout from "@/components/Layout";
+import SessionKeepAlive from "@/components/SessionKeepAlive";
 import ToastContainer from "@/components/ToastContainer";
 
 
@@ -25,6 +28,21 @@ export const metadata: Metadata = {
   },
 };
 
+function isUserPayload(value: unknown): value is UserPayload {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const payload = value as Record<string, unknown>;
+  return (
+    typeof payload.sub === "string" &&
+    typeof payload.username === "string" &&
+    typeof payload.role === "string" &&
+    typeof payload.api_key === "string" &&
+    typeof payload.exp === "number"
+  );
+}
+
 export default async function RootLayout({
   children,
 }: Readonly<{
@@ -36,7 +54,10 @@ export default async function RootLayout({
 
   if (token) {
     try {
-      user = await verifyAuthToken(token) as any;
+      const payload = await verifyAuthToken(token);
+      if (isUserPayload(payload)) {
+        user = payload;
+      }
     } catch (error) {
       // Token invalid or expired, user remains null
       console.debug("Failed to verify auth token:", error);
@@ -48,6 +69,8 @@ export default async function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <AuthRedirectOnUnauthorized />
+        <SessionKeepAlive initialExp={user?.exp ?? null} />
         <Layout user={user}>{children}</Layout>
         <ToastContainer />
 

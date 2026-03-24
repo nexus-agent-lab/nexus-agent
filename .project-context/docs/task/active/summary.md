@@ -238,6 +238,27 @@ Decide whether to continue with product-facing P0-2 work (permission-denied / re
 ## Session Update (2026-03-24, WeChat phase 1 adapter)
 - Implemented and committed a first-pass WeChat transport adapter as `da56d79` (`Add WeChat channel phase 1 adapter`).
 - Added a new adapter at `app/interfaces/wechat.py` with:
+
+## Session Update (2026-03-24, Playwright MCP transport repair)
+- Repaired the Web Browser MCP connection path so Playwright tools can register into the agent:
+  - `app/core/mcp_manager.py` now supports both legacy SSE and streamable HTTP (`/mcp`) transports
+  - remote MCP requests now send a normalized `Host` header, which is required for the current Playwright MCP host allowlist when accessed via Docker service DNS
+- Updated official Playwright plugin/catalog and runtime wiring:
+  - `plugin_catalog.json` now points Web Browser to `http://mcp-playwright:3000/mcp`
+  - `docker-compose.yml` now starts Playwright MCP with `--allowed-hosts mcp-playwright,localhost,127.0.0.1`
+  - Playwright MCP was also switched from default `chrome` to `chromium` for ARM64 compatibility
+- Realigned the web browsing skill card to the actual Playwright toolset:
+  - replaced stale `browser_extract` / `browser_screenshot` references with `browser_snapshot` / `browser_take_screenshot`
+- Verification completed for transport and registration:
+  - direct `/mcp` initialize succeeded from `nexus-app`
+  - Playwright MCP identified itself as `Playwright 0.0.68`
+  - listed 22 browser tools
+  - `MCPManager.reload()` successfully connected `Web Browser` and loaded those 22 tools
+- Remaining runtime gap:
+  - the current `node:20-slim` Playwright container is still missing browser system libraries even after `browser_install`
+  - started switching the service image to `mcr.microsoft.com/playwright:v1.52.0-noble`, but the large image pull was still in progress at handoff time
+- Recommended immediate next step:
+  - finish the browser-ready image/runtime transition and rerun the minimal `https://s.weibo.com/top/summary` smoke test
   - iLink/OpenClaw header generation
   - QR login bootstrap and bot-token handling
   - `getupdates` long-poll loop
@@ -311,3 +332,43 @@ Decide whether to continue with product-facing P0-2 work (permission-denied / re
 
 ## Immediate Next Step
 - Restart the backend once so the generated/persisted security settings are loaded cleanly into the running process, then confirm the previous JWT and master-key warnings are gone from logs.
+
+## Session Update (2026-03-24, admin session-expiry recovery)
+- Fixed the admin-web UX gap where client-side `401 Unauthorized` responses only showed a toast and left the user on the current page.
+- Added `clearSession()` in `web/src/app/actions/auth.ts` so client code can clear the `httpOnly` `access_token` cookie without relying on a redirecting server action.
+- Added shared client recovery logic in `web/src/lib/client-auth.ts`:
+  - show a consistent `Session expired. Please log in again.` toast
+  - clear the cookie on the server
+  - navigate the browser back to `/login`
+- Added a root-layout browser fetch interceptor in `web/src/components/AuthRedirectOnUnauthorized.tsx` and mounted it from `web/src/app/layout.tsx`.
+  - For Bearer-authenticated browser requests, `401` is now handled globally instead of with scattered per-component checks.
+- Standardized plugin-related server actions in `web/src/app/actions/plugins.ts` so both local missing-token cases and backend `401` responses clear the stale cookie and redirect from the server action itself.
+- Removed the temporary per-component unauthorized branches from the integrations admin UI so the recovery path is centralized again.
+- Verification completed:
+  - `cd web && npm run lint -- src/components/AuthRedirectOnUnauthorized.tsx src/lib/client-auth.ts src/app/layout.tsx src/app/actions/auth.ts src/app/actions/plugins.ts src/app/integrations/PluginForm.tsx src/components/WireLogToggle.tsx src/app/integrations/EditPluginButton.tsx src/app/integrations/ViewSkillButton.tsx src/app/integrations/ReloadMCPButton.tsx`
+  - `git diff --check -- web/src/components/AuthRedirectOnUnauthorized.tsx web/src/lib/client-auth.ts web/src/app/layout.tsx web/src/app/actions/auth.ts web/src/app/actions/plugins.ts web/src/app/integrations/PluginForm.tsx web/src/components/WireLogToggle.tsx web/src/app/integrations/EditPluginButton.tsx web/src/app/integrations/ViewSkillButton.tsx web/src/app/integrations/ReloadMCPButton.tsx`
+
+## Immediate Next Step
+- Manually reproduce the original revoked/expired-token path in the browser and confirm the integrations/admin UI now returns to `/login` after the session-expired toast instead of leaving the user in-place.
+
+## Session Update (2026-03-24, sliding session refresh)
+- Converted the admin web session model from fixed 24-hour expiry to sliding renewal.
+- Backend auth changes:
+  - `app/api/auth.py` now defines `ACCESS_TOKEN_EXPIRE_SECONDS`
+  - token responses now include `expires_in`
+  - new `POST /api/auth/refresh` reissues a JWT for an already-authenticated user
+- Frontend session changes:
+  - `web/src/app/actions/auth.ts` now exposes `refreshSession()` and centralizes cookie writes
+  - `web/src/app/auth/telegram/complete-web/route.ts` now also uses backend-provided TTL metadata for cookie lifetime
+  - `web/src/components/SessionKeepAlive.tsx` is mounted from `web/src/app/layout.tsx` and refreshes the session about one hour before expiry
+- Result:
+  - the base session length is still 24 hours
+  - active admin use should no longer hard-expire at the original 24-hour mark
+  - true expiry/revocation still falls back to the previously added global unauthorized redirect path
+- Verification completed:
+  - `uv run pytest tests/test_auth_refresh.py tests/test_auth_core.py`
+  - `cd web && npm run lint -- src/components/SessionKeepAlive.tsx src/components/AuthRedirectOnUnauthorized.tsx src/lib/client-auth.ts src/app/layout.tsx src/app/actions/auth.ts src/app/auth/telegram/complete-web/route.ts`
+  - `git diff --check -- app/api/auth.py web/src/app/actions/auth.ts web/src/app/layout.tsx web/src/components/SessionKeepAlive.tsx web/src/app/auth/telegram/complete-web/route.ts tests/test_auth_refresh.py`
+
+## Immediate Next Step
+- Manually validate in a browser that a long-lived admin tab refreshes session state before expiry and still cleanly falls back to `/login` if refresh is denied.

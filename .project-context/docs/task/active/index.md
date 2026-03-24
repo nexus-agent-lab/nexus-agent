@@ -4,6 +4,13 @@
 Keep advancing the active P0-2 auth/ingress thread while also capturing architecture decisions that shape the skill, worker, and learning stack.
 
 ## Current State
+- Web Browser MCP transport registration has been repaired at the connection layer:
+  - `app/core/mcp_manager.py` now supports both legacy SSE and streamable HTTP (`/mcp`) transports
+  - the remote MCP connection now sends a normalized `Host` header so container-to-container `/mcp` requests are accepted by the current Playwright MCP host check
+  - the Web Browser plugin can now connect and register its Playwright toolset instead of falling back to `python_sandbox`
+  - verified registered browser tools now include `browser_navigate`, `browser_snapshot`, `browser_take_screenshot`, `browser_wait_for`, and the rest of the 22-tool Playwright set
+- Web browsing skill metadata has been realigned to the actual registered Playwright tool names:
+  - replaced stale `browser_extract` / `browser_screenshot` requirements with `browser_snapshot` / `browser_take_screenshot`
 - The repo now has current planning docs for:
   - entry/binding loop: `docs/architecture/p0_entry_binding_loop_estimate.md`
   - implementation milestones: `docs/architecture/p0_entry_binding_loop_implementation_plan.md`
@@ -27,6 +34,12 @@ Keep advancing the active P0-2 auth/ingress thread while also capturing architec
   - `JWT_SECRET` is now resolved dynamically instead of freezing a short import-time default
   - `JWT_SECRET` and `NEXUS_MASTER_KEY` auto-generate and persist on startup if missing or invalid
   - WeChat user tokens can now be encrypted without manual first-run secret setup
+- Admin web session-recovery behavior is now tighter:
+  - client-side integrations/admin fetches no longer stop at a `401` toast
+  - expired-session paths now clear the `access_token` cookie and send the browser back to `/login`
+- Admin web sessions now use sliding renewal:
+  - base token lifetime remains 24 hours
+  - the web app refreshes the session before expiry while the app stays in active use
 
 ## Recent Decision
 - For now, keep first-run setup simple:
@@ -40,18 +53,31 @@ Keep advancing the active P0-2 auth/ingress thread while also capturing architec
 - Treat Telegram and WeChat differently at the product layer:
   - Telegram keeps bind/login handoff UX
   - WeChat uses web-initiated QR binding for a specific Nexus user
+- Treat frontend `401` handling as a session-recovery concern, not just a notification concern:
+  - show the error
+  - clear the stale session
+  - return the user to sign-in
+- Treat session lifetime as sliding rather than hard-expiring during normal active admin use.
 
 ## Next Action
 Priority queue from here:
-1. Run a real-device WeChat validation pass for:
+1. Finish the Playwright browser runtime validation path:
+   - complete the move from the slim Node image to a browser-ready Playwright image, or otherwise install the missing browser runtime libraries in `mcp-playwright`
+   - rerun the minimal browser smoke test against `https://s.weibo.com/top/summary`
+   - confirm the end-to-end agent path now selects the registered Web Browser tools instead of `python_sandbox`
+2. Run a real-device WeChat validation pass for:
    - admin user detail page QR modal opens and shows the returned image/url
    - QR scan completes and stores a per-user bot token
    - poll loop starts for the bound user
    - inbound text receipt resolves to the correct bound Nexus user
    - outbound reply delivery works through the correct per-user WeChat session
-2. Verify after restart that auto-generated `JWT_SECRET` / `NEXUS_MASTER_KEY` persist and the previous runtime warnings are gone.
-3. Fold any protocol mismatches from the real iLink payloads back into `app/interfaces/wechat.py`.
-4. After the transport is confirmed, decide whether the next WeChat increment is:
+3. Verify after restart that auto-generated `JWT_SECRET` / `NEXUS_MASTER_KEY` persist and the previous runtime warnings are gone.
+4. Fold any protocol mismatches from the real iLink payloads back into `app/interfaces/wechat.py`.
+5. Manually validate sliding-session behavior in the browser:
+   - confirm refresh happens before the 24-hour token expiry window
+   - confirm background/visibility transitions do not break the next refresh
+6. Manually validate the expired/revoked-token browser path on admin integrations pages and confirm the user is redirected to `/login` instead of staying on the page after the toast.
+7. After the transport is confirmed, decide whether the next WeChat increment is:
    - bind UX polish / reconnect UX
    - admin visibility for WeChat channel state
    - richer message support

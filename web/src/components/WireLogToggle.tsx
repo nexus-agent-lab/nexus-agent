@@ -30,8 +30,6 @@ export default function WireLogToggle({ token }: WireLogToggleProps) {
         if (response.ok) {
           const data = await response.json();
           setIsEnabled(data.value === "true");
-        } else if (response.status === 401) {
-          toast.error("Unauthorized: Please sign in again.");
         }
       } catch (error) {
         console.error("Failed to fetch config:", error);

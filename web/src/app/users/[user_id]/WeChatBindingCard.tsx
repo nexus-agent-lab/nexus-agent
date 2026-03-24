@@ -32,6 +32,10 @@ function isTerminalStatus(status: string | undefined) {
   return status === "bound" || status === "failed" || status === "expired";
 }
 
+function isScanDetectedStatus(status: string | undefined) {
+  return status === "scanned" || status === "confirmed";
+}
+
 function looksLikeDirectImage(value: string) {
   return (
     value.startsWith("data:image/") ||
@@ -266,8 +270,27 @@ export default function WeChatBindingCard({ token, userId }: WeChatBindingCardPr
                     )}
                   </div>
                 ) : (
-                  <div className="w-full rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-xs text-neutral-500 dark:border-neutral-700 dark:bg-neutral-950">
-                    QR token: <code className="break-all">{bindingSession.qrcode || "Unavailable"}</code>
+                  <div className="w-full max-w-md rounded-xl border border-neutral-200 bg-neutral-50 p-5 text-center dark:border-neutral-700 dark:bg-neutral-950">
+                    <div className="flex flex-col items-center gap-3 text-neutral-500 dark:text-neutral-400">
+                      <Loader2 className="h-6 w-6 animate-spin" />
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
+                          {isScanDetectedStatus(bindingSession.status)
+                            ? "QR scan detected. Finishing WeChat binding..."
+                            : "Waiting for WeChat scan..."}
+                        </p>
+                        <p className="text-xs">
+                          {bindingSession.qrcode
+                            ? "The QR token is active even if the browser preview is temporarily unavailable."
+                            : "The browser preview is temporarily unavailable, but the binding check is still running."}
+                        </p>
+                      </div>
+                      {bindingSession.qrcode && (
+                        <div className="w-full rounded-lg bg-white p-3 font-mono text-[11px] break-all dark:bg-black/30">
+                          {bindingSession.qrcode}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

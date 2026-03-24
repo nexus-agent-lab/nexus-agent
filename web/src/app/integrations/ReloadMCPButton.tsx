@@ -26,7 +26,7 @@ export default function ReloadMCPButton() {
         // Reset status after 3 seconds
         setTimeout(() => setStatus("idle"), 3000);
       }
-    } catch (error) {
+    } catch {
       setStatus("error");
       setMessage("Failed to connect to backend");
       toast.error("Failed to connect to backend");
