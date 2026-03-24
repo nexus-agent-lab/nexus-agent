@@ -17,6 +17,19 @@ interface User {
   api_key: string;
 }
 
+interface UserBinding {
+  id: number;
+  provider: string;
+  provider_user_id: string;
+  provider_username?: string | null;
+}
+
+interface WeChatStatus {
+  connected: boolean;
+  polling_active: boolean;
+  token_hint?: string | null;
+}
+
 async function getUser(userId: string, token: string): Promise<User | null> {
   const baseUrl = process.env.API_URL || "http://127.0.0.1:8000/api";
   try {
@@ -31,6 +44,40 @@ async function getUser(userId: string, token: string): Promise<User | null> {
     return await res.json();
   } catch (e) {
     console.error("Failed to fetch user:", e);
+    return null;
+  }
+}
+
+async function getUserBindings(userId: string, token: string): Promise<UserBinding[]> {
+  const baseUrl = process.env.API_URL || "http://127.0.0.1:8000/api";
+  try {
+    const res = await fetch(`${baseUrl}/users/${userId}/bindings`, {
+      headers: buildBearerHeaders(token),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      return [];
+    }
+    return await res.json();
+  } catch (e) {
+    console.error("Failed to fetch user bindings:", e);
+    return [];
+  }
+}
+
+async function getWeChatStatus(userId: string, token: string): Promise<WeChatStatus | null> {
+  const baseUrl = process.env.API_URL || "http://127.0.0.1:8000/api";
+  try {
+    const res = await fetch(`${baseUrl}/users/${userId}/wechat/status`, {
+      headers: buildBearerHeaders(token),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      return null;
+    }
+    return await res.json();
+  } catch (e) {
+    console.error("Failed to fetch WeChat status:", e);
     return null;
   }
 }
@@ -66,10 +113,14 @@ export default async function UserDetailPage({
   }
 
   const user = await getUser(user_id, token);
+  const bindings = await getUserBindings(user_id, token);
+  const wechatStatus = await getWeChatStatus(user_id, token);
 
   if (!user) {
     notFound();
   }
+
+  const telegramBinding = bindings.find((binding) => binding.provider === "telegram");
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
@@ -135,9 +186,48 @@ export default async function UserDetailPage({
               <Fingerprint className="h-4 w-4 text-neutral-400" />
               Identities
             </h3>
-            <p className="text-xs text-neutral-500">
-              Telegram still supports chat-side binding. WeChat is managed from this page with a QR-based connection flow.
-            </p>
+            <div className="space-y-4 text-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-medium text-neutral-900 dark:text-neutral-100">Telegram</div>
+                  <p className="mt-1 text-xs text-neutral-500">
+                    {telegramBinding
+                      ? telegramBinding.provider_username || telegramBinding.provider_user_id
+                      : "Not bound"}
+                  </p>
+                </div>
+                <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                  telegramBinding
+                    ? "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400"
+                    : "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400"
+                }`}>
+                  {telegramBinding ? "Bound" : "Not bound"}
+                </span>
+              </div>
+
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-medium text-neutral-900 dark:text-neutral-100">WeChat</div>
+                  <p className="mt-1 text-xs text-neutral-500">
+                    {wechatStatus?.connected
+                      ? `Connected${wechatStatus.token_hint ? ` (${wechatStatus.token_hint})` : ""}`
+                      : "Not bound"}
+                  </p>
+                  {wechatStatus?.connected ? (
+                    <p className="mt-1 text-xs text-neutral-500">
+                      Polling: {wechatStatus.polling_active ? "active" : "idle"}
+                    </p>
+                  ) : null}
+                </div>
+                <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                  wechatStatus?.connected
+                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                    : "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400"
+                }`}>
+                  {wechatStatus?.connected ? "Bound" : "Not bound"}
+                </span>
+              </div>
+            </div>
           </div>
 
           <WeChatBindingCard token={token} userId={user.id} />

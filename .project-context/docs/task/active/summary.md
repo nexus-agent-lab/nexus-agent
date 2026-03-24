@@ -244,12 +244,11 @@ Decide whether to continue with product-facing P0-2 work (permission-denied / re
 
 ## Session Update (2026-03-25, admin user channel binding visibility)
 - Refined the admin users surface so channel binding state is visible without opening every user detail page.
-- `app/api/users.py` now returns an aggregated admin summary for each user with:
-  - `telegram_bound`
-  - `telegram_username`
-  - `wechat_bound`
-  - `wechat_polling_active`
-- `web/src/app/users/page.tsx` now renders direct Telegram and WeChat status columns in the users table.
+- Initial attempt overloaded `GET /users/` with aggregated channel state, which later caused the users page to regress into an empty list when that path failed.
+- The stable follow-up shape now keeps `GET /users/` unchanged and adds a dedicated admin summary endpoint:
+  - `GET /users/channel-statuses`
+  - returns `telegram_bound`, `telegram_username`, `wechat_bound`, and `wechat_polling_active`
+- `web/src/app/users/page.tsx` now renders direct Telegram and WeChat status columns in the users table from that dedicated status endpoint.
 - `web/src/app/users/[user_id]/page.tsx` now shows explicit Telegram and WeChat bound/not-bound state in the identity summary card.
 - `web/src/app/users/[user_id]/WeChatBindingCard.tsx` now:
   - avoids showing the default `Bind WeChat` button while current status is loading
@@ -262,6 +261,25 @@ Decide whether to continue with product-facing P0-2 work (permission-denied / re
 - Verification completed:
   - `uv run ruff check app/api/users.py`
   - `cd web && npm run lint -- 'src/app/users/page.tsx' 'src/app/users/[user_id]/page.tsx' 'src/app/users/[user_id]/WeChatBindingCard.tsx'`
+
+## Session Update (2026-03-25, admin web language switching)
+- Added a first-pass frontend locale layer for the admin web UI.
+- New files:
+  - `web/src/lib/locale.ts`
+  - `web/src/app/actions/preferences.ts`
+  - `web/src/app/language/page.tsx`
+  - `web/src/app/language/LanguageSettingsForm.tsx`
+- Updated shell integration:
+  - `web/src/app/layout.tsx` now resolves locale from a `nexus_locale` cookie and passes localized labels into the shared layout
+  - `web/src/components/Layout.tsx` now includes a `Language` sidebar entry and localizes primary navigation/shell labels
+  - `web/src/app/users/page.tsx` now uses the locale dictionary for users-page copy and table labels
+- Product decision for this first pass:
+  - keep locale switching cookie-backed and page-level instead of introducing route-prefixed locales
+  - cover the shell and users page first, then expand page-by-page later as needed
+- Verification completed:
+  - `uv run ruff check app/api/users.py`
+  - `cd web && npm run lint -- 'src/app/layout.tsx' 'src/components/Layout.tsx' 'src/lib/locale.ts' 'src/app/language/page.tsx' 'src/app/language/LanguageSettingsForm.tsx' 'src/app/actions/preferences.ts' 'src/app/users/page.tsx'`
+  - lint result had one pre-existing `Layout.tsx` image optimization warning and no new errors
 
 ## Session Update (2026-03-25, local model benchmark MVP)
 - Implemented the first runnable benchmark MVP as a sidecar subfunction.
@@ -295,6 +313,22 @@ Decide whether to continue with product-facing P0-2 work (permission-denied / re
 - Observed environment note:
   - direct CLI help works through `./.venv/bin/python scripts/run_local_model_benchmark.py --help`
   - `uv run python ...` hit a local sandbox cache-permission issue, so the documented invocation should prefer `python3` or the repo virtualenv interpreter
+
+## Session Update (2026-03-25, benchmark fairness for local Ollama)
+- Tightened the benchmark runner to match the intended local benchmarking policy:
+  - benchmark runs are local-direct, not Docker-based
+  - models are evaluated serially, one at a time
+  - Ollama-backed runs warm the target model before measured attempts
+  - runner attempts to unload currently loaded Ollama models before switching
+  - runner unloads the tested model after its batch completes
+- Files updated:
+  - `app/benchmarks/runner.py`
+  - `docs/local_model_benchmark_usage.md`
+  - `tests/unit/test_local_model_benchmark.py`
+- Verification completed:
+  - `uv run ruff check app/benchmarks scripts/run_local_model_benchmark.py tests/unit/test_local_model_benchmark.py`
+  - `uv run pytest tests/unit/test_local_model_benchmark.py`
+  - `git diff --check -- app/benchmarks scripts/run_local_model_benchmark.py docs/local_model_benchmark_usage.md tests/unit/test_local_model_benchmark.py`
 
 ## Priority Snapshot
 - Highest priority now is not new UI or new auth architecture. It is validating the current docs-first first-run path in real usage:

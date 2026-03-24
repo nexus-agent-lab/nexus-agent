@@ -17,26 +17,29 @@ import {
   Bell,
   Search,
   ChevronDown,
-  Map
+  Map,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { logout } from "@/app/actions/auth";
 import { UserPayload } from "@/lib/auth";
+import type { Locale } from "@/lib/locale";
+import { updateLocale } from "@/app/actions/preferences";
+import { useRouter } from "next/navigation";
 
 interface NavItem {
-  label: string;
+  key: string;
   href: string;
   icon: React.ElementType;
 }
 
 const navItems: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Users", href: "/users", icon: Users },
-  { label: "Cortex", href: "/cortex", icon: Brain },
-  { label: "Audit", href: "/audit", icon: History },
-  { label: "Network", href: "/network", icon: Network },
-  { label: "Integrations", href: "/integrations", icon: Puzzle },
-  { label: "Roadmap", href: "/roadmap", icon: Map },
+  { key: "dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { key: "users", href: "/users", icon: Users },
+  { key: "cortex", href: "/cortex", icon: Brain },
+  { key: "audit", href: "/audit", icon: History },
+  { key: "network", href: "/network", icon: Network },
+  { key: "integrations", href: "/integrations", icon: Puzzle },
+  { key: "roadmap", href: "/roadmap", icon: Map },
 ];
 
 /**
@@ -44,13 +47,31 @@ const navItems: NavItem[] = [
  */
 export default function Layout({ 
   children,
-  user
+  user,
+  locale,
+  dict,
 }: { 
   children: React.ReactNode;
   user?: UserPayload | null;
+  locale: Locale;
+  dict: {
+    dashboard: string;
+    users: string;
+    cortex: string;
+    audit: string;
+    network: string;
+    integrations: string;
+    roadmap: string;
+    language: string;
+    searchPlaceholder: string;
+    administrator: string;
+    guest: string;
+    logout: string;
+  };
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
 
   // Do not show the layout on the login page
   if (pathname === "/login") {
@@ -109,7 +130,7 @@ export default function Layout({
                   )}
                 >
                   <item.icon className="h-5 w-5" />
-                  {item.label}
+                  {dict[item.key as keyof typeof dict]}
                 </Link>
               );
             })}
@@ -122,7 +143,7 @@ export default function Layout({
               className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:text-neutral-400 dark:hover:bg-rose-900/20 dark:hover:text-rose-400"
             >
               <LogOut className="h-5 w-5" />
-              Logout
+              {dict.logout}
             </button>
           </div>
         </div>
@@ -143,7 +164,7 @@ export default function Layout({
               <Search className="h-4 w-4 text-neutral-500" />
               <input
                 type="text"
-                placeholder="Search..."
+                placeholder={dict.searchPlaceholder}
                 className="bg-transparent text-sm outline-none placeholder:text-neutral-500"
               />
             </div>
@@ -153,12 +174,38 @@ export default function Layout({
             <button className="rounded-full p-2 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800">
               <Bell className="h-5 w-5" />
             </button>
+            <div className="flex items-center rounded-full border border-neutral-200 bg-neutral-50 p-1 dark:border-neutral-800 dark:bg-neutral-800/70">
+              {(["en", "zh"] as const).map((option) => {
+                const selected = option === locale;
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={async () => {
+                      if (option === locale) {
+                        return;
+                      }
+                      await updateLocale(option);
+                      router.refresh();
+                    }}
+                    className={cn(
+                      "rounded-full px-3 py-1 text-xs font-semibold transition-colors",
+                      selected
+                        ? "bg-indigo-600 text-white"
+                        : "text-neutral-500 hover:bg-white dark:text-neutral-300 dark:hover:bg-neutral-700"
+                    )}
+                  >
+                    {option === "en" ? "EN" : "中文"}
+                  </button>
+                );
+              })}
+            </div>
             <div className="h-8 w-px bg-neutral-200 dark:bg-neutral-800" />
             <div className="flex items-center gap-3">
               <div className="hidden text-right md:block">
-                <p className="text-sm font-medium">{user?.username || "Guest"}</p>
+                <p className="text-sm font-medium">{user?.username || dict.guest}</p>
                 <p className="text-xs text-neutral-500 capitalize">
-                  {user?.role === "admin" ? "Administrator" : (user?.role || "Guest")}
+                  {user?.role === "admin" ? dict.administrator : (user?.role || dict.guest)}
                 </p>
               </div>
               <button className="flex items-center gap-1 rounded-full p-1 transition-colors hover:bg-neutral-100 dark:hover:bg-neutral-800">

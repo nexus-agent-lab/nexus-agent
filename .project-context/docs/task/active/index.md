@@ -23,6 +23,11 @@ Keep advancing the active P0-2 auth/ingress thread while also capturing architec
   - deterministic fixture tools for stable tool-selection / response-quality / error-rate evaluation
   - CLI entrypoint at `scripts/run_local_model_benchmark.py`
   - JSON and Markdown benchmark archive outputs under `benchmark_results/`
+  - local-direct Ollama execution behavior for fairness:
+    - no Docker model runtime
+    - serial one-model-at-a-time execution
+    - warmup before measured runs
+    - unload loaded models before switching
 - Product direction has been re-aligned toward a docs-first first-run flow rather than implementing a bootstrap UI immediately.
 - The admin web surface no longer uses `X-API-Key` inside `web/src`; audit, cortex, users, and integrations pages now use bearer auth consistently in the JWT-backed admin flow.
 - The current P0 slice now also has improved denied/recovery wording plus structured auth/policy audit events for bind/login/denied flows.
@@ -38,9 +43,12 @@ Keep advancing the active P0-2 auth/ingress thread while also capturing architec
   - backend WeChat runtime now supports per-user bot-token sessions loaded from user-scoped secrets
   - inbound WeChat messages can resolve directly to the target Nexus user via `msg.user_id`
 - The admin user-management UI now exposes channel binding state more directly:
-  - `GET /users/` returns aggregated Telegram and WeChat binding status for each user
+  - the users table now loads Telegram/WeChat state from a dedicated admin summary endpoint instead of overloading `GET /users/`
   - the users table shows Telegram/WeChat bound state inline
   - the WeChat detail card no longer shows the default bind CTA once the user is already connected, and offers reconnect instead
+- The web admin now has a first-pass frontend locale layer:
+  - a dedicated `/language` page switches the admin UI between English and Chinese
+  - locale is stored in a browser cookie and currently drives sidebar/navigation plus the users page
 - Runtime security defaults have been hardened:
   - `JWT_SECRET` is now resolved dynamically instead of freezing a short import-time default
   - `JWT_SECRET` and `NEXUS_MASTER_KEY` auto-generate and persist on startup if missing or invalid

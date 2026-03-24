@@ -189,14 +189,25 @@ export default function WeChatBindingCard({ token, userId }: WeChatBindingCardPr
               WeChat uses web-initiated QR binding. Telegram keeps the chat-side <code>/bind</code> flow.
             </p>
           </div>
-          <button
-            onClick={handleStartBinding}
-            disabled={starting}
-            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
-          >
-            {starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
-            Bind WeChat
-          </button>
+          {loadingStatus ? (
+            <span className="inline-flex items-center gap-2 rounded-full bg-neutral-100 px-2.5 py-1 text-xs font-semibold text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Loading
+            </span>
+          ) : status?.connected ? (
+            <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+              Connected
+            </span>
+          ) : (
+            <button
+              onClick={handleStartBinding}
+              disabled={starting}
+              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
+              Bind WeChat
+            </button>
+          )}
         </div>
 
         <div className="mt-4 rounded-lg border border-dashed border-neutral-200 bg-neutral-50 p-4 text-sm dark:border-neutral-700 dark:bg-neutral-950">
@@ -216,6 +227,16 @@ export default function WeChatBindingCard({ token, userId }: WeChatBindingCardPr
               <p className="text-xs text-neutral-500">
                 Polling: {status.polling_active ? "active" : "not started yet"}
               </p>
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  onClick={handleStartBinding}
+                  disabled={starting}
+                  className="inline-flex items-center gap-2 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium transition-colors hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
+                >
+                  {starting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <QrCode className="h-3.5 w-3.5" />}
+                  Reconnect
+                </button>
+              </div>
             </div>
           ) : (
             <p className="text-neutral-500">No WeChat session is bound to this user yet.</p>

@@ -70,6 +70,14 @@ class WeChatBindingStatusResponse(BaseModel):
     token_hint: Optional[str] = None
 
 
+class UserChannelStatusResponse(BaseModel):
+    user_id: int
+    telegram_bound: bool
+    telegram_username: Optional[str] = None
+    wechat_bound: bool
+    wechat_polling_active: bool
+
+
 @router.get("/", response_model=List[User])
 async def list_users(
     session: AsyncSession = Depends(get_session),
@@ -78,6 +86,42 @@ async def list_users(
     """List all users (Admin only)."""
     result = await session.execute(select(User))
     return result.scalars().all()
+
+
+@router.get("/channel-statuses", response_model=List[UserChannelStatusResponse])
+async def list_user_channel_statuses(
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(require_admin),
+):
+    """List Telegram/WeChat binding state for all users (Admin only)."""
+    result = await session.execute(select(User))
+    users = result.scalars().all()
+
+    statuses: list[UserChannelStatusResponse] = []
+    for user in users:
+        if user.id is None:
+            continue
+
+        binding_result = await session.execute(
+            select(UserIdentity).where(
+                UserIdentity.user_id == user.id,
+                UserIdentity.provider == "telegram",
+            )
+        )
+        telegram_identity = binding_result.scalars().first()
+        wechat_status = await get_user_wechat_binding_status(user.id)
+
+        statuses.append(
+            UserChannelStatusResponse(
+                user_id=user.id,
+                telegram_bound=telegram_identity is not None,
+                telegram_username=telegram_identity.provider_username if telegram_identity else None,
+                wechat_bound=bool(wechat_status.get("connected")),
+                wechat_polling_active=bool(wechat_status.get("polling_active")),
+            )
+        )
+
+    return statuses
 
 
 @router.get("/{user_id}", response_model=User)

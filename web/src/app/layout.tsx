@@ -8,6 +8,7 @@ import AuthRedirectOnUnauthorized from "@/components/AuthRedirectOnUnauthorized"
 import Layout from "@/components/Layout";
 import SessionKeepAlive from "@/components/SessionKeepAlive";
 import ToastContainer from "@/components/ToastContainer";
+import { getDictionary, getServerLocale } from "@/lib/locale";
 
 
 const geistSans = Geist({
@@ -50,6 +51,8 @@ export default async function RootLayout({
 }>) {
   const cookieStore = await cookies();
   const token = cookieStore.get("access_token")?.value;
+  const locale = await getServerLocale();
+  const dict = getDictionary(locale);
   let user = null;
 
   if (token) {
@@ -65,13 +68,13 @@ export default async function RootLayout({
   }
 
   return (
-    <html lang="en">
+    <html lang={locale}>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <AuthRedirectOnUnauthorized />
         <SessionKeepAlive initialExp={user?.exp ?? null} />
-        <Layout user={user}>{children}</Layout>
+        <Layout user={user} locale={locale} dict={dict.layout}>{children}</Layout>
         <ToastContainer />
 
       </body>
