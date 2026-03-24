@@ -234,3 +234,80 @@ Decide whether to continue with product-facing P0-2 work (permission-denied / re
   - verify the admin audit page is sufficient for diagnosing bind/login/denied flows during that pass
 - WeChat remains strategically important, but should be treated as the next major spike only after the current setup path and post-setup usage are validated.
 - Bootstrap/setup UI is explicitly deferred for now. Keep `docs/architecture/bootstrap_owner_flow.md` as future direction, not the immediate build target.
+
+## Session Update (2026-03-24, WeChat phase 1 adapter)
+- Implemented and committed a first-pass WeChat transport adapter as `da56d79` (`Add WeChat channel phase 1 adapter`).
+- Added a new adapter at `app/interfaces/wechat.py` with:
+  - iLink/OpenClaw header generation
+  - QR login bootstrap and bot-token handling
+  - `getupdates` long-poll loop
+  - inbound text normalization into `UnifiedMessage`
+  - outbound `sendmessage`
+  - typing support via `getconfig` + `sendtyping`
+  - structured audit events for WeChat login and message flow
+- Wired WeChat startup into `app/main.py`, registered the outbound dispatcher path in `app/core/dispatcher.py`, and documented the needed env vars in `.env.example`.
+- Tightened worker-side channel compatibility while doing the WeChat slice:
+  - bind command detection now accepts plain `bind 123456` in addition to `/bind 123456`
+  - provider identity extraction now explicitly handles WeChat metadata
+  - bind-token audit events no longer misleadingly label the flow as Telegram-specific
+- Verification completed:
+  - `uv run pytest tests/test_wechat_interface.py tests/test_worker_channel_helpers.py tests/test_auth_telegram_handoff.py tests/test_telegram_bind_flow.py`
+  - pre-commit staged checks also passed during commit, including related worker-dispatcher tests (`62 passed`)
+
+## Immediate Next Step
+- Do a real-device WeChat validation pass with `WECHAT_ENABLED=true` and confirm:
+  - QR login starts and completes
+  - inbound `getupdates` payloads match current assumptions
+  - outbound replies deliver with the cached `context_token`
+  - WeChat-side binding works naturally with `bind 123456`
+
+## Session Update (2026-03-24, WeChat user-level QR binding)
+- Product model was corrected after reviewing the vendor reference and user direction:
+  - WeChat OpenClaw should be treated as a user-level ClawBot binding flow, not a global bot plus chat-side `/bind` flow.
+  - Telegram keeps `/bind`; WeChat does not.
+- Refactored `app/interfaces/wechat.py` from a single global runtime into a per-user session manager:
+  - user-scoped bot tokens are stored in encrypted `Secret` rows under `WECHAT_BOT_TOKEN`
+  - startup now loads and activates all bound user WeChat sessions
+  - QR confirmation can immediately activate the bound user's poll loop
+  - inbound WeChat messages now carry `user_id` so worker resolution can attach directly to the intended Nexus user
+  - outbound replies route through the correct runtime session using a per-channel owner map
+- Added admin APIs in `app/api/users.py` for WeChat binding:
+  - `GET /users/{user_id}/wechat/status`
+  - `POST /users/{user_id}/wechat/bind`
+  - `GET /users/{user_id}/wechat/bind/{session_id}`
+- Added admin UI on the user detail page:
+  - `web/src/app/users/[user_id]/WeChatBindingCard.tsx`
+  - QR modal with live polling, connection status, and reconnect flow
+- Adjusted worker behavior:
+  - explicit `msg.user_id` now wins during user resolution
+  - bind interception is now Telegram-only, so WeChat messages no longer trigger chat-side bind handling
+- Verification completed:
+  - `uv run pytest tests/test_wechat_interface.py tests/test_worker_channel_helpers.py tests/test_auth_telegram_handoff.py tests/test_telegram_bind_flow.py`
+  - `21 passed`
+  - `cd web && npm run lint -- 'src/app/users/[user_id]/page.tsx' 'src/app/users/[user_id]/WeChatBindingCard.tsx'`
+
+## Immediate Next Step
+- Run a real-device admin-driven WeChat bind from the user detail page and confirm:
+  - QR image renders correctly in the modal
+  - QR scan returns a bot token and flips the session to `bound`
+  - the correct user's runtime poller starts
+  - the first real inbound message is attributed to the expected Nexus user
+
+## Session Update (2026-03-24, security defaults hardened)
+- Removed the insecure short static JWT fallback from the active auth path.
+- `app/core/security.py` now provides:
+  - `get_jwt_secret()` for dynamic JWT signing/verification
+  - `ensure_runtime_security_settings()` to auto-generate and persist strong `JWT_SECRET` and `NEXUS_MASTER_KEY` values in `SystemSetting` on startup when missing or invalid
+- `app/main.py` now runs the runtime security bootstrap during startup.
+- `app/core/auth.py` and `app/api/auth.py` now read the JWT secret dynamically instead of capturing a short import-time default.
+- Result:
+  - the previous `InsecureKeyLengthWarning` from JWT should disappear after restart
+  - the previous `NEXUS_MASTER_KEY is not set` warning should disappear after restart
+  - user-scoped WeChat bot tokens can now be encrypted automatically without manual env setup
+- Verification completed:
+  - `uv run pytest tests/test_auth_core.py tests/unit/test_security.py tests/test_wechat_interface.py tests/test_auth_telegram_handoff.py`
+  - `22 passed`
+  - `uv run ruff check app/core/security.py app/core/auth.py app/api/auth.py app/main.py tests/test_auth_core.py tests/unit/test_security.py`
+
+## Immediate Next Step
+- Restart the backend once so the generated/persisted security settings are loaded cleanly into the running process, then confirm the previous JWT and master-key warnings are gone from logs.

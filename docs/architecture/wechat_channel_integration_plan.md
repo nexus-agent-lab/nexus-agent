@@ -220,8 +220,8 @@ Likely add env/config entries in:
 
 Possible settings:
 
-- `WECHAT_ENABLED`
-- `WECHAT_BOT_TOKEN` or login persistence settings
+- `WECHAT_ENABLED` (defaults to enabled unless explicitly set to `false`)
+- user-scoped token persistence after QR binding
 - `WECHAT_POLL_ENABLED`
 - `WECHAT_CHANNEL_VERSION`
 

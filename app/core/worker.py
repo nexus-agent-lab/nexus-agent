@@ -92,6 +92,17 @@ class AgentWorker:
         """Resolve Nexus User from UnifiedMessage using Identity System."""
         from app.core.auth_service import AuthService
 
+        if msg.user_id:
+            try:
+                explicit_user_id = int(msg.user_id)
+            except (TypeError, ValueError):
+                explicit_user_id = None
+            if explicit_user_id is not None:
+                async for session in get_session():
+                    explicit_user = await session.get(User, explicit_user_id)
+                    if explicit_user:
+                        return explicit_user
+
         # 1. Try to find existing Identity binding
         provider_id = cls._extract_provider_identity(msg)
 
@@ -154,7 +165,7 @@ class AgentWorker:
         # 0. Intercept Binding Command
         # /bind 123456, bind 123456, or 绑定 123456
         clean_content = msg.content.strip()
-        if cls._is_bind_command(clean_content):
+        if msg.channel == ChannelType.TELEGRAM and cls._is_bind_command(clean_content):
             try:
                 parts = clean_content.split()
                 if len(parts) < 2:

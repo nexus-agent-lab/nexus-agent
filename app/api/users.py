@@ -11,6 +11,11 @@ from sqlmodel import select
 from app.core.auth import get_current_user, require_admin
 from app.core.auth_service import AuthService
 from app.core.db import get_session
+from app.interfaces.wechat import (
+    get_user_wechat_binding_session,
+    get_user_wechat_binding_status,
+    start_user_wechat_binding,
+)
 from app.models.user import User, UserIdentity
 
 router = APIRouter(prefix="/users", tags=["Users"])
@@ -46,6 +51,23 @@ class IdentityBindingCreate(BaseModel):
     provider: str
     provider_user_id: str
     provider_username: Optional[str] = None
+
+
+class WeChatBindingSessionResponse(BaseModel):
+    session_id: str
+    status: str
+    qrcode: Optional[str] = None
+    qrcode_img_content: Optional[str] = None
+    expires_in: Optional[int] = None
+    connected: Optional[bool] = None
+    token_hint: Optional[str] = None
+    detail: Optional[str] = None
+
+
+class WeChatBindingStatusResponse(BaseModel):
+    connected: bool
+    polling_active: bool
+    token_hint: Optional[str] = None
 
 
 @router.get("/", response_model=List[User])
@@ -280,3 +302,47 @@ async def unbind_identity(
     if not success:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to unbind identity")
     return None
+
+
+@router.get("/{user_id}/wechat/status", response_model=WeChatBindingStatusResponse)
+async def get_wechat_status(
+    user_id: int,
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.id != user_id and current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view WeChat status for this user",
+        )
+
+    return WeChatBindingStatusResponse(**(await get_user_wechat_binding_status(user_id)))
+
+
+@router.post("/{user_id}/wechat/bind", response_model=WeChatBindingSessionResponse)
+async def create_wechat_binding_session(
+    user_id: int,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(require_admin),
+):
+    user = await session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    try:
+        payload = await start_user_wechat_binding(user_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return WeChatBindingSessionResponse(**payload)
+
+
+@router.get("/{user_id}/wechat/bind/{session_id}", response_model=WeChatBindingSessionResponse)
+async def get_wechat_binding_session(
+    user_id: int,
+    session_id: str,
+    current_user: User = Depends(require_admin),
+):
+    try:
+        payload = await get_user_wechat_binding_session(user_id, session_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return WeChatBindingSessionResponse(**payload)

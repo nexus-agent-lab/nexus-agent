@@ -13,12 +13,12 @@ from app.core.audit import record_audit_event
 from app.core.auth import get_current_user
 from app.core.auth_service import AuthService
 from app.core.db import get_session
+from app.core.security import get_jwt_secret
 from app.models.user import User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
 
-SECRET_KEY = os.getenv("JWT_SECRET", "super-secret-default-key-1234")
 ALGORITHM = "HS256"
 
 
@@ -32,7 +32,7 @@ def _issue_access_token(user: User) -> dict:
         "api_key": user.api_key,
         "exp": expire,
     }
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    encoded_jwt = jwt.encode(to_encode, get_jwt_secret(), algorithm=ALGORITHM)
     logger.info(f"JWT token issued for user: {user.username} (ID: {user.id})")
     return {
         "access_token": encoded_jwt,

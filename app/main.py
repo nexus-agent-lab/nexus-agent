@@ -28,6 +28,7 @@ from app.core.agent import create_agent_graph, stream_agent_events
 from app.core.auth import get_current_user
 from app.core.db import init_db
 from app.core.mcp_manager import get_mcp_tools
+from app.core.security import ensure_runtime_security_settings
 from app.core.skill_loader import SkillLoader
 from app.core.state_watcher import StateWatcher
 from app.core.tool_router import tool_router
@@ -67,6 +68,7 @@ async def lifespan(app: FastAPI):
     # Startup logic
     await init_db()
     await restore_settings()
+    await ensure_runtime_security_settings()
 
     # Initialize Tools
     static_tools = get_static_tools()

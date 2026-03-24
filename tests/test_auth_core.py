@@ -3,6 +3,7 @@ from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from app.core.auth import get_current_user
+from app.core.security import get_jwt_secret
 from app.models.user import User
 
 
@@ -28,7 +29,7 @@ class TestCurrentUserAuth:
                 "role": test_user.role,
                 "exp": 4102444800,
             },
-            "super-secret-default-key-1234",
+            get_jwt_secret(),
             algorithm="HS256",
         )
 

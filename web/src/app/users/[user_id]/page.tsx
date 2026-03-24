@@ -2,6 +2,7 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, User as UserIcon, Shield, Fingerprint } from "lucide-react";
 import EditUserForm from "./EditUserForm";
+import WeChatBindingCard from "./WeChatBindingCard";
 import { buildBearerHeaders, getServerAuthContext } from "@/lib/server-auth";
 
 interface User {
@@ -135,9 +136,11 @@ export default async function UserDetailPage({
               Identities
             </h3>
             <p className="text-xs text-neutral-500">
-              Identity binding management is coming soon in the next update.
+              Telegram still supports chat-side binding. WeChat is managed from this page with a QR-based connection flow.
             </p>
           </div>
+
+          <WeChatBindingCard token={token} userId={user.id} />
         </div>
 
         <div className="lg:col-span-2">

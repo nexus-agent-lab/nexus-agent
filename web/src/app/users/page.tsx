@@ -4,6 +4,7 @@ import DataTable from "@/components/DataTable";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { Settings2 } from "lucide-react";
+import CreateUserForm from "./CreateUserForm";
 import { buildBearerHeaders, getServerAuthContext } from "@/lib/server-auth";
 interface User {
   id: number;
@@ -110,7 +111,7 @@ export default async function UsersPage() {
           className="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
         >
           <Settings2 className="h-4 w-4" />
-          Manage
+          Manage & Bind
         </Link>
       )
     },
@@ -133,10 +134,24 @@ export default async function UsersPage() {
               <Users className="h-5 w-5" />
               Active Users
             </h2>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">
+              Open a user to edit profile details and bind WeChat.
+            </p>
           </div>
           <DataTable columns={columns} data={users} />
         </div>
 
+        <div className="space-y-4">
+          <CreateUserForm />
+          <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+            <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+              WeChat Binding
+            </h3>
+            <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">
+              Create the user first, then open <span className="font-medium">Manage & Bind</span> to show the WeChat QR code for that user.
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );

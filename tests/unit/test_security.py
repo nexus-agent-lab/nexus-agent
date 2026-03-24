@@ -2,7 +2,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from app.core.security import decrypt_secret, encrypt_secret
+from app.core.security import _is_strong_jwt_secret, decrypt_secret, encrypt_secret, get_jwt_secret
 
 
 class TestSecurity(unittest.TestCase):
@@ -62,6 +62,15 @@ class TestSecurity(unittest.TestCase):
             # Should return original value when key is invalid
             self.assertEqual(encrypt_secret(secret), secret)
             self.assertEqual(decrypt_secret(secret), secret)
+
+    def test_get_jwt_secret_generates_strong_fallback(self):
+        with patch.dict(os.environ, {}, clear=True):
+            import app.core.security
+
+            app.core.security._process_jwt_secret = None
+            generated = get_jwt_secret()
+            self.assertTrue(_is_strong_jwt_secret(generated))
+            self.assertEqual(generated, get_jwt_secret())
 
 
 if __name__ == "__main__":

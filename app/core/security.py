@@ -1,6 +1,7 @@
 import base64
 import logging
 import os
+import secrets
 from typing import Optional
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -9,6 +10,99 @@ logger = logging.getLogger(__name__)
 
 # Cache the Fernet instance to avoid recreating it
 _fernet_instance: Optional[Fernet] = None
+_process_jwt_secret: Optional[str] = None
+
+
+def reset_security_caches() -> None:
+    global _fernet_instance, _process_jwt_secret
+    _fernet_instance = None
+    _process_jwt_secret = None
+
+
+def _is_valid_fernet_key(master_key: str | None) -> bool:
+    if not master_key:
+        return False
+    try:
+        decoded = base64.urlsafe_b64decode(master_key.encode("utf-8"))
+    except Exception:
+        return False
+    return len(decoded) == 32
+
+
+def _is_strong_jwt_secret(secret: str | None) -> bool:
+    return bool(secret and len(secret.encode("utf-8")) >= 32)
+
+
+def get_jwt_secret() -> str:
+    global _process_jwt_secret
+
+    env_secret = os.getenv("JWT_SECRET")
+    if _is_strong_jwt_secret(env_secret):
+        return env_secret
+
+    if _process_jwt_secret is None:
+        _process_jwt_secret = secrets.token_urlsafe(32)
+        logger.warning("JWT_SECRET is missing or too short. Using a generated process-local fallback secret.")
+
+    return _process_jwt_secret
+
+
+async def ensure_runtime_security_settings() -> None:
+    from sqlmodel import select
+
+    from app.core.db import AsyncSessionLocal
+    from app.models.settings import SystemSetting
+
+    generated_values: dict[str, str] = {}
+    resolved_values: dict[str, str] = {}
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(SystemSetting).where(SystemSetting.key.in_(["JWT_SECRET", "NEXUS_MASTER_KEY"]))
+        )
+        settings = {item.key: item for item in result.scalars().all()}
+
+        env_jwt = os.getenv("JWT_SECRET")
+        if _is_strong_jwt_secret(env_jwt):
+            resolved_values["JWT_SECRET"] = env_jwt
+        elif settings.get("JWT_SECRET") and _is_strong_jwt_secret(settings["JWT_SECRET"].value):
+            resolved_values["JWT_SECRET"] = settings["JWT_SECRET"].value
+        else:
+            generated_values["JWT_SECRET"] = secrets.token_urlsafe(32)
+            resolved_values["JWT_SECRET"] = generated_values["JWT_SECRET"]
+
+        env_master = os.getenv("NEXUS_MASTER_KEY")
+        if _is_valid_fernet_key(env_master):
+            resolved_values["NEXUS_MASTER_KEY"] = env_master
+        elif settings.get("NEXUS_MASTER_KEY") and _is_valid_fernet_key(settings["NEXUS_MASTER_KEY"].value):
+            resolved_values["NEXUS_MASTER_KEY"] = settings["NEXUS_MASTER_KEY"].value
+        else:
+            generated_values["NEXUS_MASTER_KEY"] = Fernet.generate_key().decode("utf-8")
+            resolved_values["NEXUS_MASTER_KEY"] = generated_values["NEXUS_MASTER_KEY"]
+
+        for key, value in generated_values.items():
+            if settings.get(key):
+                settings[key].value = value
+                session.add(settings[key])
+            else:
+                session.add(
+                    SystemSetting(
+                        key=key,
+                        value=value,
+                        description="Auto-generated runtime security secret",
+                    )
+                )
+
+        if generated_values:
+            await session.commit()
+
+    for key, value in resolved_values.items():
+        os.environ[key] = value
+
+    reset_security_caches()
+
+    if generated_values:
+        logger.warning("Generated secure runtime settings for: %s", ", ".join(sorted(generated_values.keys())))
 
 
 def _get_fernet() -> Optional[Fernet]:
@@ -23,13 +117,7 @@ def _get_fernet() -> Optional[Fernet]:
         return None
 
     try:
-        # Validate that it's a valid 32-byte urlsafe base64 string
-        # Pad if necessary for validation
-        padding_needed = len(master_key) % 4
-        padded_key = master_key + "=" * padding_needed
-        decoded = base64.urlsafe_b64decode(padded_key.encode("utf-8"))
-
-        if len(decoded) != 32:
+        if not _is_valid_fernet_key(master_key):
             logger.error("Master key must be exactly 32 bytes when base64 decoded. Bypassing encryption.")
             return None
 
