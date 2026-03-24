@@ -16,6 +16,13 @@ Keep advancing the active P0-2 auth/ingress thread while also capturing architec
   - implementation milestones: `docs/architecture/p0_entry_binding_loop_implementation_plan.md`
   - WeChat channel integration: `docs/architecture/wechat_channel_integration_plan.md`
   - future bootstrap direction: `docs/architecture/bootstrap_owner_flow.md`
+  - local-model benchmark subsystem direction: `docs/architecture/local_model_benchmark_subsystem.md`
+- A minimum useful local-model benchmark subfunction now exists:
+  - benchmark module scaffold under `app/benchmarks/`
+  - versioned benchmark suite under `app/benchmarks/scenarios/suite_v1/`
+  - deterministic fixture tools for stable tool-selection / response-quality / error-rate evaluation
+  - CLI entrypoint at `scripts/run_local_model_benchmark.py`
+  - JSON and Markdown benchmark archive outputs under `benchmark_results/`
 - Product direction has been re-aligned toward a docs-first first-run flow rather than implementing a bootstrap UI immediately.
 - The admin web surface no longer uses `X-API-Key` inside `web/src`; audit, cortex, users, and integrations pages now use bearer auth consistently in the JWT-backed admin flow.
 - The current P0 slice now also has improved denied/recovery wording plus structured auth/policy audit events for bind/login/denied flows.
@@ -30,6 +37,10 @@ Keep advancing the active P0-2 auth/ingress thread while also capturing architec
   - admin user detail pages now expose a QR-based WeChat binding flow
   - backend WeChat runtime now supports per-user bot-token sessions loaded from user-scoped secrets
   - inbound WeChat messages can resolve directly to the target Nexus user via `msg.user_id`
+- The admin user-management UI now exposes channel binding state more directly:
+  - `GET /users/` returns aggregated Telegram and WeChat binding status for each user
+  - the users table shows Telegram/WeChat bound state inline
+  - the WeChat detail card no longer shows the default bind CTA once the user is already connected, and offers reconnect instead
 - Runtime security defaults have been hardened:
   - `JWT_SECRET` is now resolved dynamically instead of freezing a short import-time default
   - `JWT_SECRET` and `NEXUS_MASTER_KEY` auto-generate and persist on startup if missing or invalid
@@ -58,6 +69,10 @@ Keep advancing the active P0-2 auth/ingress thread while also capturing architec
   - clear the stale session
   - return the user to sign-in
 - Treat session lifetime as sliding rather than hard-expiring during normal active admin use.
+- Treat local-model selection as an agent-runtime benchmarking problem, not a single-turn chat comparison problem:
+  - use one versioned benchmark suite
+  - keep prompts/tasks fixed across models
+  - archive raw run artifacts for later comparison
 
 ## Next Action
 Priority queue from here:
@@ -78,6 +93,15 @@ Priority queue from here:
    - confirm background/visibility transitions do not break the next refresh
 6. Manually validate the expired/revoked-token browser path on admin integrations pages and confirm the user is redirected to `/login` instead of staying on the page after the toast.
 7. After the transport is confirmed, decide whether the next WeChat increment is:
-   - bind UX polish / reconnect UX
-   - admin visibility for WeChat channel state
+   - WeChat unbind / runtime teardown UX
+   - richer admin visibility for per-channel health and last-seen state
    - richer message support
+8. If local-model benchmarking becomes active work, implement Phase 1 of `docs/architecture/local_model_benchmark_subsystem.md` as a sidecar subsystem:
+   - versioned scenarios
+   - deterministic fixture tools
+   - config-driven model manifest
+   - archived JSON benchmark results
+9. For the benchmark subsystem next, tighten the evaluation fidelity:
+   - reuse more of the real LangGraph path instead of the current light benchmark loop
+   - improve response-quality grading beyond substring rules
+   - add a first real benchmark batch for the local models currently under consideration

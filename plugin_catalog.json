@@ -49,7 +49,7 @@
     "description": "Browse websites, take screenshots, and extract web content.",
     "icon": "🌐",
     "type": "mcp",
-    "source_url": "http://mcp-playwright:3000/sse",
+    "source_url": "http://mcp-playwright:3000/mcp",
     "required_role": "user",
     "context_tags": ["web", "browser", "search", "scrape", "screenshot", "url"],
     "config": {},

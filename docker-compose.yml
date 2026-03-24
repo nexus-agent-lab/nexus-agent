@@ -23,7 +23,7 @@ services:
 
   nexus-app:
     build: .
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     # network_mode: service:ts-nexus # Disabled Tailscale
     volumes:
       - .:/app
@@ -124,12 +124,15 @@ services:
       -p 3000
     restart: unless-stopped
   mcp-playwright:
-    image: node:20-slim
+    image: mcr.microsoft.com/playwright:v1.52.0-noble
     working_dir: /app
     command: >
-      npx -y @playwright/mcp
+      npx -y @playwright/mcp@0.0.68
       --port 3000
       --host 0.0.0.0
+      --browser chromium
+      --executable-path /ms-playwright/chromium-1169/chrome-linux/chrome
+      --allowed-hosts mcp-playwright,localhost,127.0.0.1
     restart: unless-stopped
 
 

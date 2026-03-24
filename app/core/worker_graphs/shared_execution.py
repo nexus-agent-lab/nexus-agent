@@ -61,6 +61,15 @@ def _unwrap_optional_annotation(annotation):
     return annotation
 
 
+def _strip_none_values(value: Any) -> Any:
+    """Recursively drop explicit nulls before MCP schema validation."""
+    if isinstance(value, dict):
+        return {k: _strip_none_values(v) for k, v in value.items() if v is not None}
+    if isinstance(value, list):
+        return [_strip_none_values(item) for item in value if item is not None]
+    return value
+
+
 async def execute_tool_call_generic(
     state: AgentState,
     *,
@@ -127,6 +136,8 @@ async def execute_tool_call_generic(
         )
 
     try:
+        tool_args = _strip_none_values(dict(tool_args or {}))
+
         if user:
             tool_args["user_id"] = user.id
 

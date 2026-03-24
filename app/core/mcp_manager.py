@@ -15,6 +15,7 @@ try:
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.sse import sse_client
     from mcp.client.stdio import stdio_client
+    from mcp.client.streamable_http import streamablehttp_client
     from mcp.types import CallToolResult
     from mcp.types import Tool as MCPToolModel
 except ImportError:
@@ -22,6 +23,7 @@ except ImportError:
     ClientSession = Any
     StdioServerParameters = Any
     sse_client = Any
+    streamablehttp_client = Any
     MCPToolModel = Any
 
 logger = logging.getLogger("nexus.mcp")
@@ -216,13 +218,24 @@ class MCPManager:
                             )
                             continue
 
-                        logger.info(f"Connecting to Remote MCP: {name} ({url}) [Role: {required_role}]...")
+                        transport = "streamable_http" if parsed_url.path.rstrip("/") == "/mcp" else "sse"
+                        remote_headers = dict(global_secrets)
+                        if parsed_url.hostname and "Host" not in remote_headers:
+                            remote_headers["Host"] = parsed_url.hostname
+                        logger.info(
+                            f"Connecting to Remote MCP: {name} ({url}) via {transport} [Role: {required_role}]..."
+                        )
                         try:
-                            read, write = await self.exit_stack.enter_async_context(
-                                sse_client(url, headers=global_secrets)
-                            )
+                            if transport == "streamable_http":
+                                read, write, _ = await self.exit_stack.enter_async_context(
+                                    streamablehttp_client(url, headers=remote_headers)
+                                )
+                            else:
+                                read, write = await self.exit_stack.enter_async_context(
+                                    sse_client(url, headers=remote_headers)
+                                )
                         except Exception as e:
-                            logger.error(f"Failed to connect to SSE MCP {name}: {e}")
+                            logger.error(f"Failed to connect to Remote MCP {name} via {transport}: {e}")
                             continue
 
                     elif command:
