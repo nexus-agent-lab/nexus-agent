@@ -485,3 +485,21 @@ Decide whether to continue with product-facing P0-2 work (permission-denied / re
 
 ## Immediate Next Step
 - Manually validate in a browser that a long-lived admin tab refreshes session state before expiry and still cleanly falls back to `/login` if refresh is denied.
+
+## Session Update (2026-03-25, MCP session isolation direction)
+- Added `docs/architecture/mcp_session_isolation_and_browser_evolution.md`.
+- This note captures the agreed browser/MCP evolution path:
+  - near-term Playwright should remain a built-in, public, stateless, read-only browser plugin
+  - authenticated browser use should not rely on shared MCP-side state
+  - future login-bearing browser support should be implemented through Nexus-managed per-user MCP sessions
+  - this should be generalized into a reusable MCP session isolation layer for future plugins, not treated as a Playwright-only special case
+- Architectural recommendation from the note:
+  - introduce a `tool_group` layer between plugin and tool for mixed-risk MCP servers such as Playwright
+  - later introduce a dedicated `MCPSessionManager` distinct from `MCPManager`
+  - use Playwright as the first adopter of the generic model, not the only one
+
+## Immediate Next Step
+- Convert the MCP session isolation note into a concrete implementation plan for:
+  - Playwright tool-group policy
+  - public stateless read-only browser phase
+  - generic `MCPSessionManager` contract for future per-user MCP sessions
