@@ -1,5 +1,12 @@
 FROM node:20-alpine AS base
 
+ARG ALPINE_MIRROR_HOST=dl-cdn.alpinelinux.org
+ARG NPM_REGISTRY=https://registry.npmjs.org
+
+ENV NPM_CONFIG_REGISTRY=${NPM_REGISTRY}
+
+RUN sed -i "s|https://dl-cdn.alpinelinux.org/alpine|https://${ALPINE_MIRROR_HOST}/alpine|g" /etc/apk/repositories
+
 # Install dependencies only when needed
 FROM base AS deps
 # Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.

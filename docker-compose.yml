@@ -22,7 +22,11 @@ services:
 #       - "8501:8501"
 
   nexus-app:
-    build: .
+    build:
+      context: .
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-pypi.org}
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     # network_mode: service:ts-nexus # Disabled Tailscale
     volumes:
@@ -91,6 +95,9 @@ services:
     build:
       context: ./web
       dockerfile: Dockerfile
+      args:
+        ALPINE_MIRROR_HOST: ${ALPINE_MIRROR_HOST:-dl-cdn.alpinelinux.org}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
     environment:
       - API_URL=http://nexus-app:8000/api
       - NEXT_PUBLIC_API_URL=http://localhost:8000/api
