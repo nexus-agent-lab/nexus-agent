@@ -1,11 +1,11 @@
 # Phase 40: Next-Gen Architecture Transition (Platform-Level Decoupling)
 
 > **Date**: 2026-02-24
-> **Vision**: Transition Nexus Agent from a statically-configured, Streamlit-monitored script into a fully dynamic, multi-tenant AI Operating System with modern Frontend-Backend separation.
+> **Vision**: Transition Nexus Agent from an early script-and-dashboard setup into a fully dynamic, multi-tenant AI Operating System with modern Frontend-Backend separation.
 
 ## 1. Core Architectural Shifts
 
-1. **Frontend Transition**: Deprecate Streamlit for all *new* features. Retain existing dashboard for backward compatibility. New control plane will be a modern Next.js/React frontend talking to FastAPI.
+1. **Frontend Transition**: Replace the legacy dashboard with a modern Next.js/React control plane talking to FastAPI.
 2. **Plugin & Secret Decoupling**: Move away from `.env` and `mcp_server_config.json`. All system configurations, MCP loading, and secrets will be database-driven, supporting real-time hot-reloading.
 3. **Multi-Tenant Security**: Implement a unified `SecretStore` supporting both `Global` (System) and `User` (Private) scopes with AES-256 encryption at rest and "Late-Binding Injection" into the execution context.
 
@@ -68,4 +68,4 @@
 ## 3. Transition Strategy Guidelines
 
 1. **Do not break the plane**: While building P0 and P1, the existing `config.json` can still be read as a fallback to ensure current functionality (Home Assistant, Feishu) doesn't break.
-2. **Strangler Fig Pattern**: We will leave the Streamlit dashboard running on port 8501. The new frontend will run on a different port (e.g., 3000). Once the new UI achieves feature parity for a module, we remove it from Streamlit.
+2. **Strangler Fig Pattern**: This transition plan has now effectively completed. The active admin surface is the Next.js frontend, and the historical Streamlit dashboard has been removed from the runtime path.

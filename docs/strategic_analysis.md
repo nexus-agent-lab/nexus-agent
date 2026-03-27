@@ -36,8 +36,8 @@ Nexus Agent has transitioned from a simple chatbot to an "AI Operating System" c
 - **Skill Marketplace**: Missing a versioned registry (like HACS for Home Assistant) for discovering and updating third-party skills.
 
 ### 3.3 UX & Observability
-- **Streamlit Limitations**: Lacks real-time WebSocket logs and "Artifacts" (live code/chart previews).
-- **Mobile Experience**: Needs a mobile-responsive dashboard beyond just Telegram.
+- **Historical UI Limitation**: The legacy admin UI lacked real-time WebSocket logs and richer "Artifacts" style previews.
+- **Mobile Experience**: Needs a mobile-responsive web admin and user-facing experience beyond just Telegram.
 
 ---
 
@@ -48,7 +48,7 @@ Nexus Agent has transitioned from a simple chatbot to an "AI Operating System" c
 | **P0** | **Hierarchical Context** | Implement L0 (Summary) vs L2 (Full) loading to save 3k-5k tokens per turn. |
 | **P0** | **Proactive Triggers** | Implement `StateWatcher` for Home Assistant events (e.g., notify on low battery). |
 | **P1** | **DingTalk Adapter** | Broaden enterprise reach in the Asian market. |
-| **P1** | **SSO & OIDC** | Enterprise security compliance for dashboard login. |
+| **P1** | **SSO & OIDC** | Enterprise security compliance for web admin login. |
 | **P1** | **Real-time Logs** | Implement Server-Sent Events (SSE) to stream Agent thinking process to the UI. |
 | **P1** | **Code Factory** | Implement "CodeSkill" registry where Agent can write, test, and persist Python scripts for deterministic scheduling. |
 | **P2** | **CLI Finalization** | Standardize terminal interaction for developers. |
@@ -93,4 +93,3 @@ To achieve "OpenClaw-like" autonomy while maintaining OS-level security, Nexus A
 3.  **Dynamic Permission Manifest**: Each CodeSkill declares its required scope (e.g., `read:/storage/twitter`, `network:api.twitter.com`). 
 4.  **Human-in-the-Loop Governance**: High-risk CodeSkills (e.g., file deletion, outbound network) require one-time Admin approval via the Dashboard before being activated for background scheduling.
 5.  **Dehydrated Execution**: Once approved, the `SchedulerService` executes the script natively in a hardened sandbox without invoking the LLM, maximizing reliability and saving tokens.
-

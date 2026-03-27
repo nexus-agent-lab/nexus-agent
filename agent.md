@@ -71,7 +71,6 @@ Refer to `PROJECT_RULES.md` for the full list.
     - Use `@require_role("admin")` for privileged tools.
 3.  **Database & MCP**:
     - Use `async with AsyncSessionLocal() as session:`.
-    - Historical Streamlit dashboard code still exists in `dashboard/`, but it is no longer the active UI/runtime path.
     - **MCP Lifecycle**: loop-sensitive integrations should use fresh instances and call `await mcp.cleanup()` where appropriate.
 
 ---
@@ -181,7 +180,7 @@ Do **not** restart pure LangGraph refactoring unless a concrete P0 issue forces 
 ## 8. Key File Locations
 - **Agent Logic**: `app/core/agent.py` & `app/core/worker.py`
 - **Tool Registry**: `app/tools/registry.py`
-- **Historical Dashboard Code**: `dashboard/pages/` (not the primary UI path)
+- **Admin Frontend**: `web/src/app/`
 - **Testing**: `tests/` and `scripts/debug/`
 
 ---

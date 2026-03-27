@@ -38,7 +38,6 @@ dependencies = [
     "python-multipart>=0.0.6",
     "pgvector>=0.2.4",
     "langchain-community>=0.0.10",
-    "streamlit>=1.30.0",
     "pandas>=2.1.0",
     "sqlalchemy>=2.0.0",
     "python-telegram-bot>=20.0",

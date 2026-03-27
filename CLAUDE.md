@@ -23,7 +23,7 @@ Nexus Agent is an "AI Operating System" centered around an LLM "CPU" and LangGra
 - **Memory System (`app/core/memory.py`)**: Uses PostgreSQL with `pgvector` for semantic and long-term memory.
   - **Extension**: Ensure `CREATE EXTENSION vector` is run before tables (handled in `db.py`).
   - **Embeddings**: Uses **Ollama** (`bge-m3`, 1024 dim) on port 11434 by default.
-- **Mission Control (`dashboard/`)**: Streamlit-based dashboard for observability, IAM, and memory management.
+- **Frontend (`web/`)**: Next.js admin UI for observability, IAM, audit, and integrations.
 
 ## Key Patterns and Constraints
 - **LLM Initialization**: Always use `app/core/llm_utils.py` for instantiating LLM and embedding clients.
@@ -32,7 +32,7 @@ Nexus Agent is an "AI Operating System" centered around an LLM "CPU" and LangGra
 - **Error Handling**: Tools should return descriptive error strings instead of raising exceptions to enable Agent self-recovery.
 - **Cross-cutting Concerns**: Use decorators like `@require_role` for access control.
 - **Git Protocol**: Do not skip hooks; ensure `bash scripts/dev_check.sh` passes before committing.
-- **Network**: Local dev uses Docker Bridge (no Tailscale auth required). Ports 8000/8501 exposed directly.
+- **Network**: Local dev uses Docker Bridge (no Tailscale auth required). The default public entry is port 8000.
 
 <!-- BEGIN AI-GOVERNANCE -->
 ## Project Context (v3.2)

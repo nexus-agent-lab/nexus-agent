@@ -61,7 +61,7 @@ pie title 功能完成度 (32.1个Phase)
 | **晚绑定中间件** | 运行时注入用户密钥，防止日志泄露敏感信息 |
 | **安全输入通道** | 独立 Web 表单收集用户 API 密钥，支持临时 Token |
 | **FastAPI 管理接口** | 插件/密钥 CRUD + MCP 热重载端点 |
-| **Next.js 前端脚手架** | App Router + Tailwind CSS，插件市场 UI（Streamlit 新功能弃用）|
+| **Next.js 前端脚手架** | App Router + Tailwind CSS，现已成为主管理界面 |
 | **加密机器人集成** | 多租户 MCP 插件，动态注入个人 API 密钥 |
 | **Docker 部署更新** | 统一容器编排，支持插件化扩展 |
 

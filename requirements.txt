@@ -19,7 +19,6 @@ gTTS
 mcp
 pgvector
 langchain-community
-streamlit
 pandas
 sqlalchemy
 python-telegram-bot

@@ -1,10 +1,10 @@
-# Phase 41: Frontend Migration - Streamlit to Next.js + FastAPI (COMPLETED)
+# Phase 41: Frontend Migration - Legacy Dashboard to Next.js + FastAPI (COMPLETED)
 
 > **Date**: 2026-02-26
-> **Vision**: Migrate Streamlit dashboard features to a modern Next.js frontend with FastAPI backend endpoints.
+> **Vision**: Migrate the legacy admin/dashboard features to a modern Next.js frontend with FastAPI backend endpoints.
 
 ## Overview
-Nexus Agent has successfully transitioned from a Streamlit-based dashboard to a modern, decoupled architecture using Next.js for the frontend and FastAPI for the backend. All core management features have been migrated, and direct database access from the UI has been eliminated in favor of authenticated API calls.
+Nexus Agent has successfully transitioned from the legacy dashboard implementation to a modern, decoupled architecture using Next.js for the frontend and FastAPI for the backend. All core management features have been migrated, and direct database access from the UI has been eliminated in favor of authenticated API calls.
 
 ## Feature Parity Status
 1. **Dashboard** (`/dashboard`) - ✅ Completed

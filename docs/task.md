@@ -123,8 +123,8 @@
 ## Future Work (Phase 9+)
 - [ ] Implement Voice Interaction (STT/TTS)
 - [ ] Add Multi-Modal Support (Image/File Uploads)
-- [x] Dashboard Integration
-  - [x] Add skill editor UI to `dashboard/pages/5_Integrations.py`
+- [x] Admin Web Integration
+  - [x] Add skill editor UI to the admin integrations surface
   - [x] "Generate Skill Card" button with LLM selection
   - [x] Live preview and editing interface
 - [x] MCP Config Migration
@@ -299,12 +299,12 @@
 ## Phase 26: Testing & Quality Assurance (Current) ✅
 - [x] **Unit Tests**: Create `tests/unit/test_suggestion_tools.py` covering model and tools.
 - [x] **Integration Tests**: Create `tests/integration/test_product_flow.py` verifying full suggestion lifecycle.
-- [x] **Dashboard Tests**: Verify `dashboard/pages/6_Roadmap.py` logic (mocked DB).
+- [x] **Admin UI Tests**: Verified the historical roadmap management UI logic during the migration period.
 
 ## Phase 27: Observability & RELIABILITY ✅
 - [x] **LLM Wire Logging**: Implement raw request/response logging in `app/core/agent.py` (Sync & Async supported).
-- [x] **Dashboard Reliability**: Fix `ModuleNotFoundError` for dashboard imports and solve `RuntimeError` (event loop mismatch) by using loop-safe session creation.
-- [x] **MCP SSE Stability**: Solve `RuntimeError` (cancel scope mismatch) in SSE client by refactoring `MCPManager` to be loop-aware and isolating it in Dashboard pages.
+- [x] **Admin UI Reliability**: Fixed migration-era UI/runtime issues while moving observability and management into the web admin surface.
+- [x] **MCP SSE Stability**: Solved `RuntimeError` (cancel scope mismatch) in the SSE client during the admin UI migration by making `MCPManager` loop-aware.
 - [x] **Health Check**: Ran `dev_check` and fixed all regressions (indentation, imports, test-loop conflicts).
 - [x] **Telegram Progress Updates**: Implemented real-time "progress board" for Telegram.
     - [x] Initial "Thinking" message removed as per user request (classic typing used).
@@ -320,9 +320,9 @@
         - [x] Updated `docker-compose.yml` defaults.
         - [x] Updated `.env.example` & `README.md` for proper documentation.
     - [x] **Network Simplification**: Temporarily disabled Tailscale (`ts-nexus`) to reduce dev friction.
-        - [x] Decoupled `nexus-app` and `dashboard` from Tailscale network mode.
-        - [x] Exposed ports 8000 and 8501 directly to host.
-        - [x] Updated Dashboard `API_URL` for internal bridge networking.
+        - [x] Decoupled the app and admin surfaces from Tailscale network mode.
+        - [x] Exposed the app entrypoint directly to the host during the migration period.
+        - [x] Updated the admin UI `API_URL` for internal bridge networking.
     - [x] **Database Stabilization**: Fixed `type "vector" does not exist` error by ensuring `CREATE EXTENSION` runs before table creation in `db.py`.
     - [x] **Documentation Update**: Updated `CLAUDE.md` to reflect new architecture (Ollama embeddings, Bridge network, DB initialization).
     - [x] **Streaming Optimization**: Disabled LLM streaming (`streaming=False`) to simplify network flow, while retaining "Thought/Tool" event updates for Telegram.

@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+# `/app/storage` refers to the repository-root `storage/` directory inside the container.
 SANDBOX_DATA_DIR = os.getenv("SANDBOX_DATA_DIR", "/app/storage/sandbox_data")
 
 

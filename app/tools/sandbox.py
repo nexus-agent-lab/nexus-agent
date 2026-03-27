@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field
 
 from app.core.decorators import require_role
 
+SANDBOX_DATA_DIR = os.getenv("SANDBOX_DATA_DIR", "/app/storage/sandbox_data")
+
 
 class SandboxInput(BaseModel):
     code: str = Field(description="The Python code to execute safely.")
@@ -40,9 +42,10 @@ def _sandbox_audit_hook(event, args):
         except Exception:
             abs_path = str(path)
 
-        # Allow read/write access to sandbox_data and tmp
+        # `/app/storage` is the repo-root `storage/` directory inside the container.
+        # Allow read/write access to sandbox_data and tmp.
         # also handle macos temp dirs starting with /var/folders
-        if abs_path.startswith('/app/storage/sandbox_data') or abs_path.startswith('/tmp') or abs_path.startswith(os.environ.get("TMPDIR", "/tmp")) or abs_path.startswith('/var/folders'):
+        if abs_path.startswith(SANDBOX_DATA_DIR) or abs_path.startswith('/tmp') or abs_path.startswith(os.environ.get("TMPDIR", "/tmp")) or abs_path.startswith('/var/folders'):
             return
 
         # Allow read-only access to system libraries for imports
@@ -90,11 +93,7 @@ class PythonSandboxTool(BaseTool):
 
             try:
                 # Use a local path for local testing if /app doesn't exist
-                cwd = (
-                    "/app/storage/sandbox_data"
-                    if os.path.exists("/app/storage/sandbox_data")
-                    else tempfile.gettempdir()
-                )
+                cwd = SANDBOX_DATA_DIR if os.path.exists(SANDBOX_DATA_DIR) else tempfile.gettempdir()
 
                 # Execute with timeout and capture output
                 result = subprocess.run(

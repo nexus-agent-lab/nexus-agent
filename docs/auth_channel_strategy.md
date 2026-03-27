@@ -18,7 +18,7 @@ Current product direction says Nexus should be:
 - governable
 - low-friction for normal users
 
-That means authentication should not be designed as a dashboard-only admin workflow or a developer-style API key flow.
+That means authentication should not be designed as a web-admin-only workflow or a developer-style API key flow.
 
 Instead, Nexus needs a unified model where:
 
@@ -62,7 +62,7 @@ In practice, only **Telegram** has a complete user-facing binding experience:
 Relevant files:
 
 - `app/interfaces/telegram.py`
-- `dashboard/pages/6_Users.py`
+- `web/src/app/users/[user_id]/page.tsx`
 - `tests/test_telegram_bind_flow.py`
 
 ### 2.3 Current limitations
@@ -245,7 +245,7 @@ Strengths:
 
 - useful for recovery and management
 - useful for QR/device-code style auth handoff
-- necessary for dashboard/admin capabilities
+- necessary for admin web capabilities
 
 Limitations:
 

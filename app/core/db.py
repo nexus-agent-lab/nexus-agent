@@ -66,7 +66,7 @@ async def init_db():
 │  ║    API Key:   {api_key:<50} ║  │
 │  ║                                                                 ║  │
 │  ║    Please save these credentials securely!                     ║  │
-│  ║    Use them to log into the Mission Control Dashboard.         ║  │
+│  ║    Use them to log into the Nexus web admin UI.               ║  │
 │  ║                                                                 ║  │
 │  ║    ╚══════════════════════════════════════════════════════════════╝  │
 │                                                                     │
