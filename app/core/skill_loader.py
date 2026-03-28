@@ -3,8 +3,11 @@ Skill Loader - Manages loading and aggregation of skill cards for System Prompt 
 """
 
 import logging
+import re
 from pathlib import Path
 from typing import Dict, List, Optional
+
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +16,11 @@ class SkillLoader:
     """Load and manage skill cards from the skills/ directory."""
 
     SKILLS_DIR = Path(__file__).parent.parent.parent / "skills"
+    ROUTING_METADATA_FIELDS = {
+        "routing_examples",
+        "routing_domains",
+        "routing_weight",
+    }
 
     @classmethod
     def load_summaries(cls, role: str = "user") -> str:
@@ -72,7 +80,9 @@ class SkillLoader:
                         "name": skill_file.stem,
                         "metadata": metadata,
                         "rules": critical_rules,
-                        "full_content": content,
+                        # Keep routing-only metadata out of the LLM prompt while still
+                        # exposing it through parsed metadata for semantic routing.
+                        "full_content": cls._strip_routing_metadata(content),
                     }
                 )
             except Exception as e:
@@ -272,46 +282,46 @@ class SkillLoader:
         """
         Extract YAML frontmatter from skill card.
         """
-        metadata = {}
-        if not content.startswith("---"):
-            return metadata
-
         try:
-            import json
+            frontmatter = cls._extract_frontmatter(content)
+            if frontmatter is None:
+                return {}
 
-            # Find the closing ---
-            lines = content.split("\n")
-            end_idx = None
-            for i, line in enumerate(lines[1:], start=1):
-                if line.strip() == "---":
-                    end_idx = i
-                    break
-
-            if end_idx is None:
-                return metadata
-
-            # Parse YAML-like frontmatter
-            for line in lines[1:end_idx]:
-                if ":" in line:
-                    key, value = line.split(":", 1)
-                    key = key.strip()
-                    value = value.strip()
-
-                    # Enhanced parsing for lists (intent_keywords)
-                    if (value.startswith("[") and value.endswith("]")) or (
-                        value.startswith("{") and value.endswith("}")
-                    ):
-                        try:
-                            # Try to parse as JSON for complex types
-                            metadata[key] = json.loads(value.replace("'", '"'))
-                        except Exception:
-                            metadata[key] = value
-                    else:
-                        metadata[key] = value
+            metadata = yaml.safe_load(frontmatter) or {}
+            return metadata if isinstance(metadata, dict) else {}
         except Exception as e:
             logger.warning(f"Failed to parse metadata: {e}")
+            return {}
 
-        return metadata
+    @classmethod
+    def _extract_frontmatter(cls, content: str) -> Optional[str]:
+        if not content.startswith("---"):
+            return None
+
+        frontmatter_match = re.match(r"^---\n(.*?)\n---\n?", content, re.DOTALL)
+        if not frontmatter_match:
+            return None
+
+        return frontmatter_match.group(1)
+
+    @classmethod
+    def _strip_routing_metadata(cls, content: str) -> str:
+        frontmatter = cls._extract_frontmatter(content)
+        if frontmatter is None:
+            return content
+
+        try:
+            metadata = yaml.safe_load(frontmatter) or {}
+            if not isinstance(metadata, dict):
+                return content
+
+            cleaned_metadata = {key: value for key, value in metadata.items() if key not in cls.ROUTING_METADATA_FIELDS}
+            sanitized_frontmatter = yaml.safe_dump(cleaned_metadata, allow_unicode=True, sort_keys=False).strip()
+            stripped_content = re.sub(r"^---\n(.*?)\n---\n?", "", content, count=1, flags=re.DOTALL)
+            return f"---\n{sanitized_frontmatter}\n---\n\n{stripped_content.lstrip()}"
+        except Exception as e:
+            logger.warning(f"Failed to strip routing metadata: {e}")
+            return content
 
     @classmethod
     def save_skill(cls, skill_name: str, content: str) -> bool:
@@ -334,6 +344,49 @@ class SkillLoader:
         except Exception as e:
             logger.error(f"Failed to save skill {skill_name}: {e}")
             return False
+
+    @classmethod
+    def upsert_routing_examples(cls, skill_name: str, examples: List[str]) -> bool:
+        """
+        Update the routing_examples field in a skill frontmatter block.
+        """
+        content = cls.load_by_name(skill_name)
+        if content is None:
+            logger.warning("Cannot update routing examples; skill not found: %s", skill_name)
+            return False
+
+        frontmatter = cls._extract_frontmatter(content)
+        if frontmatter is None:
+            logger.warning("Cannot update routing examples; skill missing frontmatter: %s", skill_name)
+            return False
+
+        try:
+            metadata = yaml.safe_load(frontmatter) or {}
+            if not isinstance(metadata, dict):
+                logger.warning("Cannot update routing examples; invalid metadata in %s", skill_name)
+                return False
+
+            cleaned_examples = [str(example).strip() for example in examples if str(example).strip()]
+            metadata["routing_examples"] = cleaned_examples
+            sanitized_frontmatter = yaml.safe_dump(metadata, allow_unicode=True, sort_keys=False).strip()
+            stripped_content = re.sub(r"^---\n(.*?)\n---\n?", "", content, count=1, flags=re.DOTALL)
+            updated_content = f"---\n{sanitized_frontmatter}\n---\n\n{stripped_content.lstrip()}"
+            return cls.save_skill(skill_name, updated_content)
+        except Exception as e:
+            logger.error("Failed to update routing examples for %s: %s", skill_name, e)
+            return False
+
+    @classmethod
+    async def refresh_runtime_skill_registry(cls, role: str = "admin") -> None:
+        """
+        Reload the in-process semantic skill index from the current skill files.
+        This keeps runtime routing aligned after install/update/uninstall.
+        """
+        from app.core.tool_router import tool_router
+
+        registry = cls.load_registry_with_metadata(role=role)
+        await tool_router.register_skills(registry)
+        logger.info("Refreshed runtime skill registry with %d skills.", len(registry))
 
     @classmethod
     def append_learned_rule(cls, skill_name: str, rule_content: str) -> bool:

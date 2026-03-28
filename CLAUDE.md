@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Run Single Test File**: `PYTHONPATH=. pytest tests/test_filename.py -v`
 - **Run Single Test Case**: `PYTHONPATH=. pytest tests/test_filename.py -k "test_name" -v`
 - **Dev Check Script**: `bash scripts/dev_check.sh` (Runs Ruff and Pytest)
-- **Database Migrations**: `alembic upgrade head`
+- **Database Migrations**: `bash scripts/admin/upgrade_db.sh`
 - **Docker Deployment**: `docker-compose up -d --build`
 
 ## Architecture Overview

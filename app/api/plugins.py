@@ -20,6 +20,32 @@ router = APIRouter(prefix="/plugins", tags=["Plugins"])
 logger = logging.getLogger(__name__)
 
 
+def _load_plugin_catalog() -> List[dict]:
+    project_root = Path(__file__).parent.parent.parent
+    catalog_path = project_root / "plugin_catalog.json"
+    if not catalog_path.exists():
+        return []
+    with open(catalog_path, "r") as f:
+        return json.load(f)
+
+
+def _get_catalog_entry_for_plugin(plugin: Plugin, catalog: List[dict]) -> Optional[dict]:
+    for entry in catalog:
+        manifest_match = plugin.manifest_id and entry.get("id") == plugin.manifest_id
+        source_match = entry.get("source_url") == plugin.source_url
+        if manifest_match or source_match:
+            return entry
+    return None
+
+
+def _get_bundled_skills_for_plugin(plugin: Plugin, catalog: List[dict]) -> List[str]:
+    entry = _get_catalog_entry_for_plugin(plugin, catalog)
+    if entry:
+        bundled = entry.get("bundled_skills", []) or []
+        return [str(skill) for skill in bundled]
+    return []
+
+
 class PluginCreate(BaseModel):
     name: str
     type: str
@@ -59,13 +85,8 @@ async def list_plugins(session: AsyncSession = Depends(get_session), current_use
 @router.get("/catalog")
 async def get_plugin_catalog(current_user: User = Depends(require_admin)):
     """Get the predefined plugin catalog (App Store)."""
-    project_root = Path(__file__).parent.parent.parent
-    catalog_path = project_root / "plugin_catalog.json"
     try:
-        if not catalog_path.exists():
-            return []
-        with open(catalog_path, "r") as f:
-            return json.load(f)
+        return _load_plugin_catalog()
     except Exception as e:
         logger.error(f"Failed to read plugin catalog: {e}")
         raise HTTPException(status_code=500, detail="Failed to load plugin catalog")
@@ -77,20 +98,14 @@ async def get_plugin_schema(
 ):
     """Get the configuration schema for a specific plugin from the catalog."""
     plugin = await session.get(Plugin, plugin_id)
-    if not plugin or not plugin.manifest_id:
-        return {"env_schema": None, "bundled_skills": []}
-
-    project_root = Path(__file__).parent.parent.parent
-    catalog_path = project_root / "plugin_catalog.json"
-    if not catalog_path.exists():
+    if not plugin:
         return {"env_schema": None, "bundled_skills": []}
 
     try:
-        with open(catalog_path, "r") as f:
-            catalog = json.load(f)
-        for entry in catalog:
-            if entry.get("id") == plugin.manifest_id:
-                return {"env_schema": entry.get("env_schema"), "bundled_skills": entry.get("bundled_skills", [])}
+        catalog = _load_plugin_catalog()
+        entry = _get_catalog_entry_for_plugin(plugin, catalog)
+        if entry:
+            return {"env_schema": entry.get("env_schema"), "bundled_skills": entry.get("bundled_skills", [])}
     except Exception as e:
         logger.error(f"Error reading catalog for schema: {e}")
 
@@ -103,24 +118,13 @@ async def get_plugin_skill(
 ):
     """Get the markdown content of the skill associated with this plugin."""
     plugin = await session.get(Plugin, plugin_id)
-    if not plugin or not plugin.manifest_id:
-        raise HTTPException(status_code=404, detail="Plugin or manifest not found")
-
-    project_root = Path(__file__).parent.parent.parent
-    catalog_path = project_root / "plugin_catalog.json"
-    if not catalog_path.exists():
-        raise HTTPException(status_code=404, detail="Catalog not found")
+    if not plugin:
+        raise HTTPException(status_code=404, detail="Plugin not found")
 
     try:
-        with open(catalog_path, "r") as f:
-            catalog = json.load(f)
-        skill_id = None
-        for entry in catalog:
-            if entry.get("id") == plugin.manifest_id:
-                bundled = entry.get("bundled_skills", [])
-                if bundled:
-                    skill_id = bundled[0]
-                break
+        catalog = _load_plugin_catalog()
+        bundled_skills = _get_bundled_skills_for_plugin(plugin, catalog)
+        skill_id = bundled_skills[0] if bundled_skills else None
 
         if not skill_id:
             raise HTTPException(status_code=404, detail="No bundled skill found for this plugin")
@@ -130,18 +134,7 @@ async def get_plugin_skill(
             raise HTTPException(status_code=404, detail=f"Skill file '{skill_id}.md' not found")
 
         # SkillLoader.load_by_name returns a raw string content
-        return {"content": skill}
-
-        if not skill:
-            raise HTTPException(status_code=404, detail=f"Skill file '{skill_id}.md' not found")
-
-        # SkillLoader.load_by_name returns a raw string content, not a dict.
-        return {"content": skill}
-
-        if not skill:
-            raise HTTPException(status_code=404, detail=f"Skill file '{skill_id}.md' not found")
-
-        return {"content": skill.get("full_content") or skill.get("rules", "")}
+        return {"skill_name": skill_id, "content": skill, "metadata": SkillLoader._extract_metadata(skill)}
     except HTTPException:
         raise
     except Exception as e:
@@ -201,23 +194,15 @@ async def create_plugin(
             session.add(secret_db)
         await session.commit()
 
-    project_root = Path(__file__).parent.parent.parent
-    catalog_path = project_root / "plugin_catalog.json"
-    if catalog_path.exists():
-        try:
-            with open(catalog_path, "r") as f:
-                catalog = json.load(f)
-
-            for catalog_entry in catalog:
-                if (plugin_in.manifest_id and catalog_entry.get("id") == plugin_in.manifest_id) or catalog_entry.get(
-                    "source_url"
-                ) == plugin_in.source_url:
-                    bundled_skills = catalog_entry.get("bundled_skills", [])
-                    for skill in bundled_skills:
-                        await SkillLoader.install_skill(skill)
-                    break
-        except Exception as e:
-            logger.error(f"Failed to process bundled skills: {e}")
+    try:
+        catalog = _load_plugin_catalog()
+        bundled_skills = _get_bundled_skills_for_plugin(db_plugin, catalog)
+        for skill in bundled_skills:
+            await SkillLoader.install_skill(skill)
+        if bundled_skills:
+            await SkillLoader.refresh_runtime_skill_registry(role="admin")
+    except Exception as e:
+        logger.error(f"Failed to process bundled skills: {e}")
 
     await session.refresh(db_plugin)
     return db_plugin
@@ -286,6 +271,26 @@ async def delete_plugin(
     if not plugin:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plugin not found")
 
+    catalog = _load_plugin_catalog()
+    bundled_skills = _get_bundled_skills_for_plugin(plugin, catalog)
+
+    other_plugins_result = await session.execute(select(Plugin).where(Plugin.id != plugin.id))
+    other_plugins = list(other_plugins_result.scalars().all())
+    skills_still_referenced = set()
+    for other in other_plugins:
+        skills_still_referenced.update(_get_bundled_skills_for_plugin(other, catalog))
+
     await session.delete(plugin)
     await session.commit()
+
+    removed_any_skill = False
+    for skill_name in bundled_skills:
+        if skill_name in skills_still_referenced:
+            continue
+        if SkillLoader.delete_skill(skill_name):
+            removed_any_skill = True
+
+    if removed_any_skill or bundled_skills:
+        await SkillLoader.refresh_runtime_skill_registry(role="admin")
+
     return None

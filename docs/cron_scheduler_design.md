@@ -202,7 +202,7 @@ class User(SQLModel, table=True):
 
 ### Phase B: Database & Models
 - [ ] Create `app/models/scheduler.py` with `ScheduledTask` model
-- [ ] Migration: `alembic revision -m "add_scheduled_tasks"`
+- [ ] Migration: `bash scripts/admin/new_migration.sh "add_scheduled_tasks"` then `bash scripts/admin/upgrade_db.sh`
 
 ### Phase C: Core Tools
 - [ ] Implement `app/tools/scheduler.py` (3 functions)

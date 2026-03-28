@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Settings2, Loader2, X, Save, Shield } from "lucide-react";
 import { updatePlugin } from "@/app/actions/plugins";
+import { getClientApiBase } from "@/lib/client-api";
 import { toast } from "@/lib/toast";
 
 type JsonPrimitive = string | number | boolean | null;
@@ -80,7 +81,7 @@ export default function EditPluginButton({ plugin, token }: EditPluginButtonProp
     const fetchSchema = async () => {
       setFetchingSchema(true);
       try {
-        const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+        const backendUrl = getClientApiBase();
         const response = await fetch(`${backendUrl}/plugins/${plugin.id}/schema`, {
           headers: {
             Authorization: `Bearer ${token}`,

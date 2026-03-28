@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createPlugin } from "@/app/actions/plugins";
+import { getClientApiBase } from "@/lib/client-api";
 import { Puzzle, Loader2, AlertCircle, CheckCircle2, Store, Wrench, Shield, Plus, Info, ExternalLink, ArrowRight, Code, X, Save } from "lucide-react";
 import { toast } from "@/lib/toast";
 
@@ -76,7 +77,7 @@ export default function PluginForm({ token, onSuccess }: PluginFormProps) {
     const fetchCatalog = async () => {
       setLoadingCatalog(true);
       try {
-        const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+        const backendUrl = getClientApiBase();
         const response = await fetch(`${backendUrl}/plugins/catalog`, {
           headers: {
             Authorization: `Bearer ${token}`,

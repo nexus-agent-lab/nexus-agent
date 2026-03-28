@@ -2,6 +2,7 @@ import logging
 import os
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import func
 from sqlmodel import select
 
@@ -13,6 +14,52 @@ from app.models.settings import SystemSetting
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 logger = logging.getLogger(__name__)
+
+LLM_CONFIG_KEYS = {
+    "LLM_BASE_URL",
+    "LLM_API_KEY",
+    "LLM_MODEL",
+    "SKILL_GEN_BASE_URL",
+    "SKILL_GEN_API_KEY",
+    "SKILL_GEN_MODEL",
+}
+
+
+class LLMConfigSection(BaseModel):
+    base_url: str = ""
+    api_key: str = ""
+    model: str = ""
+
+
+class LLMConfigResponse(BaseModel):
+    main: LLMConfigSection
+    skill_generation: LLMConfigSection
+
+
+class LLMConfigUpdateRequest(BaseModel):
+    main: LLMConfigSection
+    skill_generation: LLMConfigSection
+
+
+async def _persist_setting(key: str, value: str) -> None:
+    if value:
+        os.environ[key] = value
+    else:
+        os.environ.pop(key, None)
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(SystemSetting).where(SystemSetting.key == key))
+        setting = result.scalar_one_or_none()
+        if setting:
+            setting.value = value
+        else:
+            setting = SystemSetting(key=key, value=value)
+            session.add(setting)
+        await session.commit()
+
+
+def _read_env_setting(key: str) -> str:
+    return os.environ.get(key, "")
 
 
 @router.get("/log", dependencies=[Depends(require_admin)])
@@ -69,6 +116,44 @@ async def get_config(key: str = Query(...)):
             value = os.environ.get(key, "false")
 
     return {"key": key, "value": value}
+
+
+@router.get("/llm-config", dependencies=[Depends(require_admin)], response_model=LLMConfigResponse)
+async def get_llm_config():
+    """Get runtime LLM configuration for main agent and skill generation."""
+    return LLMConfigResponse(
+        main=LLMConfigSection(
+            base_url=_read_env_setting("LLM_BASE_URL"),
+            api_key=_read_env_setting("LLM_API_KEY"),
+            model=_read_env_setting("LLM_MODEL"),
+        ),
+        skill_generation=LLMConfigSection(
+            base_url=_read_env_setting("SKILL_GEN_BASE_URL"),
+            api_key=_read_env_setting("SKILL_GEN_API_KEY"),
+            model=_read_env_setting("SKILL_GEN_MODEL"),
+        ),
+    )
+
+
+@router.post("/llm-config", dependencies=[Depends(require_admin)], response_model=LLMConfigResponse)
+async def update_llm_config(payload: LLMConfigUpdateRequest):
+    """Update runtime LLM configuration for the main agent and skill generation."""
+    updates = {
+        "LLM_BASE_URL": payload.main.base_url.strip(),
+        "LLM_API_KEY": payload.main.api_key.strip(),
+        "LLM_MODEL": payload.main.model.strip(),
+        "SKILL_GEN_BASE_URL": payload.skill_generation.base_url.strip(),
+        "SKILL_GEN_API_KEY": payload.skill_generation.api_key.strip(),
+        "SKILL_GEN_MODEL": payload.skill_generation.model.strip(),
+    }
+
+    for key, value in updates.items():
+        if key not in LLM_CONFIG_KEYS:
+            raise HTTPException(status_code=400, detail=f"Key {key} not allowed")
+        await _persist_setting(key, value)
+
+    logger.info("Admin updated LLM runtime configuration.")
+    return await get_llm_config()
 
 
 @router.get("/traces", dependencies=[Depends(require_admin)])

@@ -10,6 +10,7 @@ import {
   History,
   Network,
   Puzzle,
+  Bot,
   LogOut,
   User,
   Menu,
@@ -38,6 +39,7 @@ const navItems: NavItem[] = [
   { key: "cortex", href: "/cortex", icon: Brain },
   { key: "audit", href: "/audit", icon: History },
   { key: "network", href: "/network", icon: Network },
+  { key: "llm", href: "/llm", icon: Bot },
   { key: "integrations", href: "/integrations", icon: Puzzle },
   { key: "roadmap", href: "/roadmap", icon: Map },
 ];
@@ -60,6 +62,7 @@ export default function Layout({
     cortex: string;
     audit: string;
     network: string;
+    llm: string;
     integrations: string;
     roadmap: string;
     language: string;

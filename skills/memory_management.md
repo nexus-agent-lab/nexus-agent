@@ -2,6 +2,7 @@
 name: Memory Management
 description: Store and retrieve long-term user preferences, profile info, and insights.
 intent_keywords: ["memory", "remember", "preference", "forget", "profile", "insight"]
+routing_examples: ["记住我喜欢黑色主题", "你还记得我的偏好吗", "把刚才那条记下来", "忘掉我之前说过不喝咖啡", "你知道我的生日吗", "帮我回忆一下你记住了什么"]
 ---
 
 # Memory Management Skill

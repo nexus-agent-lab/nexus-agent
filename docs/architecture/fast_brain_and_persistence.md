@@ -25,8 +25,8 @@ Implement the "Fast Brain" (Tier 0 Intent Router) to handle complex, cross-domai
 ### Phase 2: WireLog Persistence (Backend)
 1. **Create `app/models/llm_trace.py`**: Define the `LLMTrace` SQLModel. [x]
 2. **Run Migrations**: [x]
-   `docker-compose exec -T nexus-app alembic revision --autogenerate -m "add_llm_trace"`
-   `docker-compose exec -T nexus-app alembic upgrade head`
+   `bash scripts/admin/new_migration.sh "add_llm_trace"`
+   `bash scripts/admin/upgrade_db.sh`
 3. **Create `app/core/trace_logger.py`**: A utility to write traces to the DB asynchronously. [x]
 
 1. **Create `app/core/intent_router.py`**: A lightweight LLM call (zero tools) to decompose user queries into keywords. [DONE]
@@ -54,8 +54,8 @@ Implement the "Fast Brain" (Tier 0 Intent Router) to handle complex, cross-domai
 
 1. **Create `app/models/llm_trace.py`**: Define the `LLMTrace` SQLModel.
 2. **Run Migrations**: 
-   `docker-compose exec -T nexus-app alembic revision --autogenerate -m "add_llm_trace"`
-   `docker-compose exec -T nexus-app alembic upgrade head`
+   `bash scripts/admin/new_migration.sh "add_llm_trace"`
+   `bash scripts/admin/upgrade_db.sh`
 3. **Create `app/core/trace_logger.py`**: A utility to write traces to the DB asynchronously.
 4. **Update `app/api/admin.py`**: 
    - Refactor `POST /config` to write to `SystemSetting` table.

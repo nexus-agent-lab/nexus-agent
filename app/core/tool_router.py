@@ -7,6 +7,7 @@ from langchain_core.tools import BaseTool
 
 from app.core.config import settings
 from app.core.llm_utils import get_embeddings_client
+from app.core.skill_routing_store import SkillRoutingStore
 
 logger = logging.getLogger(__name__)
 
@@ -124,11 +125,25 @@ class SemanticToolRouter:
         descriptions = []
         for s in skills:
             name = s["name"]
-            desc = s["metadata"].get("description", "")
+            metadata = s.get("metadata", {}) or {}
+            desc = metadata.get("description", "")
             # Domain and intent keywords can also be part of embedding context
-            domain = s["metadata"].get("domain", "")
-            keywords = ", ".join(s["metadata"].get("intent_keywords", []))
-            descriptions.append(f"Skill: {name}\nDescription: {desc}\nDomain: {domain}\nKeywords: {keywords}")
+            domain = metadata.get("domain", "")
+            keywords = ", ".join(metadata.get("intent_keywords", []) or [])
+            routing_examples = metadata.get("routing_examples", []) or []
+            example_block = "\n".join(f"- {example}" for example in routing_examples if example)
+            descriptions.append(
+                f"Skill: {name}\n"
+                f"Description: {desc}\n"
+                f"Domain: {domain}\n"
+                f"Keywords: {keywords}\n"
+                f"Routing Examples:\n{example_block}"
+            )
+
+        try:
+            await SkillRoutingStore.sync_skills(skills, self.embeddings)
+        except Exception as e:
+            logger.warning("Failed to sync skill routing anchors to pgvector: %s", e)
 
         try:
             logger.info(f"Embedding {len(descriptions)} skill descriptions...")
@@ -167,7 +182,7 @@ class SemanticToolRouter:
         Select relevant skills based on query and user role.
         Returns: List of skill entries matched by semantic similarity.
         """
-        if not settings.ENABLE_SEMANTIC_ROUTING or self.skill_index is None or not self.embeddings:
+        if not settings.ENABLE_SEMANTIC_ROUTING or not self.embeddings or not self.skill_entries:
             return []
 
         if not query or not query.strip():
@@ -179,50 +194,83 @@ class SemanticToolRouter:
             query_vec = await self.embeddings.aembed_query(query)
             query_vec = np.array(query_vec)
 
-            # Cosine Similarity
-            norm_skills = np.linalg.norm(self.skill_index, axis=1)
-            norm_query = np.linalg.norm(query_vec)
-
-            if norm_query == 0:
-                return []
-
-            # Avoid division by zero
-            norm_skills[norm_skills == 0] = 1e-9
-
-            scores = np.dot(self.skill_index, query_vec) / (norm_skills * norm_query)
-
-            # Select Top-K
-            k = min(settings.SKILL_ROUTING_TOP_K, len(self.skill_entries))
-            threshold = settings.SKILL_ROUTING_THRESHOLD
-
-            top_indices = np.argsort(scores)[-k:][::-1]
-
-            selected_skills = []
             _wire_log = os.getenv("DEBUG_WIRE_LOG", "false").lower() == "true"
+            selected_skills = await self._route_skills_via_pgvector(query_vec, role=role, wire_log=_wire_log)
+            if selected_skills:
+                return selected_skills
 
-            for idx in top_indices:
-                score = scores[idx]
-                skill = self.skill_entries[idx]
+            return self._route_skills_via_in_memory_index(query_vec, role=role, wire_log=_wire_log)
 
-                # Role Check for Skills
+        except Exception as e:
+            logger.error(f"Skill routing failed: {e}")
+            return []
+
+    async def _route_skills_via_pgvector(self, query_vec: np.ndarray, role: str, wire_log: bool) -> List[dict]:
+        anchor_limit = max(settings.SKILL_ROUTING_TOP_K * 6, 12)
+        threshold = settings.SKILL_ROUTING_THRESHOLD
+        registry_by_name = {entry["name"]: entry for entry in self.skill_entries}
+        selected_skills: List[dict] = []
+
+        try:
+            hits = await SkillRoutingStore.search(query_vec.tolist(), limit=anchor_limit)
+            aggregated = SkillRoutingStore.aggregate_hits(hits)
+
+            for item in aggregated[: settings.SKILL_ROUTING_TOP_K]:
+                score = item["score"]
+                skill = registry_by_name.get(item["skill_name"])
+                if not skill:
+                    continue
+
                 req_role = skill["metadata"].get("required_role", "user")
                 if req_role == "admin" and role != "admin":
                     continue
 
                 if score >= threshold:
                     selected_skills.append(skill)
-                    logger.debug(f"Skill Match: {skill['name']} (score={score:.4f})")
-                    if _wire_log:
+                    logger.debug("Skill Match via pgvector: %s (score=%.4f)", skill["name"], score)
+                    if wire_log:
                         print(f"  │   │  ├─ [SKILL MATCH] {skill['name']:<20} (scale={score:.4f})")
-                else:
-                    if _wire_log:
-                        print(f"  │   │  ├─ [SKILL DROP]  {skill['name']:<20} (scale={score:.4f})")
+                elif wire_log:
+                    print(f"  │   │  ├─ [SKILL DROP]  {skill['name']:<20} (scale={score:.4f})")
 
             return selected_skills
-
         except Exception as e:
-            logger.error(f"Skill routing failed: {e}")
+            logger.warning("Skill routing pgvector lookup failed, falling back to in-memory index: %s", e)
             return []
+
+    def _route_skills_via_in_memory_index(self, query_vec: np.ndarray, role: str, wire_log: bool) -> List[dict]:
+        if self.skill_index is None:
+            return []
+
+        norm_skills = np.linalg.norm(self.skill_index, axis=1)
+        norm_query = np.linalg.norm(query_vec)
+
+        if norm_query == 0:
+            return []
+
+        norm_skills[norm_skills == 0] = 1e-9
+        scores = np.dot(self.skill_index, query_vec) / (norm_skills * norm_query)
+        k = min(settings.SKILL_ROUTING_TOP_K, len(self.skill_entries))
+        threshold = settings.SKILL_ROUTING_THRESHOLD
+        top_indices = np.argsort(scores)[-k:][::-1]
+
+        selected_skills = []
+        for idx in top_indices:
+            score = scores[idx]
+            skill = self.skill_entries[idx]
+            req_role = skill["metadata"].get("required_role", "user")
+            if req_role == "admin" and role != "admin":
+                continue
+
+            if score >= threshold:
+                selected_skills.append(skill)
+                logger.debug("Skill Match via fallback index: %s (score=%.4f)", skill["name"], score)
+                if wire_log:
+                    print(f"  │   │  ├─ [SKILL MATCH] {skill['name']:<20} (scale={score:.4f})")
+            elif wire_log:
+                print(f"  │   │  ├─ [SKILL DROP]  {skill['name']:<20} (scale={score:.4f})")
+
+        return selected_skills
 
     def _get_domain(self, tool: Any) -> str:
         """Extract domain/category from tool metadata."""

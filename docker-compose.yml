@@ -40,6 +40,9 @@ services:
       - LLM_API_KEY=${LLM_API_KEY:-ollama}
       - LLM_BASE_URL=${LLM_BASE_URL:-http://host.docker.internal:11434/v1}
       - LLM_MODEL=${LLM_MODEL:-qwen2.5:14b}
+      - SKILL_GEN_BASE_URL=${SKILL_GEN_BASE_URL:-}
+      - SKILL_GEN_API_KEY=${SKILL_GEN_API_KEY:-}
+      - SKILL_GEN_MODEL=${SKILL_GEN_MODEL:-}
       
       # Embedding Configuration (Local by default)
       - EMBEDDING_API_KEY=${EMBEDDING_API_KEY:-ollama}
@@ -98,7 +101,7 @@ services:
         NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
     environment:
       - API_URL=http://nexus-app:8000/api
-      - NEXT_PUBLIC_API_URL=http://localhost:8000/api
+      - NEXT_PUBLIC_API_URL=/api
       - JWT_SECRET=${JWT_SECRET:-super-secret-default-key-1234}
     depends_on:
       - nexus-app

@@ -26,6 +26,7 @@ from app.api.telemetry import router as telemetry_router
 from app.api.users import router as users_router
 from app.core.agent import create_agent_graph, stream_agent_events
 from app.core.auth import get_current_user
+from app.core.chat_session_bootstrap import build_session_state
 from app.core.db import init_db
 from app.core.mcp_manager import get_mcp_tools
 from app.core.security import ensure_runtime_security_settings
@@ -176,6 +177,8 @@ class ChatResponse(BaseModel):
     response: str
     tool_calls: List[Dict[str, Any]] = []
     trace_id: str
+    thread_id: str
+    created_new_thread: bool = False
 
 
 @api_router.get("/")
@@ -185,10 +188,20 @@ async def root():
 
 @api_router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, current_user: User = Depends(get_current_user)):
-    user_message = HumanMessage(content=request.message)
     trace_id = uuid.uuid4()
-
-    initial_state = {"messages": [user_message], "user": current_user, "trace_id": trace_id}
+    logger.info(
+        "CHAT REQUEST | mode=sync | user_id=%s | requested_thread_id=%s | trace_id=%s | message_preview=%s",
+        current_user.id,
+        request.thread_id or "-",
+        trace_id,
+        request.message[:120].replace("\n", " "),
+    )
+    initial_state, session, created_new_thread = await build_session_state(
+        user=current_user,
+        incoming_message=request.message,
+        thread_id=request.thread_id,
+        trace_id=trace_id,
+    )
 
     final_state = await agent_graph.ainvoke(initial_state)
 
@@ -201,19 +214,68 @@ async def chat(request: ChatRequest, current_user: User = Depends(get_current_us
     else:
         response_text = "Agent did not return an AI message."
 
-    return ChatResponse(response=response_text, trace_id=str(trace_id))
+    logger.info(
+        "CHAT RESPONSE | mode=sync | user_id=%s | requested_thread_id=%s | resolved_thread_id=%s | "
+        "created_new_thread=%s | trace_id=%s | response_preview=%s",
+        current_user.id,
+        request.thread_id or "-",
+        session.session_uuid,
+        created_new_thread,
+        trace_id,
+        response_text[:120].replace("\n", " "),
+    )
+
+    return ChatResponse(
+        response=response_text,
+        trace_id=str(trace_id),
+        thread_id=session.session_uuid,
+        created_new_thread=created_new_thread,
+    )
 
 
 @api_router.post("/chat/stream")
 async def chat_stream(request: ChatRequest, current_user: User = Depends(get_current_user)):
-    user_message = HumanMessage(content=request.message)
     trace_id = uuid.uuid4()
-
-    initial_state = {"messages": [user_message], "user": current_user, "trace_id": trace_id}
+    logger.info(
+        "CHAT REQUEST | mode=stream | user_id=%s | requested_thread_id=%s | trace_id=%s | message_preview=%s",
+        current_user.id,
+        request.thread_id or "-",
+        trace_id,
+        request.message[:120].replace("\n", " "),
+    )
+    initial_state, session, created_new_thread = await build_session_state(
+        user=current_user,
+        incoming_message=request.message,
+        thread_id=request.thread_id,
+        trace_id=trace_id,
+    )
 
     async def event_generator():
-        logger.info(f"Stream started for trace_id: {trace_id}")
+        logger.info(
+            "CHAT STREAM START | user_id=%s | requested_thread_id=%s | resolved_thread_id=%s | "
+            "created_new_thread=%s | trace_id=%s",
+            current_user.id,
+            request.thread_id or "-",
+            session.session_uuid,
+            created_new_thread,
+            trace_id,
+        )
         count = 0
+        yield (
+            "data: "
+            + json.dumps(
+                {
+                    "event": "session",
+                    "data": {
+                        "thread_id": session.session_uuid,
+                        "created_new_thread": created_new_thread,
+                        "trace_id": str(trace_id),
+                    },
+                },
+                ensure_ascii=False,
+            )
+            + "\n\n"
+        )
         async for event in stream_agent_events(agent_graph, initial_state):
             try:
                 count += 1
@@ -221,7 +283,13 @@ async def chat_stream(request: ChatRequest, current_user: User = Depends(get_cur
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
             except Exception:
                 pass
-        logger.info(f"Stream finished for trace_id: {trace_id}, total events: {count}")
+        logger.info(
+            "CHAT STREAM END | user_id=%s | resolved_thread_id=%s | trace_id=%s | total_events=%s",
+            current_user.id,
+            session.session_uuid,
+            trace_id,
+            count,
+        )
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 

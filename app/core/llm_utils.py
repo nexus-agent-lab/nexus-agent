@@ -69,11 +69,17 @@ def get_httpx_async_client(event_hooks: dict = None, base_url: str = None) -> ht
     return httpx.AsyncClient(timeout=get_httpx_timeout(), trust_env=trust_env, proxy=proxy, event_hooks=event_hooks)
 
 
-def get_llm_client(temperature: float = 0) -> ChatOpenAI:
+def get_llm_client(
+    temperature: float = 0,
+    *,
+    api_key: str | None = None,
+    base_url: str | None = None,
+    model_name: str | None = None,
+) -> ChatOpenAI:
     """Configures and returns the LLM instance based on environment variables."""
-    api_key = os.getenv("LLM_API_KEY")
-    base_url = os.getenv("LLM_BASE_URL")
-    model_name = os.getenv("LLM_MODEL", "gpt-4o")
+    api_key = api_key if api_key is not None else os.getenv("LLM_API_KEY")
+    base_url = base_url if base_url is not None else os.getenv("LLM_BASE_URL")
+    model_name = model_name if model_name is not None else os.getenv("LLM_MODEL", "gpt-4o")
 
     logger.info(f"Initializing LLM client: base_url={base_url}, model={model_name}, temp={temperature}")
 

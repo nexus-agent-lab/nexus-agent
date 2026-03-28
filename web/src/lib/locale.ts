@@ -12,6 +12,7 @@ type Dictionary = {
     cortex: string;
     audit: string;
     network: string;
+    llm: string;
     integrations: string;
     roadmap: string;
     language: string;
@@ -62,6 +63,7 @@ const dictionaries: Record<Locale, Dictionary> = {
       cortex: "Cortex",
       audit: "Audit",
       network: "Network",
+      llm: "LLM",
       integrations: "Integrations",
       roadmap: "Roadmap",
       language: "Language",
@@ -110,6 +112,7 @@ const dictionaries: Record<Locale, Dictionary> = {
       cortex: "记忆与技能",
       audit: "审计",
       network: "网络",
+      llm: "模型",
       integrations: "集成",
       roadmap: "路线图",
       language: "语言",

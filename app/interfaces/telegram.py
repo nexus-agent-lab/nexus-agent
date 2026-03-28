@@ -529,17 +529,22 @@ async def skill_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             success = await SkillLoader.download_from_clawhub(skill_name)
             if success:
+                await SkillLoader.refresh_runtime_skill_registry(role="admin")
                 result = f"✅ Skill `{skill_name}` installed from ClawHub!"
             else:
                 result = f"❌ Failed to fetch `{skill_name}` from ClawHub. Check skill name."
         else:
             result = await SkillLoader.install_skill(skill_id)
+            if result.startswith("✅"):
+                await SkillLoader.refresh_runtime_skill_registry(role="admin")
 
         await context.bot.send_message(chat_id=chat_id, text=result, parse_mode="Markdown")
 
     elif subcommand == "uninstall" and len(args) > 1:
         skill_id = args[1]
         result = SkillLoader.uninstall_skill(skill_id)
+        if result.startswith("✅"):
+            await SkillLoader.refresh_runtime_skill_registry(role="admin")
         await context.bot.send_message(chat_id=chat_id, text=result, parse_mode="Markdown")
 
     else:

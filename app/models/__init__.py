@@ -9,6 +9,7 @@ from .secret import Secret
 from .session import Session, SessionMessage, SessionSummary
 from .settings import SystemSetting
 from .skill_log import SkillChangelog
+from .skill_routing_anchor import SkillRoutingAnchor
 from .tool import ToolDefinition
 from .user import Context, User, UserIdentity
 from .watch_rule import WatchRule
@@ -29,6 +30,7 @@ __all__ = [
     "Plugin",
     "Secret",
     "ProductSuggestion",
+    "SkillRoutingAnchor",
     "SystemSetting",
     "SkillChangelog",
     "WatchRule",

@@ -6,14 +6,12 @@ import secrets
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
-from sqlmodel import SQLModel, select
+from sqlmodel import select
 
 # Basic logging setup
 import app.core.logging_config  # noqa: F401  — Centralized logging
 
 logger = logging.getLogger(__name__)
-
-# Import models to register them with SQLModel.metadata
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://nexus:nexus_password@localhost:5432/nexus_db")
 
@@ -33,9 +31,13 @@ async def init_db():
                     from sqlalchemy import text
 
                     await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+                else:
+                    # Non-Postgres test/dev setups may still rely on runtime table creation.
+                    from sqlmodel import SQLModel
 
-                # await conn.run_sync(SQLModel.metadata.drop_all)
-                await conn.run_sync(SQLModel.metadata.create_all)
+                    import app.models  # noqa: F401  — Register SQLModel metadata
+
+                    await conn.run_sync(SQLModel.metadata.create_all)
 
                 # Provision initial admin user if no users exist
                 from app.models.user import User

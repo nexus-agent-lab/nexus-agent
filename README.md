@@ -218,6 +218,14 @@ If you want to use a cloud model instead, set `LLM_API_KEY`, `LLM_BASE_URL`, and
 docker-compose up -d --build
 ```
 
+Before or after starting the stack, run the database migration manually:
+
+```bash
+bash scripts/admin/upgrade_db.sh
+```
+
+Schema changes should be managed through Alembic migrations rather than runtime table creation.
+
 The default entrypoint on `localhost:8000` is the bundled **Nginx** reverse proxy.
 
 - `/api/` -> FastAPI (`nexus-app`)

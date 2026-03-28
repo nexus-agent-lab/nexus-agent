@@ -704,7 +704,9 @@ def create_agent_graph(tools: list):
 
         session_id = state.get("session_id")
         if session_id:
-            asyncio.create_task(_persist_message(session_id, response))
+            # Persist the assistant reply before returning control so immediate follow-up
+            # turns can reliably recover the latest response from session history.
+            await _persist_message(session_id, response)
 
         return {
             "messages": [response],
@@ -871,7 +873,7 @@ def create_agent_graph(tools: list):
         session_id = state.get("session_id")
         if session_id:
             for output in outputs:
-                asyncio.create_task(_persist_message(session_id, output))
+                await _persist_message(session_id, output)
 
         return {
             "messages": outputs,

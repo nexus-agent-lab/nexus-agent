@@ -69,6 +69,25 @@ priority: high
         assert metadata["domain"] == "test"
         assert metadata["priority"] == "high"
 
+    def test_extract_metadata_supports_yaml_lists(self):
+        """Should parse multiline YAML lists used by skill frontmatter."""
+        content = """---
+name: TestSkill
+intent_keywords:
+  - alpha
+  - beta
+routing_examples:
+  - 帮我搜一下最新论文
+  - 打开这个网页
+---
+
+# Test Skill
+"""
+        metadata = SkillLoader._extract_metadata(content)
+
+        assert metadata["intent_keywords"] == ["alpha", "beta"]
+        assert metadata["routing_examples"] == ["帮我搜一下最新论文", "打开这个网页"]
+
     def test_extract_metadata_no_frontmatter(self):
         """Should handle skill cards without frontmatter."""
         content = "# Test Skill\n\nNo frontmatter here."
@@ -76,6 +95,28 @@ priority: high
 
         assert isinstance(metadata, dict)
         assert len(metadata) == 0
+
+    def test_strip_routing_metadata_keeps_prompt_clean(self):
+        """Routing-only metadata should not be injected into the LLM prompt copy."""
+        content = """---
+name: TestSkill
+domain: web
+routing_examples:
+  - 帮我搜一下最新论文
+  - 打开网页看看
+priority: high
+---
+
+# Test Skill
+
+## Critical Rules
+Only use facts from tools.
+"""
+        stripped = SkillLoader._strip_routing_metadata(content)
+
+        assert "routing_examples" not in stripped
+        assert "帮我搜一下最新论文" not in stripped
+        assert "Only use facts from tools." in stripped
 
     def test_load_routing_hints_uses_existing_intent_keywords(self):
         hints = SkillLoader.load_routing_hints()

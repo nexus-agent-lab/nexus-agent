@@ -44,6 +44,32 @@ class SessionManager:
             return new_session
 
     @classmethod
+    async def resolve_session(cls, user_id: int, session_uuid: Optional[str] = None) -> tuple[Session, bool]:
+        """
+        Resolve a session and report whether a new one had to be created.
+        """
+        async with AsyncSessionLocal() as db:
+            if session_uuid:
+                result = await db.execute(
+                    select(Session).where(Session.session_uuid == session_uuid, Session.user_id == user_id)
+                )
+                session = result.scalar_one_or_none()
+                if session:
+                    return session, False
+
+                logger.warning(
+                    "CHAT SESSION MISS | user_id=%s | requested_thread_id=%s | action=create_new_session",
+                    user_id,
+                    session_uuid,
+                )
+
+            new_session = Session(user_id=user_id, session_uuid=str(uuid.uuid4()), active=True, title="New Chat")
+            db.add(new_session)
+            await db.commit()
+            await db.refresh(new_session)
+            return new_session, True
+
+    @classmethod
     async def save_message(
         cls,
         session_id: int,

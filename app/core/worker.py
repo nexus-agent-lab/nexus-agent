@@ -1,12 +1,14 @@
 import asyncio
 import logging
 import time
+import uuid
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from sqlmodel import select
 
+from app.core.chat_session_bootstrap import build_session_state
 from app.core.db import get_session
 from app.core.mq import ChannelType, MessageType, MQService, UnifiedMessage
+from app.core.session import SessionManager
 from app.models.user import User
 
 logger = logging.getLogger("nexus.worker")
@@ -287,48 +289,12 @@ class AgentWorker:
         # Target message ID for editing (if provided by interface)
         target_msg_id = msg.meta.get("target_message_id")
 
-        initial_state = {
-            "messages": [HumanMessage(content=msg.content)],
-            "user": user,  # Enforce policies
-            "session_id": None,
-        }
-
-        # 1. Resolve Session & History
-        # We need to do this OUTSIDE the graph to avoid duplication
-        from app.core.session import SessionManager
-
-        session = await SessionManager.get_or_create_session(user.id)
-
-        # AUTO-COMPACTING: Load Summary + Recent History
-        history_summary, history_msgs_raw = await SessionManager.get_history_with_summary(session.id, limit=10)
-
-        # 2. Convert history to LangChain messages
-        history_msgs = []
-        for h_msg in history_msgs_raw:
-            if h_msg.type == "human":
-                history_msgs.append(HumanMessage(content=h_msg.content))
-            elif h_msg.type == "ai":
-                history_msgs.append(AIMessage(content=h_msg.content))
-            elif h_msg.type == "tool":
-                history_msgs.append(
-                    ToolMessage(
-                        content=h_msg.content,
-                        tool_call_id=h_msg.tool_call_id or "unknown",
-                        name=h_msg.tool_name or "unknown",
-                    )
-                )
-
-        # 3. Construct Initial State: [System(Summary)] + [History] + [Current Message]
-        initial_messages = history_msgs + initial_state["messages"]
-
-        if history_summary:
-            summary_sys_msg = SystemMessage(
-                content=f"## PREVIOUS CONTEXT SUMMARY\n{history_summary}\n\nThe above is a summary of earlier conversation. Use it to maintain context."
-            )
-            initial_messages.insert(0, summary_sys_msg)
-
-        initial_state["messages"] = initial_messages
-        initial_state["session_id"] = session.id
+        initial_state, session, _ = await build_session_state(
+            user=user,
+            incoming_message=msg.content,
+            thread_id=None,
+            trace_id=msg.meta.get("trace_id") or uuid.uuid4(),
+        )
 
         current_thought = ""
         current_status = ""

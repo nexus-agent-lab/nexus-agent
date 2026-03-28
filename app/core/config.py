@@ -11,6 +11,7 @@ class Settings(BaseSettings):
 
     # Skill Generation
     SKILL_GEN_PROVIDER: str = "local"
+    SKILL_GEN_BASE_URL: Optional[str] = None
     SKILL_GEN_MODEL: Optional[str] = None
     SKILL_GEN_API_KEY: Optional[str] = None
 

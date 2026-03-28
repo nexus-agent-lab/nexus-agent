@@ -258,6 +258,155 @@ Decide whether to continue with product-facing P0-2 work (permission-denied / re
   - do not add WeChat unbind yet
   - the current UX should distinguish clearly between unbound and already-connected users
   - a future pass can add true unbind/runtime teardown if the product needs it
+
+## Session Update (2026-03-28, skill routing anchor recall planning)
+- Confirmed that the current browser query failure is no longer caused by MCP transport:
+  - Playwright MCP is now connected and browser tools register successfully
+  - the observed miss happens because `route_skills()` does not select `web_browsing` for natural-language research/search requests
+- Read the current routing foundations in:
+  - `app/core/tool_router.py`
+  - `app/core/skill_loader.py`
+  - `docs/architecture/semantic_routing.md`
+- Added a new architecture note:
+  - `docs/architecture/skill_routing_anchor_recall_with_local_vector_db.md`
+- Recommendation from this session:
+  - keep the current layered router
+  - upgrade skill recall from one-vector-per-skill to multi-anchor-per-skill
+  - add `routing_examples` / synthetic queries per skill
+  - persist those anchors in the existing local Postgres + pgvector stack
+  - aggregate recalled anchor hits back to skills before final tool binding
+- Why this direction was chosen:
+  - it directly addresses natural-language misses like “最新 AI 论文” not recalling `web_browsing`
+  - it fits the current repo better than introducing a second vector system
+  - it creates durable, inspectable routing knowledge instead of transient in-memory embeddings only
+- Recommended next implementation order:
+  - extend skill metadata with `routing_examples`
+  - add a pgvector-backed `skill_routing_anchor` model/table
+  - update `route_skills()` to use anchor aggregation
+  - start with `web_browsing` as the first high-value skill
+- Verification:
+  - documentation and project-context update only
+  - no runtime code paths changed in this session
+
+## Session Update (2026-03-28, routing examples loaded without prompt bloat)
+- Implemented the first practical step of the routing-anchor plan without changing the prompt budget.
+- Changes made:
+  - added curated `routing_examples` to the highest-value current skills:
+    - `skills/web_browsing.md`
+    - `skills/homeassistant.md`
+    - `skills/python_sandbox.md`
+    - `skills/cron_scheduler.md`
+    - `skills/memory_management.md`
+    - `skills/system_management.md`
+  - upgraded `app/core/skill_loader.py` to parse frontmatter with real YAML support instead of the old line-splitting parser
+  - added frontmatter sanitization so routing-only metadata such as `routing_examples` is removed from the prompt-facing `full_content`
+  - updated `app/core/tool_router.py` so `register_skills()` includes `routing_examples` in the skill embedding text used for semantic routing
+- Important implementation boundary:
+  - these examples now improve the startup-built skill routing index
+  - they do not enter the LLM system prompt
+  - they are not yet persisted into a pgvector-backed `skill_routing_anchor` table
+- Why this step was chosen:
+  - it delivers an immediate recall improvement for browser/home-assistant/sandbox-like requests
+  - it preserves context budget by keeping routing samples out of active skill prompt injection
+  - it prepares the metadata shape needed for the next pgvector persistence step
+- Verification completed:
+  - `uv run ruff check app/core/skill_loader.py app/core/tool_router.py tests/test_skill_loader.py`
+  - `uv run pytest tests/test_skill_loader.py tests/unit/test_skill_routing.py`
+  - result: `14 passed`
+
+## Session Update (2026-03-28, routing-example generation API and uninstall-safe refresh)
+- Implemented the next backend step for routing-example generation during MCP/skill registration.
+- Changes made:
+  - added a dedicated routing-example generation prompt and method in `app/core/skill_generator.py`
+  - added `POST /api/skills/generate-routing-examples` in `app/api/skills.py`
+  - this path is intended for admin registration flows and returns candidate user-language routing examples as JSON
+- Also tightened runtime consistency around skill installation/removal:
+  - added `SkillLoader.refresh_runtime_skill_registry()` to rebuild the in-process skill routing index from current skill files
+  - `/api/skills` save/delete now refresh runtime routing immediately
+  - Telegram `/skill install` and `/skill uninstall` now refresh runtime routing after successful changes
+  - `DELETE /plugins/{plugin_id}` now resolves bundled skills from `plugin_catalog.json`, removes unreferenced skill files, and refreshes runtime routing so removed skills do not keep matching in memory
+- Important boundary:
+  - this now prevents prompt-bloat and most in-memory ghost-skill matches after uninstall
+  - true cross-store atomicity with future pgvector anchors still needs the next persistence step, where skill file changes and `skill_routing_anchor` row changes should be committed together
+- Verification completed:
+  - `uv run ruff check app/api/skills.py app/api/plugins.py app/core/skill_generator.py app/core/skill_loader.py app/interfaces/telegram.py tests/test_skill_generator.py tests/unit/test_plugin_skill_cleanup.py`
+  - `uv run pytest tests/test_skill_loader.py tests/unit/test_skill_routing.py tests/test_skill_generator.py tests/unit/test_plugin_skill_cleanup.py`
+  - result: `17 passed`
+
+## Session Update (2026-03-28, main and skill-generation LLM settings)
+- Added an explicit LLM configuration surface for both runtime chat and skill-generation workflows.
+- Backend changes:
+  - `app/core/config.py` now includes `SKILL_GEN_BASE_URL`
+  - `app/core/llm_utils.py` now accepts explicit override parameters for `api_key`, `base_url`, and `model_name`
+  - `app/core/skill_generator.py` now prefers a dedicated skill-generation endpoint when configured, and otherwise falls back field-by-field to the main LLM config
+  - `app/api/admin.py` now exposes:
+    - `GET /admin/llm-config`
+    - `POST /admin/llm-config`
+    - covering `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`, `SKILL_GEN_BASE_URL`, `SKILL_GEN_API_KEY`, and `SKILL_GEN_MODEL`
+- Frontend changes:
+  - added `web/src/app/llm/page.tsx`
+  - added `web/src/app/llm/LLMSettingsForm.tsx`
+  - added `web/src/app/actions/llm.ts`
+  - added an `LLM` entry to the main admin sidebar in `web/src/components/Layout.tsx`
+- Config/runtime changes:
+  - `.env.example` now documents the optional dedicated skill-generation LLM variables
+  - `docker-compose.yml` now passes those variables into `nexus-app`
+- Product behavior:
+  - main agent LLM can now be edited from the admin UI
+  - skill/routing-example generation can temporarily share the same main LLM
+  - if a dedicated skill-generation model/API is later configured, it can diverge cleanly without changing code paths
+- Verification completed:
+  - `uv run ruff check app/api/admin.py app/core/config.py app/core/llm_utils.py app/core/skill_generator.py`
+  - `uv run pytest tests/test_skill_generator.py tests/test_skill_loader.py tests/unit/test_skill_routing.py tests/unit/test_plugin_skill_cleanup.py`
+  - `cd web && npm run lint -- src/app/llm/page.tsx src/app/llm/LLMSettingsForm.tsx src/components/Layout.tsx src/lib/locale.ts src/app/actions/llm.ts`
+  - backend checks passed
+  - frontend lint passed with one pre-existing warning in `web/src/components/Layout.tsx` for raw `<img>` usage
+
+## Session Update (2026-03-28, pgvector-backed skill routing anchors)
+- Implemented durable skill routing storage on top of the existing Postgres + pgvector stack.
+- Changes made:
+  - added `app/models/skill_routing_anchor.py`
+  - registered the new model in `app/models/__init__.py`
+  - updated `app/core/db.py` to import `app.models`, ensuring `SQLModel.metadata.create_all()` sees the routing-anchor table
+  - added `app/core/skill_routing_store.py`
+- Runtime behavior changes:
+  - `SkillRoutingStore.build_anchor_payloads(...)` now expands each skill into anchor rows for:
+    - description
+    - intent keywords
+    - routing examples
+  - `SemanticToolRouter.register_skills()` now syncs all current skills into `skill_routing_anchor`
+  - skill sync also prunes anchors for removed skills, preventing database-side ghost matches
+  - `SemanticToolRouter.route_skills()` now prefers pgvector anchor recall and skill-level aggregation
+  - if DB lookup fails for any reason, it falls back to the previous in-memory skill embedding index
+- Product impact:
+  - accepted `routing_examples` are no longer transient startup-only hints
+  - they are now durable and available after restart
+  - skill uninstall/delete now has a path to remove both the file-backed skill and its durable recall anchors on the next refresh
+- Verification completed:
+  - `uv run ruff check app/models/skill_routing_anchor.py app/models/__init__.py app/core/db.py app/core/skill_routing_store.py app/core/tool_router.py tests/unit/test_skill_routing_store.py`
+  - `uv run pytest tests/unit/test_skill_routing.py tests/unit/test_skill_routing_store.py tests/test_skill_loader.py tests/test_skill_generator.py tests/unit/test_plugin_skill_cleanup.py`
+  - result: `19 passed`
+
+## Session Update (2026-03-28, alembic migration and duplicate-safe skill anchors)
+- Formalized the new `skill_routing_anchor` table in Alembic.
+- Added migration:
+  - `alembic/versions/b9f8e7d6c5a4_add_skill_routing_anchor.py`
+- Important migration behavior:
+  - creates `skill_routing_anchor` if missing
+  - tolerates environments where the table may already have been created by `SQLModel.metadata.create_all()`
+  - deduplicates pre-existing rows before adding the unique constraint
+  - adds a unique constraint on `(skill_name, anchor_type, text)` so duplicate examples cannot accumulate
+  - adds the expected lookup indexes
+- Also tightened runtime sync behavior:
+  - `SkillRoutingStore.sync_skills()` now compares current file-derived anchors with DB anchors per skill
+  - if a skill's anchors have not changed, it skips re-embedding and re-importing them
+  - if a skill changed, only that skill's anchors are replaced
+  - if a skill was removed, its anchors are pruned
+- Verification completed:
+  - `uv run ruff check app/models/skill_routing_anchor.py app/core/skill_routing_store.py alembic/versions/b9f8e7d6c5a4_add_skill_routing_anchor.py`
+  - `uv run pytest tests/unit/test_skill_routing_store.py tests/unit/test_skill_routing.py tests/test_skill_loader.py tests/test_skill_generator.py tests/unit/test_plugin_skill_cleanup.py`
+  - `.venv/bin/alembic heads`
+  - current Alembic head: `b9f8e7d6c5a4`
 - Verification completed:
   - `uv run ruff check app/api/users.py`
   - `cd web && npm run lint -- 'src/app/users/page.tsx' 'src/app/users/[user_id]/page.tsx' 'src/app/users/[user_id]/WeChatBindingCard.tsx'`
@@ -503,3 +652,170 @@ Decide whether to continue with product-facing P0-2 work (permission-denied / re
   - Playwright tool-group policy
   - public stateless read-only browser phase
   - generic `MCPSessionManager` contract for future per-user MCP sessions
+
+## Session Update (2026-03-25, chat session continuity design)
+- Investigated why follow-up web chat turns like `继续呀` can lose prior context.
+- Confirmed the root cause is architectural rather than model-side:
+  - `app/main.py` defines `thread_id` on the request model for `/api/chat` and `/api/chat/stream`
+  - but the web handlers do not resolve a `Session` from that id, do not load `SessionManager.get_history_with_summary(...)`, and do not set `session_id` in graph state
+  - message-channel flows in `app/core/worker.py` already do the correct session restore/bootstrap path, so web and channel behavior have drifted apart
+- Added `docs/architecture/session_context_continuation_plan.md`.
+- Recommendation from the new design note:
+  - treat `thread_id` as the canonical conversation id mapped to `Session.session_uuid`
+  - return canonical `thread_id` values from chat responses
+  - add a shared session bootstrap helper so web chat, streaming chat, voice, and message channels all reconstruct context the same way
+  - ship a P0 fix first for `/api/chat` and `/api/chat/stream`, then extract the shared helper and add regression coverage for follow-up turns
+
+## Immediate Next Step
+- Implement the web chat session-continuation P0 fix:
+  - reuse `SessionManager` history restoration in `/api/chat` and `/api/chat/stream`
+  - return canonical `thread_id` to the client
+  - add regression tests proving a second-turn `继续呀` request sees the earlier turn context
+
+## Session Update (2026-03-25, chat session continuity implementation)
+- Implemented the web chat continuity P0 fix.
+- Added shared session bootstrap logic in `app/core/chat_session_bootstrap.py`:
+  - resolves or creates a persistent session from `thread_id`
+  - reconstructs the graph input from archived summary plus recent raw turns
+  - persists the current user message before graph execution so later turns can recover both sides of the conversation
+- Updated `app/main.py`:
+  - `/api/chat` now restores session context and returns `thread_id` plus `created_new_thread`
+  - `/api/chat/stream` now restores session context and emits an initial `session` SSE event with `thread_id`, `created_new_thread`, and `trace_id`
+- Updated `app/core/session.py` with `resolve_session(...)` so callers can tell whether a new thread was created.
+- Updated `app/core/worker.py` to reuse the same bootstrap helper, reducing drift between web and message-channel conversation assembly.
+- Added regression coverage in `tests/test_api.py` for a two-turn web chat flow:
+  - first turn sends `帮我搜索天气`
+  - second turn sends `继续呀` with the returned `thread_id`
+  - the second graph invocation now sees the earlier human turn and reuses the same session id
+- Verification completed:
+  - `uv run ruff check app/main.py app/core/chat_session_bootstrap.py app/core/session.py app/core/worker.py tests/test_api.py`
+  - `uv run pytest tests/test_api.py -q`
+  - result: `5 passed`
+
+## Immediate Next Step
+- Manually validate the real web client and any stream consumer against the new chat contract:
+  - confirm the frontend stores and reuses returned `thread_id`
+  - confirm streaming clients handle the initial `session` SSE event before token/tool events
+
+## Session Update (2026-03-25, summary behavior documentation)
+- Added `docs/architecture/session_context_summary_current_behavior.md`.
+- This note records the current non-optimized behavior of the session summary subsystem:
+  - `PREVIOUS CONTEXT SUMMARY` is injected only when the session already has stored `SessionSummary` rows
+  - summary generation is LLM-based and is triggered by `maybe_compact(...)` once unarchived message count exceeds the current threshold
+  - archived summary source material may include user, assistant, and tool messages
+  - current restore and pruning limits are documented explicitly so future optimization work can compare against the baseline
+
+## Immediate Next Step
+- No immediate code change required for summary optimization; revisit later if continuity quality, token cost, or long-session scaling becomes a priority
+
+## Session Update (2026-03-25, chat continuity diagnostics)
+- Added explicit diagnostics for session restoration and thread reuse.
+- `app/main.py` now logs:
+  - incoming sync/stream chat request mode
+  - requested `thread_id`
+  - resolved `thread_id`
+  - whether a new thread was created
+  - trace id and short prompt/response previews
+- `app/core/chat_session_bootstrap.py` now logs:
+  - whether previous summary existed
+  - how many raw human/assistant/tool messages were restored
+- `app/core/session.py` now emits a warning when a requested `thread_id` does not resolve for the current user and a new session must be created.
+- Verification completed:
+  - `uv run ruff check app/main.py app/core/chat_session_bootstrap.py app/core/session.py`
+
+## Immediate Next Step
+- Reproduce the failing follow-up once and inspect the new `CHAT REQUEST`, `CHAT SESSION RESTORE`, and `CHAT SESSION MISS` log lines to confirm whether the caller is reusing the same `thread_id`
+
+## Session Update (2026-03-28, continuity root-cause review and race fix)
+- Re-reviewed the code path for missing web chat context after the `thread_id` work landed.
+- Confirmed one real backend race condition in the existing implementation:
+  - assistant replies and tool outputs were persisted via `asyncio.create_task(_persist_message(...))` in `app/core/agent.py`
+  - this meant the HTTP response could return before the latest assistant/tool messages were committed
+  - if the user immediately sent a follow-up, session restoration could miss the just-finished turn and present the next request as if little or no prior context existed
+- Fixed this by making assistant and tool persistence synchronous within the graph step before control returns to the caller.
+- Additional code-level finding:
+  - there is still no in-repo web chat client using `/api/chat` or `/api/chat/stream`; any actual caller must therefore be external or not yet committed here
+  - so a remaining production issue could still be caused by the caller not reusing `thread_id`, but that cannot be proven from repo code alone
+- Verification completed:
+  - `uv run ruff check app/core/agent.py app/main.py app/core/chat_session_bootstrap.py app/core/session.py app/core/worker.py tests/test_api.py`
+  - `uv run pytest tests/test_api.py tests/test_agent.py -q`
+  - result: `31 passed`
+
+## Immediate Next Step
+- Reproduce once with the new diagnostics and check whether the caller is:
+  - reusing the same `thread_id`
+  - hitting `CHAT SESSION MISS`
+  - restoring zero or unexpectedly few raw messages even after the persistence race fix
+
+## Session Update (2026-03-28, Docker mirror configuration)
+- Updated Docker build mirror handling to favor collaboration-friendly switching.
+- Changes made:
+  - `Dockerfile` now keeps official upstream defaults for Python `pip` only, because that image does not run `apt`
+  - `web/Dockerfile` now keeps official upstream defaults for Alpine `apk` and `npm`
+  - `docker-compose.yml` and `docker-compose.test.yml` pass only the mirror variables each image actually consumes, with official fallbacks when `.env` does not override them
+  - `.env.example` now documents both official defaults and commented mainland China examples
+- Decision:
+  - do not hard-code mainland mirrors into Dockerfiles
+  - allow each collaborator to switch sources by editing only local `.env`
+- Verification completed:
+  - `docker compose -f docker-compose.yml config`
+  - `docker compose -f docker-compose.test.yml config`
+  - both compose files rendered successfully after the mirror configuration adjustment
+
+## Immediate Next Step
+- If needed, test one build with official defaults and one build with mainland overrides in `.env` to confirm the switching behavior end to end.
+
+## Session Update (2026-03-28, dashboard and directory cleanup)
+- Removed the legacy Streamlit dashboard implementation from the repository.
+- Changes made:
+  - deleted the old `dashboard/` tree
+  - removed `streamlit` from `requirements.txt` and `pyproject.toml`
+  - deleted dashboard-only and JWT debug/test leftovers:
+    - `tests/test_dashboard_imports.py`
+    - `test-jwt.js`
+    - `test_token.txt`
+    - `web/test_jose.js`
+    - `web/token.txt`
+  - deleted the unused empty repo directory `app/storage/`
+  - clarified in code comments that `/app/storage/sandbox_data` refers to the repo-root `storage/sandbox_data` path inside the container
+  - updated current-facing docs/guides to refer to the Next.js web admin UI rather than the removed Streamlit dashboard
+- Decision:
+  - keep `storage/` as the real sandbox output directory
+  - treat `docs/task.md` dashboard references as historical notes for now rather than active runtime guidance
+- Verification completed:
+  - `uv run ruff check app/core/db.py app/core/mcp_middleware.py app/tools/sandbox.py`
+  - `cd web && npm run lint -- src/middleware.ts`
+  - `uv run pytest -q tests/test_imports.py`
+  - `docker compose -f docker-compose.yml config`
+
+## Session Update (2026-03-28, plugin skill source-url fallback)
+- Fixed an admin integrations regression where "View Skill" could fail for installed plugins if the plugin row had no `manifest_id`.
+- Root cause:
+  - `app/api/plugins.py` install/delete logic already supported catalog fallback by `source_url`
+  - but `GET /api/plugins/{id}/skill` and `GET /api/plugins/{id}/schema` still hard-required `manifest_id`
+  - this made the frontend fail only for the view/schema path, even when the plugin itself was otherwise valid
+- Implemented a shared catalog-entry helper and applied the same fallback logic to schema and skill lookup.
+- Added focused tests covering `source_url` fallback for both endpoints.
+- Verification completed:
+  - `uv run pytest tests/unit/test_plugin_skill_cleanup.py tests/unit/test_plugin_skill_api.py`
+  - `4 passed`
+  - `uv run ruff check app/api/plugins.py tests/unit/test_plugin_skill_api.py tests/unit/test_plugin_skill_cleanup.py`
+  - all checks passed
+
+## Session Update (2026-03-28, integrations same-origin API fix)
+- Continued debugging after the user reported the frontend still showed `Failed to connect to plugin registry.` on the Integrations page.
+- Root cause:
+  - browser-side integrations components were using `NEXT_PUBLIC_API_URL` with a fallback of `http://localhost:8000/api`
+  - in `docker-compose.yml`, `web` also exported `NEXT_PUBLIC_API_URL=http://localhost:8000/api`
+  - this only works when the browser is running on the same machine as the stack; remote/browser-accessed deployments will send requests to the viewer's own localhost instead of the server
+- Added `web/src/lib/client-api.ts` with a same-origin-safe helper:
+  - default browser API base is `/api`
+  - `localhost` / `127.0.0.1` public env values are normalized back to `/api`
+- Updated integrations browser-side components to use the helper:
+  - `web/src/app/integrations/PluginForm.tsx`
+  - `web/src/app/integrations/EditPluginButton.tsx`
+  - `web/src/app/integrations/ViewSkillButton.tsx`
+- Updated `docker-compose.yml` so `web` now exports `NEXT_PUBLIC_API_URL=/api`.
+- Verification completed:
+  - `cd web && npm run lint -- src/app/integrations/PluginForm.tsx src/app/integrations/ViewSkillButton.tsx src/app/integrations/EditPluginButton.tsx src/lib/client-api.ts`
+  - exited successfully

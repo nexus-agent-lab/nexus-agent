@@ -3,6 +3,7 @@ name: System Management
 description: Manage the Nexus Agent health, logs, and user notifications.
 required_role: admin
 intent_keywords: ["logs", "error", "debug", "日志", "报错", "restart", "reboot", "shutdown", "broadcast", "notify everyone", "system status"]
+routing_examples: ["看一下最近的系统日志", "为什么刚才那个请求报错了", "重启一下系统服务", "帮我广播一条维护通知", "检查一下现在系统状态", "把最近 50 行错误日志给我看下"]
 ---
 
 # System Management Skill

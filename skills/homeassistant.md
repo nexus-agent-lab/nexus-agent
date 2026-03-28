@@ -3,6 +3,7 @@ name: HomeAssistant
 domain: smart_home
 description: 查询和控制智能家居设备（灯、开关、传感器、空调等）
 intent_keywords: ["温度", "灯", "设备", "状态", "空调", "家居", "客厅", "卧室", "查温度", "多少度", "冷不冷"]
+routing_examples: ["打开客厅的灯", "帮我看下卧室现在多少度", "家里冷不冷", "把书房空调调到 24 度", "帮我看看哪些设备在线", "关闭卧室所有灯"]
 required_tools: ["list_entities", "get_entity", "entity_action", "call_service_tool", "search_entities_tool", "get_history"]
 priority: high
 mcp_server: homeassistant

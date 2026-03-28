@@ -4,7 +4,7 @@
 
 - Modify `app/models/user.py`: Add `groups: List[str] = Field(default=["default"], sa_column=Column(JSON))` (ensure `Column` and `JSON` from `sqlalchemy` are imported).
 - Modify `app/models/plugin.py`: Add `allowed_groups: List[str] = Field(default=[], sa_column=Column(JSON))` (import `Column`, `JSON` from `sqlalchemy`).
-- Run `alembic revision --autogenerate -m "add_groups"` and `alembic upgrade head` inside docker.
+- Run `bash scripts/admin/new_migration.sh "add_groups"` and then `bash scripts/admin/upgrade_db.sh`.
 
 - [x] Phase 2: Core Authentication Logic
 
@@ -29,4 +29,3 @@
 - [x] Phase 5: Quality Assurance
 
 - [x] Run `bash scripts/dev_check.sh`.
-
