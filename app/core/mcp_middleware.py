@@ -5,10 +5,9 @@ import os
 import time
 from typing import Any, Callable, Dict, List, Optional
 
-logger = logging.getLogger(__name__)
+from app.tools.session_workspace import ensure_session_workspace
 
-# `/app/storage` refers to the repository-root `storage/` directory inside the container.
-SANDBOX_DATA_DIR = os.getenv("SANDBOX_DATA_DIR", "/app/storage/sandbox_data")
+logger = logging.getLogger(__name__)
 
 
 class MCPMiddleware:
@@ -152,7 +151,7 @@ class MCPMiddleware:
 
         if result_len > threshold:
             logger.info(f"Response too large ({result_len} chars, threshold={threshold}). Offloading...")
-            os.makedirs(SANDBOX_DATA_DIR, exist_ok=True)
+            session_workspace = ensure_session_workspace(args.get("user_id"), args.get("session_id"))
 
             if is_wrapper and parsed_wrapper:
                 data_to_save = parsed_wrapper["content"]
@@ -178,7 +177,7 @@ class MCPMiddleware:
 
             ext = ".json" if is_structured else ".txt"
             filename = f"tool_output_{cache_key[:8]}_{int(now)}{ext}"
-            filepath = os.path.join(SANDBOX_DATA_DIR, filename)
+            filepath = session_workspace / filename
 
             try:
                 with open(filepath, "w") as f:
@@ -194,19 +193,18 @@ class MCPMiddleware:
 
                 if is_structured:
                     message_content = (
-                        f"FORMAT: JSON (List/Dict). \n"
-                        f"ACTION: Write Python code using `json.load(open('{filepath}'))`.\n"
-                        f"FILTER_LOGIC: Match `entity_id` or `attributes.friendly_name` using `.lower()`."
+                        "FORMAT: JSON (List/Dict).\n"
+                        f"DATA_PATH: '{filepath}'.\n"
+                        "NEXT_STEP: Prefer a narrow, structure-aware follow-up. "
+                        "Use python_sandbox only if true computation or structured post-processing is required."
                     )
                 else:
                     message_content = (
                         f"FORMAT: UNSTRUCTURED TEXT.\n"
                         f"PREVIEW: {preview}\n"
-                        f"ACTION: Read file: `text = open('{filepath}').read()`.\n"
-                        f"PARSING: Check the preview above. Valid strategies:\n"
-                        f"  - Line-based: `for line in text.split('\\n'):`\n"
-                        f"  - Regex: `re.findall(r'...', text)`\n"
-                        f"RETURN: List of matching items.\n"
+                        f"DATA_PATH: '{filepath}'.\n"
+                        "NEXT_STEP: Prefer narrowing the browser query or extracting only the relevant section. "
+                        "Do not load the full artifact into python_sandbox unless structured post-processing is truly necessary.\n"
                     )
 
                 alert_text = (

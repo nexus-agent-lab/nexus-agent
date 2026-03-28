@@ -819,3 +819,78 @@ Decide whether to continue with product-facing P0-2 work (permission-denied / re
 - Verification completed:
   - `cd web && npm run lint -- src/app/integrations/PluginForm.tsx src/app/integrations/ViewSkillButton.tsx src/app/integrations/EditPluginButton.tsx src/lib/client-api.ts`
   - exited successfully
+
+## Session Update (2026-03-28, session workspace lifecycle review)
+- Reviewed the newly added session-scoped sandbox / inspector / MCP artifact flow to answer lifecycle and isolation questions precisely.
+- Confirmed workspace layout is `SANDBOX_DATA_DIR/users/<user_id>/sessions/<session_id>/`.
+- Confirmed `python_sandbox` uses that directory as its working directory, and MCP large-result offloads are also written there.
+- Confirmed inspector tools operate only inside the current session workspace and block path escape.
+- Confirmed current lifecycle gap:
+  - `SessionManager.clear_history()` deletes DB message history only
+  - it does not remove session workspace files
+  - there is no TTL sweeper, quota enforcement, or stale-workspace cleanup yet
+- Practical consequence:
+  - browser outputs are searchable with inspector only when middleware offloads them into workspace files
+  - smaller inline browser/tool responses are not automatically materialized as files for grep/read
+- Recommended next step:
+  - add explicit workspace cleanup on session reset/delete
+  - add periodic TTL cleanup for stale workspaces under `SANDBOX_DATA_DIR/users/*/sessions/*`
+  - optionally add per-session or per-user size quotas
+
+## Session Update (2026-03-28, session workspace cleanup implementation)
+- Implemented workspace cleanup on session reset:
+  - `SessionManager.clear_history()` now deletes session messages, session summaries, and the current session workspace on disk.
+- Added reusable workspace lifecycle helpers in `app/tools/session_workspace.py`:
+  - direct session workspace deletion
+  - TTL-based stale workspace cleanup using latest descendant mtime
+- Added a dry-run-by-default admin script:
+  - `python scripts/admin/cleanup_session_workspaces.py`
+  - use `--apply` to actually delete stale workspaces
+  - default TTL is 168 hours
+- Added focused tests verifying:
+  - session reset removes workspace files and summaries
+  - stale workspace cleanup removes only old directories
+- Verification completed:
+  - `uv run ruff check app/core/session.py app/tools/session_workspace.py scripts/admin/cleanup_session_workspaces.py tests/unit/test_session_workspace_cleanup.py`
+  - `uv run pytest tests/unit/test_session_workspace_cleanup.py tests/unit/test_inspector_tools.py tests/unit/test_session_budget_compact.py`
+  - `5 passed`
+
+## Session Update (2026-03-28, Plan A stabilization verification)
+- Completed the current Plan A stabilization slice for browser-heavy flows:
+  - 429 slow backoff retry
+  - token-aware large-output guidance
+  - pre-send token-budget compact gate
+  - read-only inspector tools
+  - session-scoped workspace cleanup
+- Fixed a remaining sandbox runtime issue so the embedded audit prelude now receives a concrete `SANDBOX_DATA_DIR` value safely.
+- Verified the combined Plan A surface with focused tests covering:
+  - rate-limit retry
+  - token budget guidance
+  - token-aware compaction
+  - inspector tool scoping
+  - session workspace cleanup
+  - sandbox workspace access
+  - worker-aware tool filtering
+- Verification completed:
+  - `uv run ruff check app/core/llm_utils.py app/core/agent.py app/core/session.py app/tools/session_workspace.py app/tools/inspector_tools.py app/tools/sandbox.py app/core/tool_catalog.py app/tools/registry.py scripts/admin/cleanup_session_workspaces.py tests/unit/test_llm_utils_budget.py tests/unit/test_session_budget_compact.py tests/unit/test_inspector_tools.py tests/unit/test_session_workspace_cleanup.py tests/unit/test_sandbox_session_workspace.py tests/unit/test_tool_catalog.py`
+  - `uv run pytest tests/unit/test_sandbox_session_workspace.py tests/unit/test_llm_utils_budget.py tests/unit/test_session_budget_compact.py tests/unit/test_inspector_tools.py tests/unit/test_session_workspace_cleanup.py tests/unit/test_tool_catalog.py`
+  - `21 passed`
+
+## Session Update (2026-03-28, built-in model capability catalog)
+- Added a built-in model capability catalog for common API models not reliably covered by `tiktoken` model-name mappings.
+- Runtime precedence is now:
+  - explicit config values win
+  - otherwise built-in catalog values apply
+  - otherwise repository defaults apply
+- Current catalog coverage includes:
+  - Zhipu GLM
+  - DeepSeek
+  - Anthropic Claude
+  - Google Gemini
+  - Qwen / DashScope
+- `build_token_budget(...)` and token-aware compact targeting now use effective model limits rather than only the static default values.
+- Added `docs/architecture/model_capability_catalog.md` to record source families and operational notes.
+- Verification completed:
+  - `uv run ruff check app/core/model_capabilities.py app/core/llm_utils.py app/core/agent.py tests/unit/test_llm_utils_budget.py`
+  - `uv run pytest tests/unit/test_llm_utils_budget.py`
+  - `6 passed`

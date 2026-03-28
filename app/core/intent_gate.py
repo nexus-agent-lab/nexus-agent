@@ -5,7 +5,7 @@ from typing import TypedDict
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from app.core.llm_utils import get_llm_client
+from app.core.llm_utils import ainvoke_with_backoff, get_llm_client
 from app.core.skill_loader import SkillLoader
 
 
@@ -121,11 +121,13 @@ class IntentGate:
             "You are a routing engine. Choose the best worker for the user request. "
             "Return one token only from: chat_worker, skill_worker, code_worker, research_worker."
         )
-        response = await llm.ainvoke(
+        response = await ainvoke_with_backoff(
+            llm,
             [
                 SystemMessage(content=prompt),
                 HumanMessage(content=f"Candidates: {candidate_workers}\nRequest: {user_message}"),
-            ]
+            ],
+            operation_name="intent_gate.escalation",
         )
         selected = re.sub(r"[^a-z_]", "", str(response.content).strip().lower())
         if selected not in {"chat_worker", "skill_worker", "code_worker", "research_worker"}:

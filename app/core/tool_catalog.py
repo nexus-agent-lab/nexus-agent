@@ -52,7 +52,6 @@ class ToolCatalog:
 
         core_tools = self.core_tools()
         skill_tools = self.tools_by_names(self.required_tool_names_for_skills(matched_skills))
-
         if selected_worker == "code_worker":
             filtered = [
                 tool
@@ -69,7 +68,7 @@ class ToolCatalog:
             for tool in current_tools:
                 metadata = get_tool_metadata(tool)
                 operation_kind = metadata.get("operation_kind")
-                if getattr(tool, "name", "") in CORE_TOOL_NAMES:
+                if getattr(tool, "name", "") in CORE_TOOL_NAMES and getattr(tool, "name", "") != "python_sandbox":
                     filtered.append(tool)
                 elif not metadata.get("side_effect", False) and operation_kind in {"discover", "read", "verify"}:
                     filtered.append(tool)

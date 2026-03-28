@@ -319,6 +319,11 @@ class MCPManager:
             try:
                 from app.core.mcp_middleware import MCPMiddleware
 
+                internal_args = {}
+                for internal_key in ("user_id", "session_id"):
+                    if internal_key in kwargs:
+                        internal_args[internal_key] = kwargs.pop(internal_key)
+
                 async def original_mcp_call(**k):
                     try:
                         result: CallToolResult = await session.call_tool(tool.name, arguments=k)
@@ -343,7 +348,10 @@ class MCPManager:
                 if plugin_id:
                     tool_conf["plugin_id"] = plugin_id
                 return await MCPMiddleware.call_tool(
-                    tool_name=tool.name, args=kwargs, original_func=original_mcp_call, tool_config=tool_conf
+                    tool_name=tool.name,
+                    args={**kwargs, **internal_args},
+                    original_func=original_mcp_call,
+                    tool_config=tool_conf,
                 )
             except Exception as e:
                 return f"MCP Tool Execution Error: {str(e)}"
@@ -393,6 +401,9 @@ class MCPManager:
                 fields[field_name] = (field_type, ...)
             else:
                 fields[field_name] = (Optional[field_type], default_val)
+
+        fields["user_id"] = (Optional[int], None)
+        fields["session_id"] = (Optional[int], None)
 
         model_config = None
         if not properties:

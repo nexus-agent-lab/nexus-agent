@@ -41,3 +41,4 @@ class AgentState(TypedDict):
     verification_status: Optional[str] = None  # Reviewer-facing status: passed/required/pending/failed
     llm_call_count: int = 0  # Count main LLM calls in the current graph run
     tool_call_count: int = 0  # Count tool invocations in the current graph run
+    budget_compaction_count: int = 0  # Count token-budget compactions in the current graph run

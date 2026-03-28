@@ -5,7 +5,7 @@ import os
 from sqlmodel import select
 
 from app.core.db import AsyncSessionLocal
-from app.core.llm_utils import get_embeddings_client, get_llm_client
+from app.core.llm_utils import ainvoke_with_backoff, get_embeddings_client, get_llm_client
 from app.models.memory import Memory
 
 logger = logging.getLogger(__name__)
@@ -173,7 +173,11 @@ class MemoryManager:
 
                 # Call LLM via central utility
                 llm = get_llm_client()
-                response = await llm.ainvoke([HumanMessage(content=prompt)])
+                response = await ainvoke_with_backoff(
+                    llm,
+                    [HumanMessage(content=prompt)],
+                    operation_name=f"memory.encoding:{skill['name']}",
+                )
 
                 # Check directly for string content or object
                 if hasattr(response, "content"):
@@ -231,7 +235,11 @@ class MemoryManager:
 
                 # Call LLM via central utility
                 llm = get_llm_client()
-                response = await llm.ainvoke([HumanMessage(content=prompt)])
+                response = await ainvoke_with_backoff(
+                    llm,
+                    [HumanMessage(content=prompt)],
+                    operation_name=f"memory.retrieval:{skill['name']}",
+                )
 
                 if hasattr(response, "content"):
                     search_query = response.content.strip()

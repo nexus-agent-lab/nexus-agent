@@ -140,6 +140,8 @@ async def execute_tool_call_generic(
 
         if user:
             tool_args["user_id"] = user.id
+        if state.get("session_id") is not None:
+            tool_args["session_id"] = state.get("session_id")
 
         schema = getattr(tool_to_call, "args_schema", None)
         if schema:

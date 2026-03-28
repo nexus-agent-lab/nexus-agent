@@ -158,6 +158,10 @@ Keep advancing the active P0-2 auth/ingress thread while also capturing architec
 - Treat Docker build mirrors as configurable infra defaults rather than hard-coded one-offs:
   - keep Dockerfiles on official upstream defaults
   - let operators opt into mainland mirrors by editing only `.env`
+- Treat session workspace files as a managed lifecycle concern:
+  - inspector and sandbox are correctly scoped per user/session
+  - but workspace artifacts currently persist until manually removed
+  - cleanup needs to become part of session reset/delete and stale-data maintenance
 
 ## Next Action
 Priority queue from here:
@@ -221,3 +225,18 @@ Priority queue from here:
    - improve response-quality grading beyond substring rules
    - add a first real benchmark batch for the local models currently under consideration
 16. If build performance or reliability on mainland networks remains a concern, run a fresh `docker compose build` validation for `nexus-app` and `web` using the new mirror defaults.
+17. Add session-workspace cleanup policy and implementation:
+   - delete workspace files on explicit session reset/delete where appropriate
+   - add TTL or quota-based cleanup for stale directories under `SANDBOX_DATA_DIR`
+18. Decide how to operationalize stale workspace cleanup:
+   - wire `scripts/admin/cleanup_session_workspaces.py` into cron / scheduler / ops runbook
+   - decide default retention policy and whether to expose it in config
+   - decide whether per-user or per-session size quotas are needed next
+19. Validate Plan A behavior in the live stack:
+   - run a real browser-heavy query such as “最新 AI 论文”
+   - confirm large browser outputs produce narrower follow-ups instead of eager `python_sandbox` dumps
+   - confirm 429 slow-backoff logs appear and recover correctly on the current main LLM endpoint
+20. Extend the built-in model capability catalog operationally:
+   - decide whether to expose context/output/tokenizer fields in the admin LLM settings UI
+   - decide whether skill-generation LLM should get its own capability resolution path
+   - add more providers only when backed by current official docs

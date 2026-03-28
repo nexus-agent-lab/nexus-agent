@@ -6,8 +6,9 @@ from typing import List, Optional
 from sqlalchemy import func, select
 
 from app.core.db import AsyncSessionLocal
-from app.core.llm_utils import get_llm_client
-from app.models.session import Session, SessionMessage
+from app.core.llm_utils import ainvoke_with_backoff, count_text_tokens, get_llm_client
+from app.models.session import Session, SessionMessage, SessionSummary
+from app.tools.session_workspace import delete_session_workspace
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +95,7 @@ class SessionManager:
                 tool_name=tool_name,
                 is_pruned=is_pruned,
                 original_content=original_content,
-                token_count=len(content) // 4,  # Allow approximation or pass from outside
+                token_count=count_text_tokens(content)[0],
             )
             db.add(msg)
             await db.commit()
@@ -119,16 +120,43 @@ class SessionManager:
     @classmethod
     async def clear_history(cls, session_id: int):
         """
-        Clear all message history for a session (soft delete or full deletion).
+        Clear all persisted conversation history for a session, including summaries
+        and any materialized workspace artifacts associated with that session.
         """
+        session_user_id: Optional[int] = None
         async with AsyncSessionLocal() as db:
-            # Delete all messages in this session
+            session = await db.get(Session, session_id)
+            if session:
+                session_user_id = session.user_id
+
             result = await db.execute(select(SessionMessage).where(SessionMessage.session_id == session_id))
             messages = result.scalars().all()
             for msg in messages:
                 await db.delete(msg)
+
+            summary_result = await db.execute(select(SessionSummary).where(SessionSummary.session_id == session_id))
+            summaries = summary_result.scalars().all()
+            for summary in summaries:
+                await db.delete(summary)
+
             await db.commit()
-            logger.info(f"Cleared history for session {session_id}, deleted {len(messages)} messages.")
+
+        workspace_deleted = False
+        if session_user_id is not None:
+            try:
+                workspace_deleted = delete_session_workspace(session_user_id, session_id)
+            except FileNotFoundError:
+                workspace_deleted = False
+            except Exception as e:
+                logger.warning("Failed to delete session workspace | session_id=%s | error=%s", session_id, e)
+
+        logger.info(
+            "Cleared history for session %s, deleted %s messages, %s summaries, workspace_deleted=%s.",
+            session_id,
+            len(messages),
+            len(summaries),
+            workspace_deleted,
+        )
 
     @classmethod
     async def prune_tool_output(cls, content: str, tool_name: str) -> tuple[str, bool, Optional[str]]:
@@ -168,7 +196,10 @@ class SessionManager:
             summary += "Format: Text/Raw.\n"
             summary += f"Preview: {content[:100]}...\n"
 
-        summary += "Use `python_sandbox` to process the full data if needed."
+        if tool_name.startswith("browser_"):
+            summary += "Prefer narrowing the page query or extracting only the relevant section before continuing."
+        else:
+            summary += "Use a narrower follow-up step or a structure-aware tool before processing the full data."
 
         return summary, True, original
 
@@ -261,7 +292,7 @@ class SessionManager:
                     f"Summary:"
                 )
 
-                response = await llm.ainvoke(prompt)
+                response = await ainvoke_with_backoff(llm, prompt, operation_name="session.compact")
                 summary_text = response.content.strip()
 
                 # 4. Save SessionSummary
@@ -286,6 +317,52 @@ class SessionManager:
 
         except Exception as e:
             logger.error(f"Failed to compact session {session_id}: {e}")
+
+    @classmethod
+    async def get_unarchived_message_count(cls, session_id: int) -> int:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(func.count()).where(
+                    SessionMessage.session_id == session_id,
+                    SessionMessage.is_archived == False,  # noqa: E712
+                )
+            )
+            return int(result.scalar() or 0)
+
+    @classmethod
+    async def compact_for_token_budget(
+        cls,
+        session_id: int,
+        *,
+        estimated_input_tokens: int,
+        target_tokens: int,
+        min_keep_last: int = 6,
+        max_keep_last: int = 15,
+    ) -> bool:
+        """
+        Compact persisted history only when the current estimated prompt size is above
+        the soft limit and there is enough unarchived history to make compaction useful.
+        """
+        count = await cls.get_unarchived_message_count(session_id)
+        if count <= max_keep_last:
+            return False
+
+        overflow_ratio = max(0.0, (estimated_input_tokens - target_tokens) / max(1, estimated_input_tokens))
+        keep_last = max(min_keep_last, min(max_keep_last, int(max_keep_last - (overflow_ratio * max_keep_last))))
+        keep_last = max(min_keep_last, min(keep_last, count - 1))
+        if count <= keep_last:
+            return False
+
+        logger.info(
+            "Token-aware compact trigger | session_id=%s | unarchived=%s | estimated_tokens=%s | target_tokens=%s | keep_last=%s",
+            session_id,
+            count,
+            estimated_input_tokens,
+            target_tokens,
+            keep_last,
+        )
+        await cls.compact_session(session_id, keep_last=keep_last)
+        return True
 
     @classmethod
     async def get_history_with_summary(cls, session_id: int, limit: int = 15) -> tuple[str, List[SessionMessage]]:

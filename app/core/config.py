@@ -8,6 +8,13 @@ class Settings(BaseSettings):
     LLM_API_KEY: str = "ollama"
     LLM_BASE_URL: str = "http://host.docker.internal:11434/v1"
     LLM_MODEL: str = "qwen2.5:14b"
+    LLM_CONTEXT_WINDOW: int = 200000
+    LLM_OUTPUT_WINDOW: int = 128000
+    LLM_CONTEXT_SOFT_LIMIT_RATIO: float = 0.6
+    LLM_RATE_LIMIT_RETRIES: int = 3
+    LLM_RATE_LIMIT_BASE_DELAY_SECONDS: float = 2.0
+    LLM_RATE_LIMIT_MAX_DELAY_SECONDS: float = 12.0
+    LLM_TOKENIZER: Optional[str] = None
 
     # Skill Generation
     SKILL_GEN_PROVIDER: str = "local"

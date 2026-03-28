@@ -7,6 +7,7 @@ from app.core.decorators import require_role
 from app.core.tool_metadata import build_tool_metadata
 from app.tools.admin_tools import broadcast_notification, restart_system, view_system_logs
 from app.tools.automation import list_watch_rules, watch_entity
+from app.tools.inspector_tools import find_files, grep_text, head_file, list_dir, read_file, tail_file
 from app.tools.learning_tools import learn_skill_rule
 from app.tools.memory_tools import (
     approve_skill_evolution,
@@ -88,6 +89,48 @@ STATIC_TOOL_METADATA = {
     },
     "query_memory": {
         "capability_domain": "memory",
+        "operation_kind": "read",
+        "preferred_worker": "research_worker",
+        "side_effect": False,
+        "requires_verification": False,
+    },
+    "list_dir": {
+        "capability_domain": "knowledge",
+        "operation_kind": "discover",
+        "preferred_worker": "research_worker",
+        "side_effect": False,
+        "requires_verification": False,
+    },
+    "find_files": {
+        "capability_domain": "knowledge",
+        "operation_kind": "discover",
+        "preferred_worker": "research_worker",
+        "side_effect": False,
+        "requires_verification": False,
+    },
+    "grep_text": {
+        "capability_domain": "knowledge",
+        "operation_kind": "read",
+        "preferred_worker": "research_worker",
+        "side_effect": False,
+        "requires_verification": False,
+    },
+    "read_file": {
+        "capability_domain": "knowledge",
+        "operation_kind": "read",
+        "preferred_worker": "research_worker",
+        "side_effect": False,
+        "requires_verification": False,
+    },
+    "head_file": {
+        "capability_domain": "knowledge",
+        "operation_kind": "read",
+        "preferred_worker": "research_worker",
+        "side_effect": False,
+        "requires_verification": False,
+    },
+    "tail_file": {
+        "capability_domain": "knowledge",
         "operation_kind": "read",
         "preferred_worker": "research_worker",
         "side_effect": False,
@@ -245,6 +288,12 @@ def get_static_tools() -> List[Callable]:
     tools = [
         get_current_time,
         get_sandbox_tool(),
+        list_dir,
+        find_files,
+        grep_text,
+        read_file,
+        head_file,
+        tail_file,
         store_preference,
         save_insight,
         query_memory,

@@ -1,24 +1,28 @@
+import json
 import os
 import subprocess
 import sys
 import tempfile
-from typing import Type
+from typing import Optional, Type
 
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
 from app.core.decorators import require_role
-
-SANDBOX_DATA_DIR = os.getenv("SANDBOX_DATA_DIR", "/app/storage/sandbox_data")
+from app.tools.session_workspace import ensure_session_workspace
 
 
 class SandboxInput(BaseModel):
     code: str = Field(description="The Python code to execute safely.")
+    user_id: Optional[int] = Field(default=None, description="Internal current user id.")
+    session_id: Optional[int] = Field(default=None, description="Internal current session id.")
 
 
 SANDBOX_PRELUDE = """
 import sys
 import os
+
+SANDBOX_DATA_DIR = __SANDBOX_DATA_DIR__
 
 def _sandbox_audit_hook(event, args):
     # 1. Prevent process execution
@@ -84,16 +88,18 @@ class PythonSandboxTool(BaseTool):
     # Custom attribute for RBAC - user level is sufficient for data processing
     required_role: str = "user"
 
-    def _run(self, code: str) -> str:
+    def _run(self, code: str, user_id: Optional[int] = None, session_id: Optional[int] = None) -> str:
         """Execute the code using subprocess (same container, limited duration)."""
         try:
+            sandbox_data_dir = os.getenv("SANDBOX_DATA_DIR", "/app/storage/sandbox_data")
+            prelude = SANDBOX_PRELUDE.replace("__SANDBOX_DATA_DIR__", json.dumps(sandbox_data_dir))
             with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-                f.write(SANDBOX_PRELUDE + code)
+                f.write(prelude + code)
                 script_path = f.name
 
             try:
-                # Use a local path for local testing if /app doesn't exist
-                cwd = SANDBOX_DATA_DIR if os.path.exists(SANDBOX_DATA_DIR) else tempfile.gettempdir()
+                cwd_path = ensure_session_workspace(user_id, session_id)
+                cwd = str(cwd_path if cwd_path.exists() else tempfile.gettempdir())
 
                 # Execute with timeout and capture output
                 result = subprocess.run(
@@ -119,12 +125,12 @@ class PythonSandboxTool(BaseTool):
         except Exception as e:
             return f"Sandbox Error: {str(e)}"
 
-    async def _arun(self, code: str):
+    async def _arun(self, code: str, user_id: Optional[int] = None, session_id: Optional[int] = None):
         """Async version - runs sync _run in executor."""
         import asyncio
 
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self._run, code)
+        return await loop.run_in_executor(None, self._run, code, user_id, session_id)
 
 
 # Register logic will be in registry.py, but we define the class and decorator attribute here.

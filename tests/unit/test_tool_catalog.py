@@ -56,6 +56,7 @@ def test_tool_catalog_filters_research_worker_to_low_side_effect_tools():
     catalog = ToolCatalog(
         [
             _tool("get_current_time"),
+            _tool("python_sandbox", {"preferred_worker": "code_worker"}),
             _tool("browser_extract", {"operation_kind": "read", "side_effect": False}),
             _tool("call_service_tool", {"operation_kind": "act", "side_effect": True}),
         ]
@@ -66,7 +67,27 @@ def test_tool_catalog_filters_research_worker_to_low_side_effect_tools():
 
     assert "browser_extract" in names
     assert "get_current_time" in names
+    assert "python_sandbox" not in names
     assert "call_service_tool" not in names
+
+
+def test_tool_catalog_filters_research_worker_to_include_read_only_inspector_tools():
+    catalog = ToolCatalog(
+        [
+            _tool("get_current_time"),
+            _tool("python_sandbox", {"preferred_worker": "code_worker"}),
+            _tool("grep_text", {"operation_kind": "read", "side_effect": False}),
+            _tool("read_file", {"operation_kind": "read", "side_effect": False}),
+        ]
+    )
+
+    filtered = catalog.filter_for_worker("research_worker", matched_skills=[])
+    names = [tool.name for tool in filtered]
+
+    assert "grep_text" in names
+    assert "read_file" in names
+    assert "get_current_time" in names
+    assert "python_sandbox" not in names
 
 
 def test_skill_worker_prepare_prefers_discovery_tools_for_skill_discovery():

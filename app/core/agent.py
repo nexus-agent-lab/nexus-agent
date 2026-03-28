@@ -9,7 +9,13 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from langgraph.graph import StateGraph
 
 from app.core.config import settings
-from app.core.llm_utils import get_llm_client
+from app.core.llm_utils import (
+    ainvoke_with_backoff,
+    build_large_output_guidance,
+    build_token_budget,
+    get_effective_llm_settings,
+    get_llm_client,
+)
 from app.core.session import SessionManager
 from app.core.state import AgentState
 from app.core.tool_catalog import ToolCatalog
@@ -23,7 +29,7 @@ BASE_SYSTEM_PROMPT = r"""You are Nexus, an AI Operating System connecting physic
 ### PROTOCOLS
 1. **DISCOVERY FIRST**: Never guess IDs. Use discovery/search tools to locate resources before acting.
 2. **SKILL RULES**: Follow rules in LOADED SKILLS section. If a tool is missing, say so.
-3. **LARGE DATA**: Use \`python_sandbox\` to filter/summarize large outputs (>100 items) or do calculations.
+3. **LARGE DATA**: For large web/tool outputs, first narrow the query, re-read the relevant section, or summarize from source-native read tools. Use \`python_sandbox\` only for structured data transformation or real calculations, especially when the current context budget still allows it.
 4. **CRITICAL RULE**: DO NOT INVENT TOOL NAMES or ARGUMENTS. If you lack information or tools, STOP and ASK the user.
 5. **LANGUAGE**: Match the user's language. Be concise.
 6. **MISSING CAPABILITIES**: If the user requests a capability you lack, assume it's a feature request and call \`submit_suggestion\` with type='feature_request'.
@@ -104,6 +110,84 @@ async def retrieve_memories(state: AgentState):
     )
 
     return {"memories": memory_strings}
+
+
+def _session_history_messages(summary_text: str, history_msgs_raw: list) -> list:
+    rebuilt = []
+    if summary_text:
+        rebuilt.append(
+            SystemMessage(
+                content=(
+                    f"## PREVIOUS CONTEXT SUMMARY\n{summary_text}\n\n"
+                    "The above is a summary of earlier conversation. Use it to maintain context."
+                )
+            )
+        )
+
+    for h_msg in history_msgs_raw:
+        if h_msg.type == "human":
+            rebuilt.append(HumanMessage(content=h_msg.content))
+        elif h_msg.type == "ai":
+            rebuilt.append(AIMessage(content=h_msg.content))
+        elif h_msg.type == "tool":
+            rebuilt.append(
+                ToolMessage(
+                    content=h_msg.content,
+                    tool_call_id=h_msg.tool_call_id or "unknown",
+                    name=h_msg.tool_name or "unknown",
+                )
+            )
+    return rebuilt
+
+
+async def _pre_llm_budget_gate(state: AgentState, messages: list, *, history_limit: int = 8) -> tuple[list, dict]:
+    budget = build_token_budget(messages)
+    budget_info = {
+        "estimated_input_tokens": budget.estimated_input_tokens,
+        "remaining_input_budget": budget.remaining_input_budget,
+        "near_context_limit": budget.near_context_limit,
+        "can_afford_structured_postprocess": budget.can_afford_structured_postprocess,
+        "degraded": budget.degraded,
+        "compacted_for_budget": False,
+    }
+
+    session_id = state.get("session_id")
+    if not session_id or not budget.near_context_limit or state.get("budget_compaction_count", 0) >= 1:
+        return messages, budget_info
+
+    target_tokens = int(get_effective_llm_settings().context_window * 0.5)
+    compacted = await SessionManager.compact_for_token_budget(
+        session_id,
+        estimated_input_tokens=budget.estimated_input_tokens,
+        target_tokens=target_tokens,
+    )
+    if not compacted:
+        return messages, budget_info
+
+    summary_text, history_msgs_raw = await SessionManager.get_history_with_summary(session_id, limit=history_limit)
+    rebuilt_messages = []
+    if messages and isinstance(messages[0], SystemMessage):
+        rebuilt_messages.append(messages[0])
+
+    rebuilt_messages.extend(_session_history_messages(summary_text, history_msgs_raw))
+
+    extra_system_messages = [
+        msg
+        for msg in messages[1:]
+        if isinstance(msg, SystemMessage) and not str(msg.content).startswith("## PREVIOUS CONTEXT SUMMARY")
+    ]
+    rebuilt_messages.extend(extra_system_messages)
+
+    rebuilt_budget = build_token_budget(rebuilt_messages)
+    budget_info = {
+        "estimated_input_tokens": rebuilt_budget.estimated_input_tokens,
+        "remaining_input_budget": rebuilt_budget.remaining_input_budget,
+        "near_context_limit": rebuilt_budget.near_context_limit,
+        "can_afford_structured_postprocess": rebuilt_budget.can_afford_structured_postprocess,
+        "degraded": rebuilt_budget.degraded,
+        "compacted_for_budget": True,
+    }
+    return rebuilt_messages, budget_info
 
 
 async def save_interaction_node(state: AgentState):
@@ -510,6 +594,10 @@ def create_agent_graph(tools: list):
             else:
                 messages.insert(0, system_msg)
 
+        large_output_guidance = build_large_output_guidance(messages)
+        if large_output_guidance:
+            messages.append(SystemMessage(content=large_output_guidance))
+
         # Dynamic Tool Routing
         from app.core.intent_router import IntentRouter
         from app.core.tool_router import tool_router
@@ -660,12 +748,28 @@ def create_agent_graph(tools: list):
             logger.error(f"Error during tool routing: {e}")
             current_tools = tools
 
+        messages, budget_info = await _pre_llm_budget_gate(state, messages)
+        if budget_info.get("degraded"):
+            logger.warning(
+                "Token budget counting is running in degraded mode for model=%s",
+                os.getenv("LLM_MODEL", "unknown"),
+            )
+        logger.info(
+            "LLM budget | estimated_input_tokens=%s | remaining_input_budget=%s | near_limit=%s | "
+            "structured_postprocess=%s | compacted_for_budget=%s",
+            budget_info.get("estimated_input_tokens"),
+            budget_info.get("remaining_input_budget"),
+            budget_info.get("near_context_limit"),
+            budget_info.get("can_afford_structured_postprocess"),
+            budget_info.get("compacted_for_budget"),
+        )
+
         # Bind only selected tools for this turn (not the full registry)
         llm_with_tools = llm.bind_tools(current_tools)
 
         try:
             t0 = time.time()
-            response = await llm_with_tools.ainvoke(messages)
+            response = await ainvoke_with_backoff(llm_with_tools, messages, operation_name="agent.main")
             latency_ms = (time.time() - t0) * 1000
 
             logger.info(
@@ -720,6 +824,8 @@ def create_agent_graph(tools: list):
             "selected_skill": state.get("selected_skill") or (candidate_skills[0] if candidate_skills else None),
             "candidate_skills": candidate_skills,
             "llm_call_count": state.get("llm_call_count", 0) + 1,
+            "budget_compaction_count": state.get("budget_compaction_count", 0)
+            + (1 if budget_info.get("compacted_for_budget") else 0),
         }
 
     async def tool_node_with_permissions(state: AgentState):

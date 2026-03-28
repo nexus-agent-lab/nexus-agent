@@ -10,7 +10,7 @@ from typing import Any, Dict, List
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
 
-from app.core.llm_utils import get_llm_client
+from app.core.llm_utils import ainvoke_with_backoff, get_llm_client
 
 try:
     from langchain_anthropic import ChatAnthropic
@@ -145,7 +145,11 @@ Requirements:
         llm = cls.get_llm()
         logger.info(f"Generating skill card for {mcp_name} using {llm.__class__.__name__}")
 
-        response = await llm.ainvoke([HumanMessage(content=prompt)])
+        response = await ainvoke_with_backoff(
+            llm,
+            [HumanMessage(content=prompt)],
+            operation_name=f"skill_generator.card:{mcp_name}",
+        )
         skill_content = response.content
 
         # Ensure frontmatter exists
@@ -192,7 +196,11 @@ mcp_server: {mcp_name}
         llm = cls.get_llm()
         logger.info("Generating routing examples for %s using %s", skill_name, llm.__class__.__name__)
 
-        response = await llm.ainvoke([HumanMessage(content=prompt)])
+        response = await ainvoke_with_backoff(
+            llm,
+            [HumanMessage(content=prompt)],
+            operation_name=f"skill_generator.routing_examples:{skill_name}",
+        )
         content = response.content if isinstance(response.content, str) else str(response.content)
 
         try:
