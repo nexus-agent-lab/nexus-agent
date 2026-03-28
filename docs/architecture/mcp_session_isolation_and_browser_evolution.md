@@ -48,12 +48,24 @@ The current browser integration supports:
 - MCP connection over `/mcp`
 - Playwright tool registration into the Nexus toolset
 - public browsing, snapshots, and screenshots
+- Plan A stabilization for large outputs, token-aware compacting, 429 backoff, and session-scoped artifact workspaces
 
 This is already useful for:
 
 - public website reading
 - screenshot/snapshot evidence gathering
 - lightweight search-like browsing
+
+### 3.1.1 Current Position In The Broader Architecture
+
+Browser is now best treated as one sample domain inside a broader control-plane problem:
+
+- routing
+- governance
+- scope
+- identity/session policy
+
+It should no longer be treated as a standalone special architecture track.
 
 ### 3.2 Current Risk
 
@@ -239,6 +251,8 @@ Each group can define:
 - `session_scope`
 - `side_effect_policy`
 - `audit_level`
+
+This grouping should eventually align with the same unified metadata contract used by non-browser integrations so browser does not remain a one-off exception.
 
 This keeps compatibility with the existing RBAC model while making mixed-risk MCP servers manageable.
 

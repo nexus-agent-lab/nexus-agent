@@ -1,9 +1,25 @@
 # Active Task Index
 
 ## Goal
-Keep advancing the active P0-2 auth/ingress thread while also capturing architecture decisions that shape the skill, worker, and learning stack.
+Rebaseline the active architecture direction around routing, governance, scope, and integration abstraction so future work is driven by one unified control-plane model instead of integration-specific patches.
 
 ## Current State
+- The current highest-value implementation slices have already landed and should no longer drive the active next-step queue:
+  - browser MCP transport is repaired and Playwright tools register successfully
+  - Plan A stabilization for large browser outputs, 429 backoff, token-aware compacting, and session-scoped inspector workspaces is implemented
+  - skill routing anchors are persisted in Postgres + pgvector and survive restarts
+  - admin/auth recovery, bearer auth cleanup, and first-pass WeChat Phase 1 flows are implemented
+  - a built-in model capability catalog now provides runtime defaults for common API models
+- The remaining gap has shifted from "make individual integrations work" to "make routing, governance, scope, and permission metadata coherent across the platform."
+- The strongest architectural debt now sits in abstraction quality rather than feature absence:
+  - some Home Assistant and browser/runtime assumptions still live in code-level guardrails instead of metadata
+  - MCP, skill, worker, and tool metadata are improved but not yet unified enough to eliminate special-case fallback behavior
+  - permission checks still happen too late in the flow for some paths; scope/policy should shape availability before final tool injection
+- The next implementation layer should therefore be framed as a unified control plane:
+  - routing tree with domain/context pre-gate
+  - scope/group/policy prefilter before final toolbelt shaping
+  - consistent metadata contract across plugin, tool group, tool, and skill
+  - formal governance tiers for system-critical, trusted-internal, and community integrations
 - Browser/MCP session architecture direction is now clarified:
   - Playwright should remain a built-in, public, stateless, read-only browser plugin in the near term
   - future authenticated browser usage should move to Nexus-managed per-user MCP sessions rather than shared MCP-side state
@@ -165,78 +181,20 @@ Keep advancing the active P0-2 auth/ingress thread while also capturing architec
 
 ## Next Action
 Priority queue from here:
-1. Convert the browser architecture note into an implementation plan:
-   - add Playwright tool-group policy for read / interact / sensitive / runtime buckets
-   - keep the first phase public, stateless, and read-only
-   - define the minimal `MCPSessionManager` contract for future `scope=user` session isolation across MCP plugins
-2. Convert the skill-routing anchor-recall note into an implementation plan:
-   - extend skill metadata with `routing_examples`
-   - add pgvector-backed `skill_routing_anchor` storage
-   - aggregate top anchor hits back to skills inside `route_skills()`
-   - start with `web_browsing` as the first high-value skill
-3. Validate the new pgvector-backed skill recall end to end:
-   - confirm the `skill_routing_anchor` table is populated on startup
-   - verify `web_browsing` now matches natural queries like “最新 AI 论文”
-   - confirm uninstall/delete prunes both file-backed skills and their routing anchors
-4. Wire the new routing-example generation API into the admin integrations/skill UI:
-   - let MCP/skill registration generate editable candidate examples
-   - persist accepted examples into skill metadata and into `skill_routing_anchor`
-   - show clear copy that these examples affect routing only, not prompt context
-5. Manually validate the admin Integrations page against the previously failing plugin row:
-   - reopen "View Skill"
-   - confirm the skill content and routing examples render
-   - confirm plugins created from older rows without `manifest_id` now behave the same as freshly installed catalog plugins
-6. Rebuild and restart the web stack once so the updated public client env is applied:
-   - the compose-side `NEXT_PUBLIC_API_URL` value changed to `/api`
-   - then re-check catalog loading and the "View Skill" modal from the real browser entry URL
-7. Extend the new LLM settings surface if needed:
-   - decide whether embeddings should get a parallel settings block next
-   - decide whether API keys should remain plain editable or move behind the secret store later
-8. Finish the Playwright browser runtime validation path:
-   - rerun the minimal browser smoke test against `https://s.weibo.com/top/summary`
-   - confirm the end-to-end agent path now selects the registered Web Browser tools instead of `python_sandbox`
-7. Run a real-device WeChat validation pass for:
-   - admin user detail page QR modal opens and shows the returned image/url
-   - QR scan completes and stores a per-user bot token
-   - poll loop starts for the bound user
-   - inbound text receipt resolves to the correct bound Nexus user
-   - outbound reply delivery works through the correct per-user WeChat session
-8. Verify after restart that auto-generated `JWT_SECRET` / `NEXUS_MASTER_KEY` persist and the previous runtime warnings are gone.
-9. Fold any protocol mismatches from the real iLink payloads back into `app/interfaces/wechat.py`.
-10. Manually validate sliding-session behavior in the browser:
-   - confirm refresh happens before the 24-hour token expiry window
-   - confirm background/visibility transitions do not break the next refresh
-11. Manually validate the expired/revoked-token browser path on admin integrations pages and confirm the user is redirected to `/login` instead of staying on the page after the toast.
-12. Manually validate the new chat continuity contract end-to-end in the real web UI:
-   - first send returns a `thread_id`
-   - second send with the same `thread_id` retains prior context
-   - stream clients correctly consume the initial `session` SSE event
-13. After the transport is confirmed, decide whether the next WeChat increment is:
-   - WeChat unbind / runtime teardown UX
-   - richer admin visibility for per-channel health and last-seen state
-   - richer message support
-14. If local-model benchmarking becomes active work, implement Phase 1 of `docs/architecture/local_model_benchmark_subsystem.md` as a sidecar subsystem:
-   - versioned scenarios
-   - deterministic fixture tools
-   - config-driven model manifest
-   - archived JSON benchmark results
-15. For the benchmark subsystem next, tighten the evaluation fidelity:
-   - reuse more of the real LangGraph path instead of the current light benchmark loop
-   - improve response-quality grading beyond substring rules
-   - add a first real benchmark batch for the local models currently under consideration
-16. If build performance or reliability on mainland networks remains a concern, run a fresh `docker compose build` validation for `nexus-app` and `web` using the new mirror defaults.
-17. Add session-workspace cleanup policy and implementation:
-   - delete workspace files on explicit session reset/delete where appropriate
-   - add TTL or quota-based cleanup for stale directories under `SANDBOX_DATA_DIR`
-18. Decide how to operationalize stale workspace cleanup:
-   - wire `scripts/admin/cleanup_session_workspaces.py` into cron / scheduler / ops runbook
-   - decide default retention policy and whether to expose it in config
-   - decide whether per-user or per-session size quotas are needed next
-19. Validate Plan A behavior in the live stack:
-   - run a real browser-heavy query such as “最新 AI 论文”
-   - confirm large browser outputs produce narrower follow-ups instead of eager `python_sandbox` dumps
-   - confirm 429 slow-backoff logs appear and recover correctly on the current main LLM endpoint
-20. Extend the built-in model capability catalog operationally:
-   - decide whether to expose context/output/tokenizer fields in the admin LLM settings UI
-   - decide whether skill-generation LLM should get its own capability resolution path
-   - add more providers only when backed by current official docs
+1. Routing / Governance / Scope unified modeling
+   - define one control-plane contract spanning plugin, tool group, tool, and skill
+   - standardize metadata for `capability_domain`, `operation_kind`, `scope`, `risk_level`, `allowed_groups`, `identity_mode`, `session_policy`, and routing hints
+   - document governance tiers for system-critical, trusted-internal, and community integrations
+2. Bring routing tree plus permission/scope prefilter into runtime
+   - add domain/context pre-gate before anchor recall
+   - apply scope/group/policy filtering before final tool injection, not only at call time
+   - keep worker-aware tool shaping as the final narrowing layer after routing and policy checks
+3. Remove hardcoded Home Assistant / browser / specific MCP assumptions from core paths
+   - replace integration-specific runtime guardrails with metadata-driven contracts where possible
+   - reduce migration-phase fallback logic inside worker filtering and tool registration
+   - make "add a new MCP or skill" follow one generic metadata path instead of requiring core special cases
+4. Validate the unified direction with a small set of live scenarios
+   - browser research queries should hit `web_browsing`
+   - home control queries should hit `homeassistant`
+   - ambiguous requests such as "查日志" should not drift into browser or Home Assistant
+   - tools outside user scope should not enter the final toolbelt

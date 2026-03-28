@@ -23,6 +23,22 @@ For the current stack, the best local vector store is:
 
 because the repo already uses it for memory storage and embedding search.
 
+## 1.1 Current Status
+
+The foundational storage and sync path described here is now partially implemented:
+
+- skill routing anchors are stored in Postgres + pgvector
+- runtime skill registration syncs anchors into the DB and prunes removed skills
+- `routing_examples` survive restarts and participate in recall
+
+That means this document should now be read as an optimization-and-consolidation document rather than as a greenfield design.
+
+The next step is no longer "add anchors at all." The next step is:
+
+- add domain/context pre-gate before recall
+- add scope/group/policy prefilter before final tool injection
+- make anchor recall one stage inside a larger unified routing/governance pipeline
+
 ## 2. Problem Summary
 
 The current `SemanticToolRouter.register_skills()` embeds one synthesized description per skill:
@@ -177,6 +193,19 @@ Recommended near-term flow:
 6. apply role filtering
 7. take top-K skills above threshold
 8. inject skill-bound tools as today
+
+### 6.1.1 Updated Relationship To The Current Runtime
+
+The next runtime target should refine this order to:
+
+1. domain/context pre-gate
+2. scope/group/policy prefilter
+3. anchor recall
+4. skill aggregation
+5. worker-aware tool shaping
+6. call-time enforcement
+
+So anchor recall remains important, but it should not keep expanding as an isolated subsystem.
 
 ### 6.2 Skill Score Aggregation
 

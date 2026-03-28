@@ -1,5 +1,24 @@
 # Implementation Plan: User Groups as JSON Tags (ABAC)
 
+## Current Status
+
+ABAC Phase 1 is complete:
+
+- groups exist on users
+- plugin-level `allowed_groups` exists
+- permission checks can already reject tool calls when the user does not share the allowed group set
+- API and admin UI support the current group model
+
+## Next Step
+
+The next ABAC improvement should not focus only on stronger call-time rejection.
+
+It should move ABAC earlier into the routing and availability path:
+
+- tools outside the user's allowed scope should be filtered before final toolbelt injection where possible
+- ABAC should participate in routing/tool availability, not only in final execution blocking
+- this should align with the broader routing/governance/scope unification effort
+
 - [x] Phase 1: Database Schema Migration
 
 - Modify `app/models/user.py`: Add `groups: List[str] = Field(default=["default"], sa_column=Column(JSON))` (ensure `Column` and `JSON` from `sqlalchemy` are imported).

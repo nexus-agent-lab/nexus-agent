@@ -1,9 +1,18 @@
 # Summary
 
 ## Branch Intent
-Advance P0-2 access/auth hardening and resilient ingress. Bearer JWT migration for web/backend is complete; Nginx resilience work was started conceptually but the user independently fixed and committed the Nginx rediscovery issue.
+Rebaseline the active architecture direction so the next implementation phase is driven by unified routing, governance, scope, and metadata contracts rather than by integration-specific fixes.
 
 ## Current State
+- Browser MCP transport, Plan A stabilization, skill routing anchors + pgvector storage, admin/auth cleanup, WeChat Phase 1, and model capability catalog work are all now implemented enough that they should move out of the active next-step queue.
+- The highest-priority remaining work is architectural consolidation:
+  - unify routing tree, governance tiers, scope semantics, and permission prefiltering
+  - formalize one metadata contract across plugin, tool group, tool, and skill
+  - reduce integration-specific assumptions in Home Assistant, browser, and MCP runtime paths
+- The main project risk has shifted from "missing capability" to "insufficient abstraction":
+  - some Home Assistant/browser reliability assumptions still live in code-level guardrails
+  - metadata coverage is improved but still incomplete across MCP and local tools
+  - worker/tool filtering remains partly a compatibility layer instead of a final model
 - HA tracking baseline exists in `docs/ha_p0_validation_checklist.md` and is linked from `docs/task.md`.
 - Auth strategy docs are in place: `docs/auth_channel_strategy.md` and `docs/auth_binding_state_machine.md`.
 - Telegram bind UX fix and HA checklist were committed earlier: `59ed1f1`.
@@ -31,7 +40,33 @@ Advance P0-2 access/auth hardening and resilient ingress. Bearer JWT migration f
 - Web still uses decode-only JWT parsing in `web/src/lib/auth.ts` for route/session inspection. Backend is now the real auth authority for API calls, which was the main security goal of this slice.
 
 ## Next Action
-Decide whether to continue with product-facing P0-2 work (permission-denied / recovery UX) or to explicitly reconcile/close the superseded Nginx todo chain after reviewing the user’s Nginx commit `1557166`.
+Drive the next phase from a unified control-plane direction:
+- document and implement routing tree + domain/context pre-gate
+- move scope/group/policy filtering earlier, before final toolbelt construction
+- unify metadata contracts across plugin, tool group, tool, and skill
+- replace remaining Home Assistant / browser / MCP hardcoded assumptions with metadata-driven behavior
+
+## Session Update (2026-03-29, docs rebaseline for routing/governance/scope)
+- Rebased the active project context so completed work is no longer listed as current next-step work:
+  - browser MCP transport repair
+  - Plan A stabilization
+  - session workspace / inspector baseline
+  - routing anchors + pgvector
+  - admin/auth cleanup
+  - WeChat Phase 1
+  - model capability catalog
+- Added a new umbrella architecture note:
+  - `docs/architecture/routing_governance_scope_unification.md`
+- Updated subsystem docs so they now point toward one shared control-plane direction instead of isolated feature tracks:
+  - skill routing anchors
+  - browser session isolation
+  - LangGraph skill-worker migration
+  - ABAC groups
+- Explicitly recorded the current hardcoding debt:
+  - Home Assistant still has runtime guardrails not yet fully metadata-driven
+  - browser tool groups are documented but not yet fully enforced as first-class policy
+  - MCP metadata coverage is still incomplete
+  - tool catalog / worker filtering still contains migration-phase compatibility logic
 
 ## Session Update (2026-03-22)
 - Added `docs/architecture/autoskill_self_evolution_integration.md` to map the AutoSkill paper onto the current Nexus skill/designer architecture.

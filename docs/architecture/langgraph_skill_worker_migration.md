@@ -387,6 +387,15 @@ This keeps routing and recovery grounded in declared capability instead of guess
 
 The current architecture gets better as MCP and skill metadata become more explicit.
 
+### Current Remaining Debt
+
+The migration direction is correct, but several debts still remain and should now be treated as next-phase architecture work:
+
+- MCP metadata coverage is still incomplete across all registered tools
+- worker-aware filtering still contains migration-phase fallback logic and narrow heuristics
+- Home Assistant and browser reliability still rely partly on integration-specific runtime assumptions
+- the core is better than before, but not yet abstract enough that new integrations naturally fit without patch-shaped exceptions
+
 ### Next Optimization Targets
 
 1.  **Improve MCP registration metadata**
@@ -414,6 +423,10 @@ The current architecture gets better as MCP and skill metadata become more expli
     - MCP handles connection and schema transport.
     - Skills describe usage policy and routing cues.
     - The graph handles routing, retries, verification, and stopping conditions.
+
+5.  **Move policy checks earlier**
+    - scope, group, and policy filtering should help shape tool availability before the final toolbelt is injected
+    - call-time enforcement should remain the last safety gate, not the only place policy becomes real
 
 ### Why This Matters for the Current Architecture
 
@@ -452,6 +465,7 @@ When adding a new MCP-backed integration or a new skill, the strongest path is:
     - Do not hardcode a new integration into `agent.py`.
     - Do not add integration-specific retry behavior directly to the supervisor.
     - Prefer metadata and skill rules instead.
+    - Do not let Home Assistant, browser, or any future MCP remain privileged by undocumented runtime assumptions
 
 5.  **Choose the correct worker**
     - side-effectful business tooling -> `skill_worker`
